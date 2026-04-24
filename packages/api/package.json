@@ -1,0 +1,14 @@
+{
+  "name": "@lexho/api",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@lexho/constants": "file:../constants",
+    "axios": "^1.15.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
