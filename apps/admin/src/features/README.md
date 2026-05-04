@@ -1,6 +1,14 @@
 # Feature-first layout
 
 - `auth`: login, otp verification, session handling
-- `dashboard`: summary metrics and widgets
-- `users`: admin user management
-- `partners`: partner onboarding and status
+- `dashboard`: dashboard route + navigation metadata
+- `users`: users listing and profile routes
+- `bookings`: bookings list and details routes
+- `providers`: providers list and verification routes
+- `services`: services route
+- `banners`: banners route
+- `reviews`: reviews route
+- `notifications`: notification center route
+- `support`: support ticket route
+- `payouts`: payout management route
+- `activity-logs`: audit/activity route

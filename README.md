@@ -1,4 +1,4 @@
-# Lexho Monorepo
+# Lexho Frontend Monorepo
 
 Scalable workspace architecture for Lexho multi-app products.
 

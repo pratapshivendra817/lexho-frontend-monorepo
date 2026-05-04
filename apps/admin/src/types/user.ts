@@ -37,7 +37,10 @@ export interface User {
   activities: Activity[];
 }
 
-  export interface UsersResponse {
+export interface UsersResponse {
   data: User[];
   total: number;
+  content?: User[];
+  users?: User[];
+  totalElements?: number;
 }

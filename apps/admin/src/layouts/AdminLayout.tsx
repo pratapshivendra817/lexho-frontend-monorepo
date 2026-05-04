@@ -1,167 +1,75 @@
-import { Outlet, Link, useLocation } from "react-router-dom";
+﻿import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { FiSearch } from "react-icons/fi";
+
+import { ThemeToggle } from "@/components/admin";
+import { clearAccessToken } from "@/utils/authSession";
+import { adminNavItems, getAdminRouteMeta } from "../navigation/adminNavigation";
 
 export default function AdminLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const routeMeta = getAdminRouteMeta(location.pathname);
 
-  const navItem = (path: string) => {
-    const isActive =
-      path === "/"
-        ? location.pathname === "/"
-        : location.pathname.startsWith(path);
+  const handleLogout = () => {
+    clearAccessToken();
+    navigate("/login", { replace: true });
+  };
 
-    return `flex items-center gap-3 px-3 py-2 rounded-lg transition text-sm ${
+  const navItemClass = (path: string) => {
+    const isActive = path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
+
+    return `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
       isActive
-        ? "bg-gradient-to-r from-purple-600 to-indigo-600 shadow-lg border-l-4 border-purple-400"
-        : "hover:bg-gray-800 text-gray-300"
+        ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg"
+        : "text-[var(--color-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
     }`;
   };
 
-  // ✅ Page Title
-  const getPageTitle = () => {
-    if (location.pathname.startsWith("/users/")) return "User Profile";
-    if (location.pathname.startsWith("/users")) return "Users";
-
-    if (location.pathname.startsWith("/bookings/")) return "Booking Details";
-    if (location.pathname.startsWith("/bookings")) return "Bookings";
-
-    if (location.pathname.startsWith("/providers/"))
-      return "Provider Verification";
-    if (location.pathname.startsWith("/providers"))
-      return "Providers";
-
-    if (location.pathname.startsWith("/services")) return "Services";
-    if (location.pathname.startsWith("/banners")) return "Banners";
-
-    if (location.pathname.startsWith("/reviews"))
-      return "Ratings & Reviews";
-
-    if (location.pathname.startsWith("/notifications"))
-      return "Notification Center";
-
-    if (location.pathname.startsWith("/payouts"))
-      return "Provider Payouts";
-
-    if (location.pathname.startsWith("/activity-logs"))
-      return "Activity Logs";
-
-    // ✅ NEW: Support
-    if (location.pathname.startsWith("/support"))
-      return "Support & Complaints";
-
-    return "Dashboard";
-  };
-
-  // ✅ Breadcrumb
-  const getBreadcrumb = () => {
-    if (location.pathname.startsWith("/users/"))
-      return "Users / Profile";
-
-    if (location.pathname.startsWith("/bookings/"))
-      return "Bookings / Details";
-
-    if (location.pathname.startsWith("/providers/"))
-      return "Providers / Verification";
-
-    if (location.pathname.startsWith("/notifications"))
-      return "Communication / Notifications";
-
-    if (location.pathname.startsWith("/payouts"))
-      return "Finance / Payouts";
-
-    if (location.pathname.startsWith("/reviews"))
-      return "Reviews";
-
-    if (location.pathname.startsWith("/activity-logs"))
-      return "Audit / Activity Logs";
-
-    // ✅ NEW: Support
-    if (location.pathname.startsWith("/support"))
-      return "Support / Tickets";
-
-    const path = location.pathname.replace("/", "");
-    return path || "dashboard";
-  };
-
   return (
-    <div className="flex min-h-screen bg-[#0f172a] text-white">
-      
-      {/* Sidebar */}
-      <aside className="w-64 bg-[#020617] p-5 border-r border-gray-800">
-        <h2 className="text-xl font-bold mb-6 tracking-wide">
-          🚀 Lexho Admin
-        </h2>
+    <div className="min-h-screen bg-transparent text-[var(--color-text)] md:pl-72">
+      <aside className="relative z-30 w-full border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 p-4 backdrop-blur md:fixed md:inset-y-0 md:left-0 md:w-72 md:border-b-0 md:border-r md:p-5">
+        <h2 className="mb-1 text-xl font-bold tracking-wide">LexhoAdmin</h2>
+        <p className="mb-6 text-xs uppercase tracking-wide text-[var(--color-muted)]">Home Services Control Center</p>
 
-        <nav className="flex flex-col gap-2">
-
-          <Link to="/" className={navItem("/")}>
-            🏠 Dashboard
-          </Link>
-
-          <Link to="/users" className={navItem("/users")}>
-            👤 Users
-          </Link>
-
-          <Link to="/bookings" className={navItem("/bookings")}>
-            📅 Bookings
-          </Link>
-
-          <Link to="/providers" className={navItem("/providers")}>
-            🧑‍🔧 Providers
-          </Link>
-
-          <Link to="/services" className={navItem("/services")}>
-            🛠 Services
-          </Link>
-
-          <Link to="/banners" className={navItem("/banners")}>
-            🖼 Banners
-          </Link>
-
-          <Link to="/reviews" className={navItem("/reviews")}>
-            ⭐ Reviews
-          </Link>
-
-          <Link to="/notifications" className={navItem("/notifications")}>
-            🔔 Notifications
-          </Link>
-
-          {/* ✅ NEW: Support */}
-          <Link to="/support" className={navItem("/support")}>
-            🎫 Support
-          </Link>
-
-          <Link to="/payouts" className={navItem("/payouts")}>
-            💰 Payouts
-          </Link>
-
-          <Link to="/activity-logs" className={navItem("/activity-logs")}>
-            📜 Activity Logs
-          </Link>
-
+        <nav className="grid grid-cols-2 gap-1 md:grid-cols-1">
+          {adminNavItems.map((item) => (
+            <Link key={item.path} to={item.path} className={navItemClass(item.path)}>
+              {item.label}
+            </Link>
+          ))}
         </nav>
       </aside>
 
-      {/* Main */}
-      <main className="flex-1 p-6 overflow-y-auto">
-
-        {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
+      <main className="min-h-screen overflow-x-hidden p-4 md:p-6">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
           <div>
-            <h1 className="text-2xl font-bold">
-              {getPageTitle()}
-            </h1>
+            <h1 className="text-2xl font-bold">{routeMeta.title}</h1>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{routeMeta.breadcrumb}</p>
+          </div>
 
-            <p className="text-sm text-gray-400 mt-1">
-              {getBreadcrumb()}
-            </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-muted)]">
+              <FiSearch size={14} />
+              <input
+                type="text"
+                placeholder="Quick search"
+                className="w-32 bg-transparent text-[var(--color-text)] outline-none placeholder:text-[var(--color-muted)] sm:w-36"
+              />
+            </label>
+            <ThemeToggle />
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-lg border border-red-400/30 bg-red-500/20 px-4 py-2 text-sm font-medium text-red-200 transition hover:bg-red-500/30"
+            >
+              Logout
+            </button>
           </div>
         </div>
 
-        {/* Page Content */}
-        <div className="bg-[#020617] p-4 rounded-xl border border-gray-800 shadow-inner">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-inner sm:p-4">
           <Outlet />
         </div>
-
       </main>
     </div>
   );

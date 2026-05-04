@@ -1,0 +1,49 @@
+module,endpoint,method,request_fields,response_fields,status,notes
+Auth,/otp/send,POST,mobile,"success|message|resendAfter|otp/code(dev)",Needs Backend Confirm,"confirm rate limit + resendAfter seconds"
+Auth,/otp/verify,POST,"mobile|otp","token|refreshToken|user",Needs Backend Confirm,"confirm error shape for invalid/expired otp"
+Auth,/auth/logout,POST,,status/message,Aligned,
+Auth,/auth/refresh-token,POST,refreshToken,"token|refreshToken",Needs Backend Confirm,
+Home,/api/home/dashboard,GET,,"greeting|location|recentBookings",Needs Backend Confirm,
+Home,/api/banners,GET,,"id|title|imageUrl|redirectUrl|promoCode",Needs Backend Confirm,
+Home,/api/categories,GET,,"id|name|icon|imageUrl",Needs Backend Confirm,
+Home,/api/services/popular,GET,,"service list",Needs Backend Confirm,
+Home,/api/services/recommended,GET,,"service list",Needs Backend Confirm,
+Home,/api/services/quick,GET,,"service list",Needs Backend Confirm,
+Home,/api/search/services,GET,keyword,"service list",Needs Backend Confirm,"partial keyword support"
+Profile,/api/user/profile,GET,,"id|mobile|name|email|avatar",Needs Backend Confirm,
+Profile,/api/user/profile/update,PUT,"name?|email?",updated profile,Needs Backend Confirm,"partial update confirm"
+Profile,/api/user/profile/upload-image,POST,multipart image,avatar url,Needs UI Context,"not wired in UI yet"
+Address,/api/address/add,POST,"label|line1|city",address object,Needs Backend Confirm,
+Address,/api/address/list,GET,,address list,Aligned,
+Address,/api/address/update,PUT,"id|label?|line1?|city?",address object,Needs Backend Confirm,
+Address,/api/address/delete,DELETE,id,status/message,Needs Backend Confirm,"id in request body"
+Address,/api/address/default,PUT,id,status/message,Needs Backend Confirm,
+Cart,/api/cart/add,POST,"serviceId|quantity",cart item,Needs Backend Confirm,
+Cart,/api/cart,GET,,cart list,Aligned,
+Cart,/api/cart/update,PUT,"id|quantity",cart item,Needs Backend Confirm,
+Cart,/api/cart/remove,DELETE,id,status/message,Needs Backend Confirm,"id in request body"
+Booking,/api/bookings/create,POST,"serviceId|addressId|slot?|note?",booking summary,Needs UI Context,
+Booking,/api/bookings/history,GET,,booking list,Aligned,
+Booking,/api/bookings/details/{id},GET,id path,booking details,Needs UI Context,
+Booking,/api/bookings/cancel/{id},PUT,id path,booking details,Needs UI Context,
+Booking,/api/bookings/reschedule/{id},PUT,"id path|date(ISO)",booking details,Needs Backend Confirm,"confirm date field name"
+Tracking,/api/provider/live-location/{bookingId},GET,bookingId path,"lat|lng|eta",Needs UI Context,
+Payment,/api/payments/initiate,POST,"mode(UPI/CARD/WALLET/COD)|bookingId?|amount?",payment init response,Needs Backend Confirm,
+Payment,/api/payments/status/{bookingId},GET,bookingId path,payment status,Needs UI Context,"confirm status enum"
+Payment,/api/payments/refund,POST,"bookingId|amount",refund response,Needs Backend Confirm,
+Coupon,/api/coupon/apply,POST,code,coupon apply response,Needs Backend Confirm,
+Coupon,/api/coupon/list,GET,,coupon list,Aligned,
+Reviews,/api/reviews/add,POST,"serviceId|rating|comment|imageUrls?",review object,Needs Backend Confirm,
+Reviews,/api/reviews/service/{id},GET,service id path,review list,Needs UI Context,
+Favorites,/api/favorites/add,POST,serviceId,favorite object,Needs Backend Confirm,
+Favorites,/api/favorites/list,GET,,favorites list,Aligned,
+Favorites,/api/favorites/remove,DELETE,id,status/message,Needs Backend Confirm,"id in request body"
+Notifications,/api/notifications,GET,,notification list,Aligned,
+Notifications,/api/notifications/read,PUT,id,status/message,Needs Backend Confirm,
+Notifications,/api/customer/notifications/unread-count,GET,,count,Needs Backend Confirm,"count or data.count"
+Referral,/api/referral/generate,POST,,generated code,Needs Backend Confirm,
+Referral,/api/referral/apply,POST,code,apply response,Needs Backend Confirm,
+Subscription,/api/subscription/create,POST,planId,subscription object,Needs Backend Confirm,
+Subscription,/api/subscription/list,GET,,subscription list,Aligned,
+Support,/api/support/create,POST,"subject|message",ticket object,Needs Backend Confirm,
+Support,/api/support/history,GET,,ticket list,Aligned,

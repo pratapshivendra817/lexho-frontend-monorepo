@@ -1,5 +1,5 @@
 {
-  "name": "lexho-monorepo",
+  "name": "lexho-frontend-monorepo",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -9,14 +9,30 @@
     "packages/*"
   ],
   "scripts": {
+    "admin": "npm run dev:admin",
+    "customer": "npm run mobile:customer",
+    "partner": "npm run mobile:partner",
+    "partner:web": "npm run dev:partner",
     "dev": "npm run dev:admin",
     "dev:admin": "npm run dev --workspace=@lexho/admin",
+    "dev:customer": "npm run dev --workspace=customer-app",
+    "dev:partner": "npm run dev --workspace=partner-app",
+    "dev:customer:mobile": "npm run start --prefix apps/customer/legacy-mobile -- --reset-cache",
+    "dev:partner:mobile": "npm run start --prefix apps/partner/legacy-mobile -- --reset-cache",
+    "mobile:customer": "powershell -ExecutionPolicy Bypass -File scripts/run-rn-android.ps1 -App customer",
+    "mobile:partner": "powershell -ExecutionPolicy Bypass -File scripts/run-rn-android.ps1 -App partner",
+    "android:customer": "npm run android:run:shortpath --prefix apps/customer/legacy-mobile",
+    "android:partner": "npm run android:run:shortpath --prefix apps/partner/legacy-mobile",
     "build:admin": "npm run build --workspace=@lexho/admin",
+    "build:customer": "npm run build --workspace=customer-app",
+    "build:partner": "npm run build --workspace=partner-app",
+    "build": "npm run build:admin && npm run build:customer && npm run build:partner",
     "lint:admin": "npm run lint --workspace=@lexho/admin",
     "preview:admin": "npm run preview --workspace=@lexho/admin",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
+    "@react-native-community/cli": "latest",
     "typescript": "~6.0.2"
   }
 }

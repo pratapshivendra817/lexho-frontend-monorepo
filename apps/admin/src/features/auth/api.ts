@@ -1,15 +1,66 @@
-import { createApiClient } from '@lexho/api'
-import { API_ENDPOINTS } from '@lexho/constants'
-import { appConfig } from '../../config'
+import { createApiClient } from "@lexho/api";
+import { isAxiosError } from "axios";
+
+import { appConfig } from "../../config";
 
 const authClient = createApiClient({
-  baseURL: appConfig.apiBaseUrl
-})
+  baseURL: appConfig.apiBaseUrl,
+});
 
-export const requestAdminOtp = async (payload: { email: string; password: string }) => {
-  return authClient.post(API_ENDPOINTS.auth.login, payload)
+const ADMIN_AUTH_ENDPOINTS = {
+  login: "/api/admin/login",
+  verifyOtp: "/api/admin/verify-otp",
+} as const;
+
+function extractApiError(error: unknown, fallback: string) {
+  if (!isAxiosError(error)) {
+    return fallback;
+  }
+
+  if (!error.response) {
+    if (error.code === "ERR_NETWORK") {
+      return "Cannot reach backend. Please check API base URL and server status.";
+    }
+    return fallback;
+  }
+
+  const payload = error.response?.data;
+  const status = error.response?.status;
+
+  if (payload && typeof payload === "object" && "message" in payload) {
+    const message = (payload as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return status ? `${message} (HTTP ${status})` : message;
+    }
+  }
+
+  return status ? `${fallback} (HTTP ${status})` : fallback;
 }
 
-export const verifyAdminOtp = async (payload: { email: string; otp: string }) => {
-  return authClient.post(API_ENDPOINTS.auth.verifyOtp, payload)
-}
+export const requestAdminOtp = async (payload: {
+  identifier: string;
+  password: string;
+}) => {
+  const identifier = payload.identifier.trim();
+  const password = payload.password.trim();
+
+  const requestPayload = { email: identifier.toLowerCase(), password };
+  try {
+    return await authClient.post(ADMIN_AUTH_ENDPOINTS.login, requestPayload);
+  } catch (error) {
+    throw new Error(extractApiError(error, "Unable to request OTP"));
+  }
+};
+
+export const verifyAdminOtp = async (payload: {
+  identifier: string;
+  otp: string;
+}) => {
+  const identifier = payload.identifier.trim();
+  const requestPayload = { email: identifier.toLowerCase(), otp: payload.otp.trim() };
+  try {
+    return await authClient.post(ADMIN_AUTH_ENDPOINTS.verifyOtp, requestPayload);
+  } catch (error) {
+    throw new Error(extractApiError(error, "OTP verification failed"));
+  }
+};

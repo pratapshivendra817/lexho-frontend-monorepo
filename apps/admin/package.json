@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -21,6 +23,7 @@
     "@lexho/ui": "file:../../packages/ui",
     "@lexho/utils": "file:../../packages/utils",
     "@mui/material": "^9.0.0",
+    "@radix-ui/react-dialog": "^1.1.15",
     "@tanstack/react-query": "^5.99.2",
     "@tanstack/react-table": "^8.21.3",
     "axios": "^1.15.0",
@@ -37,6 +40,9 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@testing-library/jest-dom": "^6.5.0",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -46,10 +52,12 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "jsdom": "^26.1.0",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.1",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.0",
-    "vite": "^8.0.4"
+    "vite": "^8.0.4",
+    "vitest": "^2.1.5"
   }
 }
