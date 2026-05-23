@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import CreateUserPage from "@/features/users/pages/CreateUserPage";
-import { renderWithProviders } from "../utils/renderWithProviders";
+import { renderWithPartners } from "../utils/renderWithPartners";
 
 const mocks = vi.hoisted(() => ({
   createUser: vi.fn(),
@@ -34,13 +34,13 @@ describe("CreateUserPage", () => {
   it("submits valid create user form and calls API", async () => {
     const user = userEvent.setup();
 
-    renderWithProviders(<CreateUserPage />);
+    renderWithPartners(<CreateUserPage />);
 
     await user.type(screen.getByLabelText("Name"), "Aman Sharma");
     await user.type(screen.getByLabelText("Email"), "aman@example.com");
     await user.type(screen.getByLabelText("Phone"), "9876543210");
     await user.type(screen.getByLabelText("City"), "Indore");
-    await user.selectOptions(screen.getByLabelText("Role"), "PROVIDER");
+    await user.selectOptions(screen.getByLabelText("Role"), "PARTNER");
     await user.selectOptions(screen.getByLabelText("Status"), "ACTIVE");
     await user.click(screen.getByRole("button", { name: "Create User" }));
 
@@ -49,10 +49,12 @@ describe("CreateUserPage", () => {
         name: "Aman Sharma",
         email: "aman@example.com",
         phone: "9876543210",
-        role: "PROVIDER",
+        role: "PARTNER",
         city: "Indore",
         status: "ACTIVE",
       });
     });
   });
 });
+
+

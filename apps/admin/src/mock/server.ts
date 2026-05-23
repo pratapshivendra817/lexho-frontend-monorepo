@@ -1,4 +1,4 @@
-// src/mock/server.ts (optional mock if backend missing)
+﻿// src/mock/server.ts (optional mock if backend missing)
 import axios from "axios";
 
 axios.interceptors.request.use(async (config) => {
@@ -11,7 +11,7 @@ axios.interceptors.request.use(async (config) => {
       name: "User " + (i + 1),
       phone: "98XXXXXXX",
       location: "Noida",
-      role: i % 2 ? "CUSTOMER" : "PROVIDER",
+      role: i % 2 ? "CUSTOMER" : "PARTNER",
       bookings: Math.floor(Math.random() * 50),
       status: i % 3 ? "ACTIVE" : "BLOCKED",
     }));
@@ -37,3 +37,4 @@ axios.interceptors.request.use(async (config) => {
   }
   return config;
 });
+

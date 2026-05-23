@@ -33,7 +33,7 @@ const asNumber = (value: unknown, fallback = 0): number => {
 const normalizeRole = (value: unknown): UserRole => {
   const role = asString(value).toUpperCase();
   if (role === "ADMIN") return "ADMIN";
-  if (role === "PROVIDER") return "PROVIDER";
+  if (role === "PARTNER") return "PARTNER";
   return "CUSTOMER";
 };
 
@@ -182,4 +182,6 @@ export async function unblockUser(id: string) {
 export async function deleteUser(id: string) {
   await api.delete(`/api/admin/users/${id}`);
 }
+
+
 

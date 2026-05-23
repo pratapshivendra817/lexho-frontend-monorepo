@@ -1,4 +1,4 @@
-﻿export type UserRole = "CUSTOMER" | "PROVIDER" | "ADMIN";
+﻿export type UserRole = "CUSTOMER" | "PARTNER" | "ADMIN";
 
 export type UserStatus = "ACTIVE" | "BLOCKED" | "INACTIVE" | "DELETED";
 
@@ -39,4 +39,6 @@ export type UsersListResponse = {
   totalPages: number;
   pageNumber: number;
 };
+
+
 

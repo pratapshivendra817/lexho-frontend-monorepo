@@ -1,14 +1,14 @@
-export type ProviderStatus = "PENDING" | "APPROVED" | "REJECTED" | "BLOCKED";
-export type ProviderServiceType = "COOK" | "CLEANING" | "";
+﻿export type PartnerStatus = "PENDING" | "APPROVED" | "REJECTED" | "BLOCKED";
+export type PartnerServiceType = "COOK" | "CLEANING" | "";
 
-export type ProviderStats = {
+export type PartnerStats = {
   pending: number;
   approved: number;
   rejected: number;
   blocked: number;
 };
 
-export type ProviderDocument = {
+export type PartnerDocument = {
   id: string;
   name: string;
   documentType: string;
@@ -17,24 +17,24 @@ export type ProviderDocument = {
   uploadedAt?: string;
 };
 
-export type ProviderStatusHistory = {
-  status: ProviderStatus;
+export type PartnerStatusHistory = {
+  status: PartnerStatus;
   reason?: string;
   changedAt?: string;
   changedBy?: string;
 };
 
-export type ProviderListItem = {
+export type PartnerListItem = {
   id: string;
   name: string;
   phone: string;
   serviceType: string;
   city: string;
   appliedDate: string;
-  status: ProviderStatus;
+  status: PartnerStatus;
 };
 
-export type ProviderDetails = ProviderListItem & {
+export type PartnerDetails = PartnerListItem & {
   email?: string;
   gender?: string;
   dob?: string;
@@ -42,30 +42,70 @@ export type ProviderDetails = ProviderListItem & {
   address?: string;
   experience?: string;
   availabilityType?: string;
+  online?: boolean;
   serviceAreas?: string[];
   workingDays?: string[];
   startTime?: string;
   endTime?: string;
   accountNumber?: string;
+  accountNumberMasked?: string;
   ifscCode?: string;
-  documents: ProviderDocument[];
-  statusHistory: ProviderStatusHistory[];
+  documents: PartnerDocument[];
+  statusHistory: PartnerStatusHistory[];
 };
 
-export type ProvidersListResponse = {
-  content: ProviderListItem[];
+export type PartnerDashboardStats = {
+  todayEarnings: number;
+  totalCompletedOrders: number;
+  pendingOrders: number;
+};
+
+export type PartnerSettlementStatus = "PENDING" | "PROCESSING" | "SETTLED" | "FAILED" | "REVERSED";
+
+export type PartnerSettlementItem = {
+  id: string;
+  providerId: string;
+  amount: number;
+  status: PartnerSettlementStatus;
+  referenceBookingId?: string;
+  remarks?: string;
+  processedAt?: string | null;
+  createdAt?: string;
+};
+
+export type PartnerSettlementsResponse = {
+  items: PartnerSettlementItem[];
+  totalElements: number;
+  totalPages: number;
+  page: number;
+  size: number;
+};
+
+export type PartnersListResponse = {
+  content: PartnerListItem[];
   totalElements: number;
   totalPages: number;
   pageNumber: number;
 };
 
-export type ProvidersQueryParams = {
+export type PartnersQueryParams = {
   page: number;
   size: number;
-  status?: ProviderStatus | "";
-  serviceType?: ProviderServiceType;
+  status?: PartnerStatus | "";
+  serviceType?: PartnerServiceType;
   city?: string;
   search?: string;
   sortBy?: string;
   sortDir?: "asc" | "desc";
 };
+
+export type ProviderStatus = PartnerStatus;
+export type ProviderServiceType = PartnerServiceType;
+export type ProviderStats = PartnerStats;
+export type ProviderDocument = PartnerDocument;
+export type ProviderStatusHistory = PartnerStatusHistory;
+export type ProviderListItem = PartnerListItem;
+export type ProviderDetails = PartnerDetails;
+export type ProvidersListResponse = PartnersListResponse;
+export type ProvidersQueryParams = PartnersQueryParams;
+

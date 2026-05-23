@@ -1,15 +1,15 @@
-import type { AdminReviewStatus } from "../types";
+﻿import type { AdminReviewStatus } from "../types";
 
 type ReviewsFiltersBarProps = {
   search: string;
   status: AdminReviewStatus | "";
   rating: number | "";
-  provider: string;
+  partner: string;
   service: string;
   onSearchChange: (value: string) => void;
   onStatusChange: (value: AdminReviewStatus | "") => void;
   onRatingChange: (value: number | "") => void;
-  onProviderChange: (value: string) => void;
+  onPartnerChange: (value: string) => void;
   onServiceChange: (value: string) => void;
   onReset: () => void;
 };
@@ -18,12 +18,12 @@ export function ReviewsFiltersBar({
   search,
   status,
   rating,
-  provider,
+  partner,
   service,
   onSearchChange,
   onStatusChange,
   onRatingChange,
-  onProviderChange,
+  onPartnerChange,
   onServiceChange,
   onReset,
 }: ReviewsFiltersBarProps) {
@@ -62,9 +62,9 @@ export function ReviewsFiltersBar({
       </select>
 
       <input
-        value={provider}
-        onChange={(event) => onProviderChange(event.target.value)}
-        placeholder="Provider"
+        value={partner}
+        onChange={(event) => onPartnerChange(event.target.value)}
+        placeholder="Partner"
         className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
       />
 
@@ -82,3 +82,5 @@ export function ReviewsFiltersBar({
     </div>
   );
 }
+
+

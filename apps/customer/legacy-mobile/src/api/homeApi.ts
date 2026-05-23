@@ -126,8 +126,8 @@ export async function getBanners(): Promise<BannerDto[]> {
     }
     const mapped = items.map((item) => ({
       ...item,
-      imageUrl: toAbsoluteUrl(item?.bannerImageUrl ?? item?.imageUrl),
-      bannerImageUrl: toAbsoluteUrl(item?.bannerImageUrl ?? item?.imageUrl),
+      imageUrl: toAbsoluteUrl((item as any)?.bannerImageUrl ?? item?.imageUrl),
+      bannerImageUrl: toAbsoluteUrl((item as any)?.bannerImageUrl ?? item?.imageUrl),
     }));
     if (__DEV__) {
       const missingImageIds = mapped
@@ -148,7 +148,7 @@ export async function getBanners(): Promise<BannerDto[]> {
         tokenProvided: !!headers.Authorization,
         count: mapped.length,
         topLevelKeys: data && typeof data === "object" ? Object.keys(data) : [],
-        rawImageUrl: items[0]?.bannerImageUrl ?? items[0]?.imageUrl ?? null,
+        rawImageUrl: (items[0] as any)?.bannerImageUrl ?? items[0]?.imageUrl ?? null,
         sample: mapped[0]
           ? {
               id: mapped[0].bannerId ?? mapped[0].id,

@@ -62,7 +62,7 @@ Active runtime path is now locked to:
 | `/api/bookings/details/{id}` | GET | `bookingExtrasApi.getBookingDetails` | ID input based | Needs UI Context |
 | `/api/bookings/cancel/{id}` | PUT | `bookingExtrasApi.cancelBooking` | ID input based | Needs UI Context |
 | `/api/bookings/reschedule/{id}` | PUT | `bookingExtrasApi.rescheduleBooking` | currently `{ date }` | Needs Backend Confirm |
-| `/api/provider/live-location/{bookingId}` | GET | `bookingExtrasApi.getProviderLiveLocation` | ID input based | Needs UI Context |
+| `/api/partner/live-location/{bookingId}` | GET | `bookingExtrasApi.getPartnerLiveLocation` | ID input based | Needs UI Context |
 
 ## Payments
 | Endpoint | Method | Client | Current Contract Use | Status |
@@ -121,3 +121,4 @@ Active runtime path is now locked to:
 3. Confirm list wrappers (`data`, `content`, plain array) and pagination format.
 4. Confirm validation rules/messages match admin backend constraints.
 5. Confirm notification read/delete contract (`PUT /read` vs `DELETE /...`).
+

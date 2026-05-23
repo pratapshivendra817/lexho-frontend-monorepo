@@ -49,7 +49,7 @@ export type ServicePayload = {
   service_type: string;
 };
 
-export type ServiceDetailType = "INCLUDED" | "EXCLUDED";
+export type ServiceDetailType = "INCLUDED" | "EXCLUDED" | "FAQ" | "INSTRUCTION";
 
 export type ServiceDetailItem = {
   id: string;

@@ -1,6 +1,6 @@
-import { zodResolver } from "@hookform/resolvers/zod";
+﻿import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
@@ -9,6 +9,7 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Too
 import { ConfirmDialog, DataState, DataTable, Modal, Pagination, Skeleton } from "@/components/admin";
 import { useDebounce } from "@/hooks/useDebounce";
 import { extractApiError } from "@/utils/apiError";
+import { shareContent } from "@/utils/share";
 
 import { useAdminNotificationDetailsQuery, useAdminNotificationMutations, useAdminNotificationsQuery, useAdminNotificationStatsQuery } from "../hooks/useAdminNotifications";
 import { useAdminNotificationSocket } from "../hooks/useAdminNotificationSocket";
@@ -56,12 +57,12 @@ export default function NotificationsPage() {
   const detailsQuery = useAdminNotificationDetailsQuery(detailsId ?? undefined);
   const { retryMutation, sendMutation } = useAdminNotificationMutations();
 
-  useAdminNotificationSocket({
-    onMessage: () => {
-      void queryClient.invalidateQueries({ queryKey: ["admin-notifications"] });
-      void queryClient.invalidateQueries({ queryKey: ["admin-notification-stats"] });
-    },
-  });
+  const handleSocketMessage = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["admin-notifications"] });
+    void queryClient.invalidateQueries({ queryKey: ["admin-notification-stats"] });
+  }, [queryClient]);
+
+  useAdminNotificationSocket({ onMessage: handleSocketMessage });
 
   const form = useForm<SendNotificationFormValues>({
     resolver: zodResolver(sendNotificationSchema),
@@ -69,11 +70,11 @@ export default function NotificationsPage() {
       title: "",
       message: "",
       notificationType: "BOOKING",
-      channelType: "PUSH",
-      userType: "ALL_USERS",
+      priority: "MEDIUM",
+      channels: ["IN_APP"],
+      targetUserType: "CUSTOMER",
       city: "",
-      service: "",
-      scheduleTime: "",
+      scheduledTime: "",
     },
   });
 
@@ -85,8 +86,7 @@ export default function NotificationsPage() {
     const payload: SendAdminNotificationPayload = {
       ...values,
       city: values.city || undefined,
-      service: values.service || undefined,
-      scheduleTime: values.scheduleTime || undefined,
+      scheduledTime: values.scheduledTime || undefined,
     };
     sendMutation.mutate(payload, {
       onSuccess: () => {
@@ -106,6 +106,14 @@ export default function NotificationsPage() {
       })),
     [rows],
   );
+  const shareNotification = (notification: AdminNotification) => {
+    void shareContent({
+      title: notification.title || "Notification",
+      text: `Type: ${notification.notificationType || "-"}\nChannel: ${notification.channelType || "-"}\nStatus: ${notification.status || "-"}\nMessage: ${notification.message || "-"}`,
+      url: `${window.location.origin}/notifications/${notification.id}`,
+      successMessage: "Notification details copied",
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -219,6 +227,13 @@ export default function NotificationsPage() {
                   <Link to={`/notifications/${row.id}`} className="rounded border border-[var(--color-border)] px-2 py-1 text-xs">
                     Details Page
                   </Link>
+                  <button
+                    type="button"
+                    className="rounded border border-[var(--color-border)] px-2 py-1 text-xs"
+                    onClick={() => shareNotification(row)}
+                  >
+                    Share
+                  </button>
                   {row.status === "FAILED" ? (
                     <button
                       type="button"
@@ -287,24 +302,35 @@ export default function NotificationsPage() {
           </div>
 
           <div>
+            <label className="mb-1 block text-xs text-[var(--color-muted)]">Priority</label>
+            <select className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" {...form.register("priority")}>
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+            </select>
+          </div>
+
+          <div>
             <label className="mb-1 block text-xs text-[var(--color-muted)]">Channel</label>
-            <select className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" {...form.register("channelType")}>
+            <select
+              className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
+              value={form.watch("channels")?.[0] ?? "IN_APP"}
+              onChange={(event) => form.setValue("channels", [event.target.value], { shouldValidate: true })}
+            >
+              <option value="IN_APP">In App</option>
               <option value="PUSH">Push</option>
               <option value="EMAIL">Email</option>
               <option value="SMS">SMS</option>
-              <option value="IN_APP">In App</option>
             </select>
           </div>
 
           <div>
             <label className="mb-1 block text-xs text-[var(--color-muted)]">Target User Type</label>
-            <select className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" {...form.register("userType")}>
+            <select className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" {...form.register("targetUserType")}>
+              <option value="CUSTOMER">Customer</option>
+              <option value="PARTNER">Partner</option>
+              <option value="ADMIN">Admin</option>
               <option value="ALL_USERS">All Users</option>
-              <option value="CUSTOMERS">Customers</option>
-              <option value="PROVIDERS">Providers</option>
-              <option value="CITY_USERS">City Specific Users</option>
-              <option value="PREMIUM_USERS">Premium Users</option>
-              <option value="INACTIVE_USERS">Inactive Users</option>
             </select>
           </div>
 
@@ -314,16 +340,11 @@ export default function NotificationsPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-[var(--color-muted)]">Service (optional)</label>
-            <input className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" {...form.register("service")} />
-          </div>
-
-          <div>
             <label className="mb-1 block text-xs text-[var(--color-muted)]">Schedule Time (optional)</label>
             <input
               type="datetime-local"
               className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-              {...form.register("scheduleTime")}
+              {...form.register("scheduledTime")}
             />
           </div>
         </form>
@@ -346,6 +367,18 @@ export default function NotificationsPage() {
         >
           {detailsQuery.data ? (
             <div className="grid gap-2 text-sm text-[var(--color-text)]">
+              <div className="mb-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!detailsQuery.data) return;
+                    shareNotification(detailsQuery.data);
+                  }}
+                  className="rounded border border-[var(--color-border)] px-2 py-1 text-xs"
+                >
+                  Share
+                </button>
+              </div>
               <p><strong>Title:</strong> {detailsQuery.data.title || "-"}</p>
               <p><strong>User Type:</strong> {detailsQuery.data.userType || "-"}</p>
               <p><strong>Type:</strong> {detailsQuery.data.notificationType || "-"}</p>
@@ -379,3 +412,5 @@ export default function NotificationsPage() {
     </div>
   );
 }
+
+

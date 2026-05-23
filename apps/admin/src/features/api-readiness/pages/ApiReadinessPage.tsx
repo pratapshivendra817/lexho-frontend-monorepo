@@ -4,7 +4,7 @@ import axios from "axios";
 import { api } from "@/api/axios";
 import { appConfig } from "@/config";
 
-type CheckMethod = "GET" | "POST";
+type CheckMethod = "GET" | "POST" | "PUT" | "DELETE";
 type CheckResultStatus = "idle" | "running" | "success" | "error" | "manual";
 
 type EndpointCheck = {
@@ -53,7 +53,7 @@ const checks: EndpointCheck[] = [
   },
   { key: "users", method: "GET", path: "/api/admin/users?page=1&limit=5", kind: "auto" },
   { key: "bookings", method: "GET", path: "/api/admin/bookings?page=1&limit=5", kind: "auto" },
-  { key: "providers", method: "GET", path: "/api/admin/providers?page=1&limit=5", kind: "auto" },
+  { key: "partners", method: "GET", path: "/api/admin/partners?page=0&size=10&sortBy=createdAt&sortDir=desc", kind: "auto" },
   { key: "services", method: "GET", path: "/api/admin/services", kind: "auto" },
   { key: "banners", method: "GET", path: "/api/admin/banners?page=0&size=5", kind: "auto" },
   { key: "reviews", method: "GET", path: "/api/admin/reviews", kind: "auto" },
@@ -76,11 +76,62 @@ const checks: EndpointCheck[] = [
     note: "Requires real id from your DB.",
   },
   {
-    key: "providers-id",
+    key: "partners-id",
     method: "GET",
-    path: "/api/admin/providers/:id",
+    path: "/api/admin/partners/:id",
     kind: "manual",
     note: "Requires real id from your DB.",
+  },
+  {
+    key: "partners-stats",
+    method: "GET",
+    path: "/api/admin/partners/stats",
+    kind: "manual",
+    note: "Covered by partners stats UI API; listed for explicit partner endpoint tracking.",
+  },
+  {
+    key: "partners-approve",
+    method: "PUT",
+    path: "/api/admin/partners/:id/approve",
+    kind: "manual",
+    note: "Mutation endpoint, kept manual to avoid side effects.",
+  },
+  {
+    key: "partners-reject",
+    method: "PUT",
+    path: "/api/admin/partners/:id/reject",
+    kind: "manual",
+    body: { reason: "KYC mismatch" },
+    note: "Mutation endpoint, kept manual to avoid side effects.",
+  },
+  {
+    key: "partners-block",
+    method: "PUT",
+    path: "/api/admin/partners/:id/block",
+    kind: "manual",
+    body: { reason: "Policy violation" },
+    note: "Mutation endpoint, kept manual to avoid side effects.",
+  },
+  {
+    key: "partners-unblock",
+    method: "PUT",
+    path: "/api/admin/partners/:id/unblock",
+    kind: "manual",
+    note: "Mutation endpoint, kept manual to avoid side effects.",
+  },
+  {
+    key: "partners-delete",
+    method: "DELETE",
+    path: "/api/admin/partners/:id",
+    kind: "manual",
+    note: "Mutation endpoint, kept manual to avoid side effects.",
+  },
+  {
+    key: "partners-document-download",
+    method: "GET",
+    path: "/api/admin/partners/:partnerId/documents/:documentId/download",
+    kind: "manual",
+    note: "Requires real partner/document IDs.",
   },
   {
     key: "users-toggle",
@@ -90,9 +141,9 @@ const checks: EndpointCheck[] = [
     note: "Mutation endpoint, kept manual to avoid side effects.",
   },
   {
-    key: "providers-verification",
+    key: "partners-verification",
     method: "POST",
-    path: "/api/admin/providers/:id/verification",
+    path: "/api/admin/partners/:id/verification",
     kind: "manual",
     note: "Mutation endpoint, kept manual to avoid side effects.",
   },
@@ -310,3 +361,5 @@ export default function ApiReadinessPage() {
     </div>
   );
 }
+
+

@@ -4,13 +4,13 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { sendOtp } from "../../services/authService";
 import { isValidMobile } from "../../utils/validation";
@@ -35,6 +35,15 @@ export default function MobileNumberScreen({ navigation }: any) {
     try {
       setLoading(true);
       const response = await sendOtp(cleanMobile);
+      if (__DEV__) {
+        const otp =
+          response?.otp ??
+          response?.data?.otp ??
+          response?.code ??
+          response?.data?.code;
+        // eslint-disable-next-line no-console
+        console.log(`[PARTNER DEV OTP] ${cleanMobile}: ${otp ?? "OTP not present in response"}`);
+      }
 
       navigation.navigate("OTP", {
         mobile: cleanMobile,

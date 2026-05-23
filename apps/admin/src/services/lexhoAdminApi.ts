@@ -99,7 +99,9 @@ const readId = (row: UnknownRecord): string =>
 
 const mapDetailRow = (detail: UnknownRecord, fallbackType: ServiceDetailType = "INCLUDED"): ServiceDetailItem => ({
   id: String(detail.id ?? detail._id ?? detail.detailId ?? detail.itemId ?? `${fallbackType}-${detail.itemName ?? detail.name ?? detail.value ?? ""}`),
-  type: String(detail.type ?? fallbackType).toUpperCase() === "EXCLUDED" ? "EXCLUDED" : "INCLUDED",
+  type: (["INCLUDED", "EXCLUDED", "FAQ", "INSTRUCTION"].includes(String(detail.type ?? fallbackType).toUpperCase())
+    ? String(detail.type ?? fallbackType).toUpperCase()
+    : "INCLUDED") as ServiceDetailType,
   itemName: String(detail.itemName ?? detail.name ?? detail.value ?? ""),
 });
 
@@ -125,6 +127,10 @@ const readServiceDetails = (row: UnknownRecord): ServiceDetailItem[] => {
   return [
     ...includedRows.map((detail) => mapDetailRow(asRecord(detail), "INCLUDED")),
     ...excludedRows.map((detail) => mapDetailRow(asRecord(detail), "EXCLUDED")),
+    ...readArray<unknown>(row.faqs, ["faqs"]).map((value) => mapDetailRow(typeof value === "string" ? { itemName: value } : asRecord(value), "FAQ")),
+    ...readArray<unknown>(row.instructions, ["instructions"]).map((value) =>
+      mapDetailRow(typeof value === "string" ? { itemName: value } : asRecord(value), "INSTRUCTION"),
+    ),
   ].filter((detail) => detail.itemName.trim().length > 0);
 };
 

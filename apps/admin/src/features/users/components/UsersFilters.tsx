@@ -46,7 +46,7 @@ export function UsersFilters({
       >
         <option value="">All roles</option>
         <option value="CUSTOMER">Customer</option>
-        <option value="PROVIDER">Provider</option>
+        <option value="PARTNER">Partner</option>
         <option value="ADMIN">Admin</option>
       </select>
 
@@ -88,4 +88,6 @@ export function UsersFilters({
     </div>
   );
 }
+
+
 

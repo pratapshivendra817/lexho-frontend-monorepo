@@ -21,8 +21,9 @@ export default function TicketDetail({
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="border-b p-4">
-        <h2 className="font-semibold text-lg">{ticket.issue}</h2>
-        <p className="text-sm text-gray-500">{ticket.user}</p>
+        <h2 className="font-semibold text-lg">{ticket.subject}</h2>
+        <p className="text-sm text-gray-500">Ticket: {ticket.ticketId ?? ticket.id}</p>
+        <p className="text-sm text-gray-500">User: {ticket.userId ?? "-"}</p>
       </div>
 
       {/* Chat */}
@@ -31,13 +32,13 @@ export default function TicketDetail({
           <div
             key={i}
             className={`max-w-xs p-3 rounded-lg text-sm ${
-              m.sender === "ADMIN"
+              m.sender === "ADMIN" || m.sender === "SUPPORT"
                 ? "bg-purple-100 ml-auto"
                 : "bg-gray-100"
             }`}
           >
-            <p>{m.text}</p>
-            <span className="text-xs text-gray-500">{m.time}</span>
+            <p>{m.message}</p>
+            <span className="text-xs text-gray-500">{m.createdAt ? new Date(m.createdAt).toLocaleString() : "-"}</span>
           </div>
         ))}
       </div>
@@ -45,6 +46,12 @@ export default function TicketDetail({
       {/* Actions */}
       <div className="border-t p-4 space-y-2">
         <div className="flex gap-2">
+          <button
+            onClick={() => onStatusChange("OPEN")}
+            className="px-3 py-1 bg-slate-500 text-white rounded"
+          >
+            Open
+          </button>
           <button
             onClick={() => onStatusChange("IN_PROGRESS")}
             className="px-3 py-1 bg-yellow-500 text-white rounded"
@@ -55,7 +62,13 @@ export default function TicketDetail({
             onClick={() => onStatusChange("RESOLVED")}
             className="px-3 py-1 bg-green-600 text-white rounded"
           >
-            Close Ticket
+            Resolve
+          </button>
+          <button
+            onClick={() => onStatusChange("CLOSED")}
+            className="px-3 py-1 bg-gray-700 text-white rounded"
+          >
+            Close
           </button>
         </div>
 

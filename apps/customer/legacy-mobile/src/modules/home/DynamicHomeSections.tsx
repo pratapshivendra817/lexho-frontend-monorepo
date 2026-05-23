@@ -14,7 +14,7 @@ function StatsSection({ section }: { section: HomeSection }) {
   return (
     <View style={styles.sectionCard}>
       <Text style={styles.sectionTitleLarge}>{section.title}</Text>
-      {!!section.subtitle ? <Text style={styles.sectionSubtitle}>{section.subtitle}</Text> : null}
+      {section.subtitle ? <Text style={styles.sectionSubtitle}>{section.subtitle}</Text> : null}
       {section.items.length > 0 ? (
         <View style={styles.statsGrid}>
           {section.items.map((item) => (
@@ -35,7 +35,7 @@ function TrustSection({ section }: { section: HomeSection }) {
   return (
     <View style={styles.sectionCard}>
       <Text style={styles.sectionTitleLarge}>{section.title}</Text>
-      {!!section.subtitle ? <Text style={styles.sectionSubtitle}>{section.subtitle}</Text> : null}
+      {section.subtitle ? <Text style={styles.sectionSubtitle}>{section.subtitle}</Text> : null}
       {section.items.length > 0 ? (
         <View style={styles.trustList}>
           {section.items.map((item) => (
@@ -56,7 +56,7 @@ function TaglineSection({ section }: { section: HomeSection }) {
   return (
     <View style={styles.sectionCard}>
       <Text style={styles.sectionTitle}>{section.title}</Text>
-      {!!section.subtitle ? <Text style={styles.sectionSubtitle}>{section.subtitle}</Text> : null}
+      {section.subtitle ? <Text style={styles.sectionSubtitle}>{section.subtitle}</Text> : null}
       {section.items.map((item) => (
         <Text key={item.id} style={styles.taglineText}>{item.title}</Text>
       ))}
@@ -68,7 +68,7 @@ function HighlightsSection({ section }: { section: HomeSection }) {
   return (
     <View style={styles.sectionCard}>
       <Text style={styles.sectionTitle}>{section.title}</Text>
-      {!!section.subtitle ? <Text style={styles.sectionSubtitle}>{section.subtitle}</Text> : null}
+      {section.subtitle ? <Text style={styles.sectionSubtitle}>{section.subtitle}</Text> : null}
       <View style={styles.trustList}>
         {section.items.map((item) => (
           <View key={item.id} style={styles.trustRow}>
@@ -85,7 +85,7 @@ function BannersSection({ section, navigation }: { section: HomeSection; navigat
   return (
     <View>
       <Text style={styles.heading}>{section.title}</Text>
-      {!!section.subtitle ? <Text style={styles.headingSub}>{section.subtitle}</Text> : null}
+      {section.subtitle ? <Text style={styles.headingSub}>{section.subtitle}</Text> : null}
       <CustomerHomeBannerCarousel navigation={navigation} />
     </View>
   );
@@ -125,7 +125,7 @@ function DynamicHomeSectionsComponent({ navigation }: DynamicHomeSectionsProps) 
         return (
           <Pressable key={section.id} style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
-            {!!section.subtitle ? <Text style={styles.sectionSubtitle}>{section.subtitle}</Text> : null}
+            {section.subtitle ? <Text style={styles.sectionSubtitle}>{section.subtitle}</Text> : null}
           </Pressable>
         );
       })}

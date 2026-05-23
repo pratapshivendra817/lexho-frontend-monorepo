@@ -8,7 +8,6 @@ import {
   removeCustomerCartItem,
   updateCustomerCartItem,
   type CustomerCartItem,
-  type CustomerCartResponse,
 } from "../api/cartApi";
 
 type AddressRow = {
@@ -45,6 +44,11 @@ type CartState = {
   matchedPartners: number;
   assignmentMode: string | null;
   requestStatus: "IDLE" | "PENDING" | "ACCEPTED" | "REJECTED";
+  paymentLock: {
+    active: boolean;
+    bookingId: string | null;
+    itemsSnapshot: CustomerCartItem[];
+  };
 };
 
 const initialState: CartState = {
@@ -71,9 +75,17 @@ const initialState: CartState = {
   matchedPartners: 0,
   assignmentMode: null,
   requestStatus: "IDLE",
+  paymentLock: {
+    active: false,
+    bookingId: null,
+    itemsSnapshot: [],
+  },
 };
 
-function applyCart(state: CartState, payload: CustomerCartResponse) {
+function applyCart(
+  state: CartState,
+  payload: any,
+) {
   state.cartId = payload.cartId;
   state.items = payload.items ?? [];
   state.grandTotal = Number(payload.grandTotal ?? 0);
@@ -86,9 +98,15 @@ function applyCart(state: CartState, payload: CustomerCartResponse) {
   state.currency = payload.currency ?? state.currency ?? "INR";
   state.contactName = payload.contactName ?? state.contactName;
   state.contactPhone = payload.contactPhone ?? state.contactPhone;
-  state.scheduledTime = payload.scheduledTime ?? null;
-  state.selectedAddressId = payload.address?.id ?? state.selectedAddressId;
-  state.requestStatus = payload.requestStatus ?? state.requestStatus;
+  if (payload.scheduledTime !== undefined) {
+    state.scheduledTime = payload.scheduledTime;
+  }
+  state.selectedAddressId = payload.address?.id ?? state.selectedAddressId ?? null;
+  const requestStatus = String(payload.requestStatus ?? state.requestStatus).toUpperCase();
+  state.requestStatus =
+    requestStatus === "PENDING" || requestStatus === "ACCEPTED" || requestStatus === "REJECTED"
+      ? (requestStatus as CartState["requestStatus"])
+      : "IDLE";
   state.matchedPartners = Number(payload.matchedPartners ?? state.matchedPartners ?? 0);
   state.assignmentMode = payload.assignmentMode ?? state.assignmentMode;
 }
@@ -149,6 +167,16 @@ const cartSlice = createSlice({
     setRequestStatus(state, action: { payload: "IDLE" | "PENDING" | "ACCEPTED" | "REJECTED" }) {
       state.requestStatus = action.payload;
     },
+    lockCartUntilPayment(state, action: { payload: { bookingId?: string | null } }) {
+      state.paymentLock.active = true;
+      state.paymentLock.bookingId = String(action.payload?.bookingId ?? "").trim() || null;
+      state.paymentLock.itemsSnapshot = [...state.items];
+    },
+    unlockCartAfterPayment(state) {
+      state.paymentLock.active = false;
+      state.paymentLock.bookingId = null;
+      state.paymentLock.itemsSnapshot = [];
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -158,6 +186,12 @@ const cartSlice = createSlice({
       })
       .addCase(fetchCustomerCartThunk.fulfilled, (state, action) => {
         state.loading = false;
+        // Keep cart visible while payment is pending even if backend cart is already emptied.
+        if (state.paymentLock.active && Array.isArray(action.payload?.items) && action.payload.items.length === 0) {
+          const preserved = state.paymentLock.itemsSnapshot.length > 0 ? state.paymentLock.itemsSnapshot : state.items;
+          applyCart(state, { ...action.payload, items: preserved });
+          return;
+        }
         applyCart(state, action.payload);
       })
       .addCase(fetchCustomerCartThunk.rejected, (state, action) => {
@@ -170,8 +204,16 @@ const cartSlice = createSlice({
       .addCase(fetchCustomerAddressesThunk.fulfilled, (state, action) => {
         state.refreshing = false;
         state.addresses = action.payload;
-        if (!state.selectedAddressId && action.payload.length > 0) {
-          state.selectedAddressId = action.payload.find((row) => row.default)?.id ?? action.payload[0].id;
+        if (action.payload.length > 0) {
+          const hasCurrentSelection = action.payload.some((row: AddressRow) => Number(row.id) === Number(state.selectedAddressId));
+          const defaultAddressId = action.payload.find((row: AddressRow) => row.default)?.id ?? null;
+          if (hasCurrentSelection) {
+            // Keep explicitly selected address instead of forcing default on every refresh.
+          } else if (defaultAddressId) {
+            state.selectedAddressId = defaultAddressId;
+          } else if (!state.selectedAddressId) {
+            state.selectedAddressId = action.payload[0].id;
+          }
         }
       })
       .addCase(fetchCustomerAddressesThunk.rejected, (state, action) => {
@@ -214,7 +256,15 @@ const cartSlice = createSlice({
       })
       .addCase(updateCartMetaThunk.fulfilled, (state, action) => {
         state.updating = false;
+        const prevScheduledTime = state.scheduledTime;
+        const prevSelectedAddressId = state.selectedAddressId;
         applyCart(state, action.payload);
+        if (prevScheduledTime) {
+          state.scheduledTime = prevScheduledTime;
+        }
+        if ((action.payload?.address?.id == null) && prevSelectedAddressId) {
+          state.selectedAddressId = prevSelectedAddressId;
+        }
       })
       .addCase(updateCartMetaThunk.rejected, (state, action) => {
         state.updating = false;
@@ -223,5 +273,6 @@ const cartSlice = createSlice({
   },
 });
 
-export const { clearRecentlyAdded, setSelectedAddressId, setScheduledTime, setRequestStatus } = cartSlice.actions;
+export const { clearRecentlyAdded, setSelectedAddressId, setScheduledTime, setRequestStatus, lockCartUntilPayment, unlockCartAfterPayment } =
+  cartSlice.actions;
 export default cartSlice.reducer;

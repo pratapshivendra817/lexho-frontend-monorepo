@@ -169,7 +169,7 @@ This checklist is for backend + admin owners to confirm customer app contracts a
 - Confirm accepted field names (`date` vs `scheduledAt`).
 
 ## 7) Live Tracking
-### GET /api/provider/live-location/{bookingId}
+### GET /api/partner/live-location/{bookingId}
 - Expected:
   - `lat?: number`
   - `lng?: number`
@@ -296,3 +296,4 @@ This checklist is for backend + admin owners to confirm customer app contracts a
 - Backend Owner: ________ Date: ________
 - Admin Owner: ________ Date: ________
 - Customer App Owner: ________ Date: ________
+

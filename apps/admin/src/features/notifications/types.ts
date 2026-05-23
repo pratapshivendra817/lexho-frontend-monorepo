@@ -1,8 +1,10 @@
-export type AdminNotificationChannel = "PUSH" | "EMAIL" | "SMS" | "IN_APP";
+﻿export type AdminNotificationChannel = "PUSH" | "EMAIL" | "SMS" | "IN_APP";
 export type AdminNotificationUserType =
   | "ALL_USERS"
   | "CUSTOMERS"
-  | "PROVIDERS"
+  | "PARTNERS"
+  | "ADMINS"
+  | "ADMIN"
   | "CITY_USERS"
   | "PREMIUM_USERS"
   | "INACTIVE_USERS";
@@ -68,9 +70,11 @@ export type SendAdminNotificationPayload = {
   title: string;
   message: string;
   notificationType: string;
-  channelType: string;
-  userType: string;
+  priority: "LOW" | "MEDIUM" | "HIGH" | string;
+  channels: string[];
+  targetUserType: string;
   city?: string;
-  service?: string;
-  scheduleTime?: string;
+  scheduledTime?: string;
 };
+
+

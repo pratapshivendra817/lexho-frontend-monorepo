@@ -94,7 +94,7 @@ describe("usersApi", () => {
           fullName: "Bob",
           email: "bob@example.com",
           phone: "8888888888",
-          role: "PROVIDER",
+          role: "PARTNER",
           blocked: true,
           city: "Bhopal",
         },
@@ -109,7 +109,7 @@ describe("usersApi", () => {
       name: "Bob",
       email: "bob@example.com",
       phone: "8888888888",
-      role: "PROVIDER",
+      role: "PARTNER",
       status: "BLOCKED",
       city: "Bhopal",
       blocked: true,
@@ -167,3 +167,5 @@ describe("usersApi", () => {
     expect(mocks.deleteMock).toHaveBeenCalledWith("/api/admin/users/usr-3");
   });
 });
+
+

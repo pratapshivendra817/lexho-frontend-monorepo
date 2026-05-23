@@ -1,5 +1,7 @@
-﻿import { StrictMode } from "react";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import "mapbox-gl/dist/mapbox-gl.css";
+import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 
 import { AdminThemeProvider } from "./context/AdminThemeProvider";
 import "./index.css";

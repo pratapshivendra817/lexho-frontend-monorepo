@@ -1,1 +1,0 @@
-export { PartnerOrders } from './PartnerOrders'

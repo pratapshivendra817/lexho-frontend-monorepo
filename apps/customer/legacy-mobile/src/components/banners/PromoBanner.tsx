@@ -1,4 +1,4 @@
-import { StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 import { Text } from "react-native-paper";
 import LinearGradient from "react-native-linear-gradient";
 

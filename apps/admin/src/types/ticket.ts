@@ -1,16 +1,26 @@
-export type TicketStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED";
+export type TicketStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED";
+export type TicketPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export type TicketSender = "CUSTOMER" | "SUPPORT" | "ADMIN";
 
-export interface Message {
-  sender: "USER" | "ADMIN";
-  text: string;
-  time: string;
+export interface TicketMessage {
+  id?: string;
+  sender: TicketSender;
+  adminId?: number;
+  message: string;
+  createdAt: string;
 }
 
 export interface Ticket {
-  id: string;
-  user: string;
-  issue: string;
+  id: string | number;
+  ticketId?: string;
+  userId?: string | number;
+  subject: string;
+  message: string;
   status: TicketStatus;
-  date: string;
-  messages: Message[];
+  categoryId?: string;
+  bookingId?: string;
+  priority?: TicketPriority;
+  createdAt?: string;
+  updatedAt?: string;
+  messages: TicketMessage[];
 }

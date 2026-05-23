@@ -1,9 +1,9 @@
-export type AdminReviewStatus = "PENDING" | "APPROVED" | "REJECTED" | "HIDDEN";
+﻿export type AdminReviewStatus = "PENDING" | "APPROVED" | "REJECTED" | "HIDDEN";
 
 export type AdminReview = {
   id: string;
   customerName: string;
-  providerName: string;
+  partnerName: string;
   serviceName: string;
   rating: number;
   comment: string;
@@ -19,7 +19,7 @@ export type AdminReviewsQueryParams = {
   size: number;
   rating?: number;
   status?: AdminReviewStatus | "";
-  provider?: string;
+  partner?: string;
   service?: string;
   search?: string;
 };
@@ -36,6 +36,8 @@ export type AdminReviewsStats = {
   averageRating: number;
   hiddenReviews: number;
   reportedReviews: number;
-  providerWiseRatings: Array<{ name: string; value: number }>;
+  partnerWiseRatings: Array<{ name: string; value: number }>;
   serviceWiseRatings: Array<{ name: string; value: number }>;
 };
+
+

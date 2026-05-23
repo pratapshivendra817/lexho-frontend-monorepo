@@ -98,7 +98,7 @@ export function UserForm({
             className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2"
           >
             <option value="CUSTOMER">Customer</option>
-            <option value="PROVIDER">Provider</option>
+            <option value="PARTNER">Partner</option>
             <option value="ADMIN">Admin</option>
           </select>
         </label>
@@ -130,4 +130,6 @@ export function UserForm({
     </form>
   );
 }
+
+
 

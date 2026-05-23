@@ -1,4 +1,4 @@
-import { zodResolver } from "@hookform/resolvers/zod";
+﻿import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
@@ -22,7 +22,7 @@ export default function EditBookingPage() {
     defaultValues: {
       bookingDate: "",
       bookingTime: "",
-      providerId: 0,
+      partnerId: 0,
       amount: 0,
       notes: "",
     },
@@ -37,7 +37,7 @@ export default function EditBookingPage() {
     form.reset({
       bookingDate: booking.bookingDate || "",
       bookingTime: booking.bookingTime || "",
-      providerId: Number(booking.provider.id || 0),
+      partnerId: Number(booking.partner.id || 0),
       amount: booking.payment.amount || 0,
       notes: booking.notes || "",
     });
@@ -54,7 +54,7 @@ export default function EditBookingPage() {
         payload: {
           bookingDate: values.bookingDate,
           bookingTime: values.bookingTime,
-          providerId: values.providerId,
+          partnerId: values.partnerId,
           amount: values.amount,
           notes: values.notes,
         },
@@ -110,13 +110,13 @@ export default function EditBookingPage() {
           </label>
 
           <label className="grid gap-1 text-sm">
-            <span>Provider ID</span>
+            <span>Partner ID</span>
             <input
               type="number"
-              {...form.register("providerId", { valueAsNumber: true })}
+              {...form.register("partnerId", { valueAsNumber: true })}
               className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2"
             />
-            {form.formState.errors.providerId ? <span className="text-xs text-red-300">{form.formState.errors.providerId.message}</span> : null}
+            {form.formState.errors.partnerId ? <span className="text-xs text-red-300">{form.formState.errors.partnerId.message}</span> : null}
           </label>
 
           <label className="grid gap-1 text-sm">
@@ -140,3 +140,5 @@ export default function EditBookingPage() {
     </ModalFormLayout>
   );
 }
+
+

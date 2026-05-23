@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Pressable, StyleSheet, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIcons";
 import { Text } from "react-native-paper";
 import { palette, spacing } from "../../constants/theme";
+import type { SlotOption } from "../../types/contracts";
 
 type TimePickerProps = {
   value: string | null;
   onChange: (isoTime: string | null) => void;
-  loadSlots?: (date: string) => Promise<string[]>;
+  loadSlots?: (date: string) => Promise<SlotOption[]>;
   showError?: boolean;
   openRequestKey?: number;
   hideTrigger?: boolean;
@@ -37,8 +38,34 @@ function getDayHint(offset: number) {
 function toStartTime(slotValue: string) {
   const clean = String(slotValue || "").trim();
   if (!clean) return "";
+  const isoMatch = clean.match(/T(\d{1,2}:\d{2})/);
+  if (isoMatch?.[1]) return isoMatch[1];
+  const timeMatch = clean.match(/\b(\d{1,2}:\d{2})\b/);
+  if (timeMatch?.[1]) return timeMatch[1];
   if (clean.includes("-")) return clean.split("-")[0]?.trim() ?? "";
   return clean;
+}
+
+function normalizeTo24Hour(timeLike: string) {
+  const value = String(timeLike || "").trim().toUpperCase();
+  if (!value) return "";
+  const meridiemMatch = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/.exec(value);
+  if (meridiemMatch) {
+    let hh = Number(meridiemMatch[1]);
+    const mm = meridiemMatch[2];
+    const meridiem = meridiemMatch[3];
+    if (meridiem === "AM" && hh === 12) hh = 0;
+    if (meridiem === "PM" && hh < 12) hh += 12;
+    return `${String(hh).padStart(2, "0")}:${mm}`;
+  }
+  const twentyFourMatch = /^(\d{1,2}):(\d{2})$/.exec(value);
+  if (twentyFourMatch) {
+    const hh = Number(twentyFourMatch[1]);
+    const mm = Number(twentyFourMatch[2]);
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return "";
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  }
+  return "";
 }
 
 function format12Hour(time24: string) {
@@ -49,6 +76,40 @@ function format12Hour(time24: string) {
   const suffix = hh >= 12 ? "PM" : "AM";
   const h12 = hh % 12 || 12;
   return `${h12}:${mm} ${suffix}`;
+}
+
+function toPreviewDateLabel(dateKey: string) {
+  const dt = new Date(`${dateKey}T00:00:00`);
+  if (Number.isNaN(dt.getTime())) return dateKey;
+  return dt.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function parseScheduledValue(input?: string | null) {
+  const raw = String(input ?? "").trim();
+  if (!raw) return null;
+  const localMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (localMatch) {
+    const y = Number(localMatch[1]);
+    const m = Number(localMatch[2]) - 1;
+    const d = Number(localMatch[3]);
+    const hh = Number(localMatch[4]);
+    const mm = Number(localMatch[5]);
+    const ss = Number(localMatch[6] ?? 0);
+    const dt = new Date(y, m, d, hh, mm, ss, 0);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function toLocalDateTimeString(date: Date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  const ss = String(date.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`;
 }
 
 export function TimePicker({
@@ -64,7 +125,7 @@ export function TimePicker({
   const [open, setOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(toLocalDateInput(new Date()));
   const [selectedSlot, setSelectedSlot] = useState<string>("");
-  const [slots, setSlots] = useState<string[]>([]);
+  const [slots, setSlots] = useState<SlotOption[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slotLoadError, setSlotLoadError] = useState<string | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -85,8 +146,8 @@ export function TimePicker({
 
   useEffect(() => {
     if (!value) return;
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return;
+    const parsed = parseScheduledValue(value);
+    if (!parsed) return;
     setSelectedDate(toLocalDateInput(parsed));
     setSelectedSlot(`${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`);
   }, [value]);
@@ -126,16 +187,34 @@ export function TimePicker({
   const visibleSlots = useMemo(() => {
     const now = new Date();
     const today = toLocalDateInput(now);
-    return slots.filter((rawSlot) => {
-      const startTime = toStartTime(rawSlot);
+    return slots.filter((raw) => {
+      const rawSlot = String(raw?.slot ?? "").trim();
+      const startTime = normalizeTo24Hour(toStartTime(rawSlot));
       if (!startTime) return false;
+      if (raw?.available === false) return false;
       if (selectedDate !== today) return true;
       const t = new Date(`${selectedDate}T${startTime}:00`);
       return Number.isFinite(t.getTime()) && t.getTime() > now.getTime();
     });
   }, [selectedDate, slots]);
 
-  const canConfirm = Boolean(selectedDate && selectedSlot);
+  useEffect(() => {
+    const normalizedVisible = visibleSlots
+      .map((row) => normalizeTo24Hour(toStartTime(String(row?.slot ?? ""))))
+      .filter(Boolean);
+    if (normalizedVisible.length === 0) {
+      if (selectedSlot) setSelectedSlot("");
+      return;
+    }
+    if (!selectedSlot || !normalizedVisible.includes(selectedSlot)) {
+      setSelectedSlot(normalizedVisible[0]);
+    }
+  }, [selectedSlot, visibleSlots]);
+
+  const canConfirm = useMemo(() => {
+    if (!selectedDate || !selectedSlot) return false;
+    return visibleSlots.some((row) => normalizeTo24Hour(toStartTime(String(row?.slot ?? ""))) === selectedSlot);
+  }, [selectedDate, selectedSlot, visibleSlots]);
 
   const handleConfirm = () => {
     if (!canConfirm) return;
@@ -145,7 +224,7 @@ export function TimePicker({
       setOpen(false);
       return;
     }
-    onChange(scheduled.toISOString());
+    onChange(toLocalDateTimeString(scheduled));
     setOpen(false);
   };
 
@@ -153,7 +232,7 @@ export function TimePicker({
     <View style={styles.wrap}>
       {!hideTrigger ? (
         <Pressable style={styles.launchBtn} onPress={() => setOpen(true)}>
-          <Text style={styles.launchText}>{value ? new Date(value).toLocaleString() : "Select time slot"}</Text>
+          <Text style={styles.launchText}>{value ? (parseScheduledValue(value)?.toLocaleString() ?? "Select time slot") : "Select time slot"}</Text>
         </Pressable>
       ) : null}
 
@@ -172,7 +251,14 @@ export function TimePicker({
               {dateTabs.map((tab) => {
                 const active = selectedDate === tab.key;
                 return (
-                  <Pressable key={tab.key} style={[styles.dateTab, active && styles.dateTabActive]} onPress={() => setSelectedDate(tab.key)}>
+                  <Pressable
+                    key={tab.key}
+                    style={[styles.dateTab, active && styles.dateTabActive]}
+                    onPress={() => {
+                      setSelectedDate(tab.key);
+                      setSelectedSlot("");
+                    }}
+                  >
                     <Text style={[styles.dateTabLabel, active && styles.dateTabLabelActive]}>{tab.label}</Text>
                     <Text style={[styles.dateTabHint, active && styles.dateTabHintActive]}>{tab.hint}</Text>
                   </Pressable>
@@ -180,7 +266,15 @@ export function TimePicker({
               })}
             </View>
 
-            <View style={styles.grid}>
+            <View style={styles.livePreviewBar}>
+              <Text style={styles.livePreviewText}>
+                {selectedSlot
+                  ? `Selected (pending): ${toPreviewDateLabel(selectedDate)}, ${format12Hour(selectedSlot)}`
+                  : `Selected (pending): ${toPreviewDateLabel(selectedDate)} (choose a slot)`}
+              </Text>
+            </View>
+
+            <ScrollView style={styles.gridScroll} contentContainerStyle={styles.grid} showsVerticalScrollIndicator={false}>
               {loadingSlots ? <Text style={styles.stateText}>Loading slots...</Text> : null}
               {!loadingSlots && slotLoadError ? (
                 <View style={styles.stateWrap}>
@@ -200,8 +294,10 @@ export function TimePicker({
               ) : null}
               {!loadingSlots && visibleSlots.length === 0 ? <Text style={styles.stateText}>No available slots for selected date.</Text> : null}
               {!loadingSlots && !slotLoadError
-                ? visibleSlots.map((rawSlot) => {
-                    const start = toStartTime(rawSlot);
+                ? visibleSlots.map((slotRow) => {
+                    const rawSlot = String(slotRow?.slot ?? "").trim();
+                    const start = normalizeTo24Hour(toStartTime(rawSlot));
+                    if (!start) return null;
                     const active = selectedSlot === start;
                     return (
                       <Pressable
@@ -212,11 +308,13 @@ export function TimePicker({
                         accessibilityLabel={`Select slot ${format12Hour(start)}`}
                       >
                         <Text style={[styles.slotText, active && styles.slotTextActive]}>{format12Hour(start)}</Text>
+                        {slotRow?.etaMinutes != null ? <Text style={styles.slotMeta}>{`ETA ${slotRow.etaMinutes}m`}</Text> : null}
+                        {slotRow?.instantEligible ? <Text style={styles.instantBadge}>Instant</Text> : null}
                       </Pressable>
                     );
                   })
                 : null}
-            </View>
+            </ScrollView>
 
             {infoText ? (
               <View style={styles.infoBar}>
@@ -299,6 +397,16 @@ const styles = StyleSheet.create({
   dateTabLabelActive: { color: palette.text },
   dateTabHint: { fontSize: 11, color: palette.muted, marginTop: 2, fontWeight: "700" },
   dateTabHintActive: { color: palette.successAlt },
+  livePreviewBar: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  livePreviewText: {
+    color: palette.text,
+    fontSize: 13,
+    fontWeight: "700",
+  },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -307,6 +415,9 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 16,
     minHeight: 150,
+  },
+  gridScroll: {
+    maxHeight: 360,
   },
   slotBtn: {
     width: "31%",
@@ -331,6 +442,18 @@ const styles = StyleSheet.create({
   },
   slotText: { color: palette.muted, fontWeight: "800", fontSize: 16 },
   slotTextActive: { color: palette.successText },
+  slotMeta: { color: palette.muted, fontSize: 10, fontWeight: "700", marginTop: 4 },
+  instantBadge: {
+    marginTop: 5,
+    color: palette.successText,
+    fontSize: 10,
+    fontWeight: "800",
+    backgroundColor: palette.successSoft,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    overflow: "hidden",
+  },
   stateText: { width: "100%", textAlign: "center", color: palette.muted, fontWeight: "600", paddingVertical: 20 },
   stateWrap: { width: "100%", alignItems: "center", paddingVertical: 10 },
   retryBtn: {

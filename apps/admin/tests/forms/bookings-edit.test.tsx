@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import EditBookingPage from "@/features/bookings/pages/EditBookingPage";
-import { renderWithProviders } from "../utils/renderWithProviders";
+import { renderWithPartners } from "../utils/renderWithPartners";
 
 const mocks = vi.hoisted(() => ({
   useBookingDetailsQuery: vi.fn(),
@@ -30,7 +30,7 @@ describe("EditBookingPage", () => {
         bookingTime: "10:30",
         notes: "Old note",
         customer: { name: "Aman" },
-        provider: { id: "12", name: "Ravi" },
+        partner: { id: "12", name: "Ravi" },
         payment: { amount: 799 },
         timeline: [],
       },
@@ -50,7 +50,7 @@ describe("EditBookingPage", () => {
   it("submits updated booking payload", async () => {
     const user = userEvent.setup();
 
-    renderWithProviders(<EditBookingPage />, {
+    renderWithPartners(<EditBookingPage />, {
       route: "/bookings/edit/bk-12",
       path: "/bookings/edit/:id",
     });
@@ -59,8 +59,8 @@ describe("EditBookingPage", () => {
     await user.type(screen.getByLabelText("Booking Date"), "2026-05-01");
     await user.clear(screen.getByLabelText("Booking Time"));
     await user.type(screen.getByLabelText("Booking Time"), "11:45");
-    await user.clear(screen.getByLabelText("Provider ID"));
-    await user.type(screen.getByLabelText("Provider ID"), "15");
+    await user.clear(screen.getByLabelText("Partner ID"));
+    await user.type(screen.getByLabelText("Partner ID"), "15");
     await user.clear(screen.getByLabelText("Amount"));
     await user.type(screen.getByLabelText("Amount"), "999");
     await user.clear(screen.getByLabelText("Notes"));
@@ -75,7 +75,7 @@ describe("EditBookingPage", () => {
           payload: {
             bookingDate: "2026-05-01",
             bookingTime: "11:45",
-            providerId: 15,
+            partnerId: 15,
             amount: 999,
             notes: "Rescheduled by admin",
           },
@@ -85,3 +85,5 @@ describe("EditBookingPage", () => {
     });
   });
 });
+
+

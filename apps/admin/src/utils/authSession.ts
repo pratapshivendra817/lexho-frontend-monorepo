@@ -2,6 +2,8 @@
 
 const ADMIN_TOKEN_KEY = "admin_access_token";
 const ACCESS_TOKEN_KEY = "access_token";
+const ADMIN_REFRESH_TOKEN_KEY = "admin_refresh_token";
+const ADMIN_DEVICE_ID_KEY = "admin_device_id";
 
 export function getAccessToken() {
   return localStorage.getItem(ADMIN_TOKEN_KEY) ?? localStorage.getItem(ACCESS_TOKEN_KEY);
@@ -11,9 +13,33 @@ export function setAccessToken(token: string) {
   localStorage.setItem(ADMIN_TOKEN_KEY, token);
 }
 
+export function getRefreshToken() {
+  return localStorage.getItem(ADMIN_REFRESH_TOKEN_KEY);
+}
+
+export function setRefreshToken(token: string) {
+  localStorage.setItem(ADMIN_REFRESH_TOKEN_KEY, token);
+}
+
+export function clearRefreshToken() {
+  localStorage.removeItem(ADMIN_REFRESH_TOKEN_KEY);
+}
+
+export function getOrCreateAdminDeviceId() {
+  const existing = localStorage.getItem(ADMIN_DEVICE_ID_KEY);
+  if (existing && existing.trim().length > 0) {
+    return existing;
+  }
+
+  const created = `admin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  localStorage.setItem(ADMIN_DEVICE_ID_KEY, created);
+  return created;
+}
+
 export function clearAccessToken() {
   localStorage.removeItem(ADMIN_TOKEN_KEY);
   localStorage.removeItem(ACCESS_TOKEN_KEY);
+  clearRefreshToken();
 }
 
 export function hasAdminSession() {
@@ -80,3 +106,4 @@ export function hasRequiredRole(allowedRoles: AdminRole[]) {
 
   return tokenRoles.some((role) => allowedRoles.includes(role));
 }
+

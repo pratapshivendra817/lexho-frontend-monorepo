@@ -1,17 +1,21 @@
-import { useState } from "react";
-import type { Provider, VerificationStatus } from "@/types/provider";
+import { useEffect, useState } from "react";
+import type { Partner, VerificationStatus } from "@/types/partner";
 import { Badge, Button, Card, Input } from "@lexho/ui";
 
 export default function VerificationStatusComp({
   data,
   onStatusChange,
 }: {
-  data: Provider;
+  data: Partner;
   onStatusChange?: (status: VerificationStatus, reason?: string) => Promise<void>;
 }) {
   const [status, setStatus] = useState<VerificationStatus>(data.status);
   const [reason, setReason] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
+
+  useEffect(() => {
+    setStatus(data.status);
+  }, [data.status]);
 
   const updateStatus = async (nextStatus: VerificationStatus) => {
     setStatus(nextStatus);
@@ -64,3 +68,6 @@ export default function VerificationStatusComp({
     </Card>
   );
 }
+
+
+

@@ -9,7 +9,10 @@ import { sendOtp, verifyOtp } from "../../api/authApi";
 import { PrimaryButton } from "../../components/buttons/PrimaryButton";
 import { useAppDispatch } from "../../redux/hooks";
 import { setSession } from "../../redux/authSlice";
+import { resetLocationState } from "../../redux/locationSlice";
 import { saveSession } from "../../utils/storage";
+import { initializePushNotifications } from "../../services/notificationsService";
+import { extractAccessToken, extractRefreshToken } from "../../utils/authSessionManager";
 
 const schema = z.object({ otp: z.string().regex(/^\d{4,6}$/, "Enter valid OTP") });
 type Form = z.infer<typeof schema>;
@@ -27,12 +30,33 @@ export function OtpScreen({ route }: any) {
   }, [timer]);
 
   const verifyMutation = useMutation({ mutationFn: ({ otp }: Form) => verifyOtp(mobile, otp), onSuccess: async (data: any) => {
-    const token = data?.token || data?.data?.token;
-    const refreshToken = data?.refreshToken || data?.data?.refreshToken;
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log("[auth:otp:verify:response]", {
+        topLevelKeys: data && typeof data === "object" ? Object.keys(data) : [],
+        hasData: !!data?.data,
+      });
+    }
+    const token = extractAccessToken(data);
+    const refreshToken = extractRefreshToken(data, null) || undefined;
     const user = data?.user || data?.data?.user || { id: "", mobile };
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log("[auth:otp:verify:extracted]", {
+        hasToken: !!token,
+        hasRefreshToken: !!refreshToken,
+        hasUser: !!user,
+      });
+    }
     if (!token) throw new Error("Token missing");
+    dispatch(resetLocationState());
     await saveSession(token, refreshToken, user);
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log("[auth:otp:verify:saveSession:done]");
+    }
     dispatch(setSession({ token, refreshToken, user }));
+    await initializePushNotifications();
   }});
 
   const resendMutation = useMutation({ mutationFn: () => sendOtp(mobile), onSuccess: () => setTimer(30) });

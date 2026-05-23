@@ -22,7 +22,9 @@ export const payoutsNavItems: AdminNavItem[] = [
 export const payoutsRouteMeta: AdminRouteMeta[] = [
   {
     pathPrefix: "/payouts",
-    title: "Provider Payouts",
+    title: "Partner Payouts",
     breadcrumb: "Finance / Payouts",
   },
 ];
+
+

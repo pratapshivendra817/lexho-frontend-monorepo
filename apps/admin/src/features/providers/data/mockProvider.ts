@@ -1,6 +1,6 @@
-import type { Provider } from "@/types/provider";
+﻿import type { Partner } from "@/types/partner";
 
-export const providerData: Provider = {
+export const partnerData: Partner = {
   id: "PR123",
   name: "Ravi Kumar",
   phone: "9876543210",
@@ -16,3 +16,4 @@ export const providerData: Provider = {
 
   status: "PENDING",
 };
+

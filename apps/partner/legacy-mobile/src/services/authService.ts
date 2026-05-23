@@ -1,4 +1,5 @@
 import API, { API_ENDPOINTS, getReadableApiError } from "./api";
+import { extractJwtToken } from "../utils/storage";
 
 export type AdminLoginRequest = {
   email: string;
@@ -43,14 +44,25 @@ export const resendAdminOtp = async (payload: AdminLoginRequest): Promise<Record
   }
 };
 
-// Backward-compatible exports for existing screens in this workspace.
-export const sendOtp = async (mobileOrEmail: string) => {
-  if (mobileOrEmail.includes("@")) {
-    return adminLogin({ email: mobileOrEmail, password: "" });
+export const sendOtp = async (mobile: string) => {
+  try {
+    const response = await API.post(API_ENDPOINTS.authOtpSend, { mobile, role: "PARTNER" });
+    return response.data;
+  } catch (error: any) {
+    throw new Error(getReadableApiError(error, "Unable to send OTP right now."));
   }
-  return API.post(API_ENDPOINTS.adminLogin, { mobile: mobileOrEmail }).then(res => res.data);
 };
 
-export const verifyOtp = async (emailOrMobile: string, otp: string) => {
-  return verifyAdminOtp({ email: emailOrMobile, otp });
+export const verifyOtp = async (mobile: string, otp: string) => {
+  try {
+    const response = await API.post(API_ENDPOINTS.authOtpVerify, { mobile, otp, role: "PARTNER" });
+    const payload = response.data ?? {};
+    const jwt = extractJwtToken(payload);
+    if (!jwt) {
+      throw new Error("Token missing in verify-otp response.");
+    }
+    return payload;
+  } catch (error: any) {
+    throw new Error(getReadableApiError(error, "OTP verification failed. Please try again."));
+  }
 };

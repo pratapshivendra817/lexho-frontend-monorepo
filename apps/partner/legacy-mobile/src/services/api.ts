@@ -1,27 +1,16 @@
 import axios, { AxiosError } from "axios";
-import { Platform } from "react-native";
-import { clearSession, getToken } from "../utils/storage";
+import { clearSession, getOrCreateDeviceId, getRefreshToken, getToken, saveRefreshToken, saveToken } from "../utils/storage";
 
 const API_PORT = "8082";
-const DEVICE_LOCAL_IP = "192.168.1.100";
-
-const API_HOSTS = {
-  android: "10.0.2.2",
-  ios: "localhost",
-  default: DEVICE_LOCAL_IP,
-};
-
-const getApiHost = (): string => {
-  if (Platform.OS === "android") return API_HOSTS.android;
-  if (Platform.OS === "ios") return API_HOSTS.ios;
-  return API_HOSTS.default;
-};
-
-export const API_BASE_URL = `http://${getApiHost()}:${API_PORT}`;
+const DEV_MACHINE_LAN_IP = "192.168.31.38";
+export const API_BASE_URL = `http://${DEV_MACHINE_LAN_IP}:${API_PORT}`;
+export const ENABLE_DISPATCH_WS = false;
 
 export const API_ENDPOINTS = {
   adminLogin: "/api/admin/login",
   adminVerifyOtp: "/api/admin/verify-otp",
+  authOtpSend: "/otp/send",
+  authOtpVerify: "/otp/verify",
 };
 
 type UnauthorizedHandler = () => Promise<void> | void;
@@ -33,6 +22,14 @@ export const setUnauthorizedHandler = (handler: UnauthorizedHandler | null) => {
 };
 
 const API = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 15000,
+  headers: {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  },
+});
+const refreshClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,
   headers: {
@@ -56,6 +53,32 @@ API.interceptors.request.use(
 API.interceptors.response.use(
   response => response,
   async (error: AxiosError) => {
+    const originalRequest = error.config as any;
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const refreshToken = await getRefreshToken();
+        if (refreshToken) {
+          const deviceId = await getOrCreateDeviceId();
+          const { data } = await refreshClient.post("/api/auth/refresh", { refreshToken, deviceId });
+          const root = data ?? {};
+          const nextAccessToken = root.accessToken ?? root.token ?? root?.data?.accessToken ?? root?.data?.token;
+          const nextRefreshToken = root.refreshToken ?? root?.data?.refreshToken;
+          if (typeof nextAccessToken === "string" && nextAccessToken.trim().length > 0) {
+            await saveToken(nextAccessToken);
+            if (nextRefreshToken) {
+              await saveRefreshToken(nextRefreshToken);
+            }
+            originalRequest.headers = originalRequest.headers || {};
+            originalRequest.headers.Authorization = `Bearer ${nextAccessToken}`;
+            return API(originalRequest);
+          }
+        }
+      } catch {
+        // fallback to logout
+      }
+    }
+
     if (error.response?.status === 401) {
       await clearSession();
       if (onUnauthorized) {
@@ -68,6 +91,9 @@ API.interceptors.response.use(
 );
 
 export const getReadableApiError = (error: any, fallbackMessage: string): string => {
+  if (error?.response?.status === 429) {
+    return "Too many requests, please try again shortly";
+  }
   if (error?.response?.data?.message) {
     return String(error.response.data.message);
   }

@@ -91,7 +91,7 @@ export function ServiceListScreen({ route, navigation }: any) {
 
   const mappedServices = useMemo(
     () =>
-      (services || []).map((item: any, index: number) => {
+      (services || []).map((item: any) => {
         const id = toValidServiceId(item?.id ?? item?.serviceId);
         const discountedPrice = toNumber(item?.discountedPrice ?? item?.price ?? item?.finalPrice, 0);
         const originalPrice = toNumber(item?.originalPrice ?? item?.mrp, 0);

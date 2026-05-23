@@ -5,6 +5,7 @@ export default function StatusBadge({ status }: { status: TicketStatus }) {
     OPEN: "bg-red-100 text-red-600",
     IN_PROGRESS: "bg-yellow-100 text-yellow-600",
     RESOLVED: "bg-green-100 text-green-600",
+    CLOSED: "bg-gray-200 text-gray-700",
   };
 
   return (

@@ -27,7 +27,7 @@ Booking,/api/bookings/history,GET,,booking list,Aligned,
 Booking,/api/bookings/details/{id},GET,id path,booking details,Needs UI Context,
 Booking,/api/bookings/cancel/{id},PUT,id path,booking details,Needs UI Context,
 Booking,/api/bookings/reschedule/{id},PUT,"id path|date(ISO)",booking details,Needs Backend Confirm,"confirm date field name"
-Tracking,/api/provider/live-location/{bookingId},GET,bookingId path,"lat|lng|eta",Needs UI Context,
+Tracking,/api/partner/live-location/{bookingId},GET,bookingId path,"lat|lng|eta",Needs UI Context,
 Payment,/api/payments/initiate,POST,"mode(UPI/CARD/WALLET/COD)|bookingId?|amount?",payment init response,Needs Backend Confirm,
 Payment,/api/payments/status/{bookingId},GET,bookingId path,payment status,Needs UI Context,"confirm status enum"
 Payment,/api/payments/refund,POST,"bookingId|amount",refund response,Needs Backend Confirm,
@@ -47,3 +47,4 @@ Subscription,/api/subscription/create,POST,planId,subscription object,Needs Back
 Subscription,/api/subscription/list,GET,,subscription list,Aligned,
 Support,/api/support/create,POST,"subject|message",ticket object,Needs Backend Confirm,
 Support,/api/support/history,GET,,ticket list,Aligned,
+

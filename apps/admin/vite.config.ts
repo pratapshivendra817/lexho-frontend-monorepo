@@ -8,7 +8,13 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:8082',
-        changeOrigin: true
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            delete proxyRes.headers['x-frame-options']
+            delete proxyRes.headers['content-security-policy']
+          })
+        }
       }
     }
   },

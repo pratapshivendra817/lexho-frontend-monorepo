@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+﻿import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getMock: vi.fn(),
@@ -15,22 +15,22 @@ vi.mock("@/api/axios", () => ({
 }));
 
 import {
-  approveProvider,
-  blockProvider,
-  deleteProvider,
-  getProviderDetails,
-  getProviders,
-  getProviderStats,
-  rejectProvider,
-  unblockProvider,
-} from "@/features/providers/api/providersApi";
+  approvePartner,
+  blockPartner,
+  deletePartner,
+  getPartnerDetails,
+  getPartners,
+  getPartnerStats,
+  rejectPartner,
+  unblockPartner,
+} from "@/features/partners/api/partnersApi";
 
-describe("providersApi", () => {
+describe("partnersApi", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("maps provider stats response", async () => {
+  it("maps partner stats response", async () => {
     mocks.getMock.mockResolvedValue({
       data: {
         data: {
@@ -42,9 +42,9 @@ describe("providersApi", () => {
       },
     });
 
-    const result = await getProviderStats();
+    const result = await getPartnerStats();
 
-    expect(mocks.getMock).toHaveBeenCalledWith("/api/admin/providers/stats");
+    expect(mocks.getMock).toHaveBeenCalledWith("/api/admin/partners/stats");
     expect(result).toEqual({
       pending: 11,
       approved: 22,
@@ -53,7 +53,7 @@ describe("providersApi", () => {
     });
   });
 
-  it("maps providers list and forwards filters", async () => {
+  it("maps partners list and forwards filters", async () => {
     mocks.getMock.mockResolvedValue({
       data: {
         content: [
@@ -73,7 +73,7 @@ describe("providersApi", () => {
       },
     });
 
-    const result = await getProviders({
+    const result = await getPartners({
       page: 0,
       size: 10,
       status: "PENDING",
@@ -84,7 +84,7 @@ describe("providersApi", () => {
       sortDir: "desc",
     });
 
-    expect(mocks.getMock).toHaveBeenCalledWith("/api/admin/providers", {
+    expect(mocks.getMock).toHaveBeenCalledWith("/api/admin/partners", {
       params: {
         page: 0,
         size: 10,
@@ -115,7 +115,7 @@ describe("providersApi", () => {
     });
   });
 
-  it("maps provider details and hits admin action endpoints", async () => {
+  it("maps partner details and hits admin action endpoints", async () => {
     mocks.getMock.mockResolvedValue({
       data: {
         data: {
@@ -146,26 +146,28 @@ describe("providersApi", () => {
     mocks.putMock.mockResolvedValue({});
     mocks.deleteMock.mockResolvedValue({});
 
-    const details = await getProviderDetails("prv-11");
-    await approveProvider("prv-11");
-    await rejectProvider("prv-11", "Invalid documents");
-    await blockProvider("prv-11", "Fraud activity");
-    await unblockProvider("prv-11");
-    await deleteProvider("prv-11");
+    const details = await getPartnerDetails("prv-11");
+    await approvePartner("prv-11");
+    await rejectPartner("prv-11", "Invalid documents");
+    await blockPartner("prv-11", "Fraud activity");
+    await unblockPartner("prv-11");
+    await deletePartner("prv-11");
 
-    expect(mocks.getMock).toHaveBeenCalledWith("/api/admin/providers/prv-11");
+    expect(mocks.getMock).toHaveBeenCalledWith("/api/admin/partners/prv-11");
     expect(details?.id).toBe("prv-11");
     expect(details?.documents[0].id).toBe("doc-1");
     expect(details?.statusHistory[0].status).toBe("PENDING");
 
-    expect(mocks.putMock).toHaveBeenCalledWith("/api/admin/providers/prv-11/approve");
-    expect(mocks.putMock).toHaveBeenCalledWith("/api/admin/providers/prv-11/reject", {
+    expect(mocks.putMock).toHaveBeenCalledWith("/api/admin/partners/prv-11/approve");
+    expect(mocks.putMock).toHaveBeenCalledWith("/api/admin/partners/prv-11/reject", {
       reason: "Invalid documents",
     });
-    expect(mocks.putMock).toHaveBeenCalledWith("/api/admin/providers/prv-11/block", {
+    expect(mocks.putMock).toHaveBeenCalledWith("/api/admin/partners/prv-11/block", {
       reason: "Fraud activity",
     });
-    expect(mocks.putMock).toHaveBeenCalledWith("/api/admin/providers/prv-11/unblock");
-    expect(mocks.deleteMock).toHaveBeenCalledWith("/api/admin/providers/prv-11");
+    expect(mocks.putMock).toHaveBeenCalledWith("/api/admin/partners/prv-11/unblock");
+    expect(mocks.deleteMock).toHaveBeenCalledWith("/api/admin/partners/prv-11");
   });
 });
+
+

@@ -13,7 +13,7 @@ export function exportBookingsToCsv(rows: BookingListItem[]) {
     "Booking ID",
     "Customer Name",
     "Service",
-    "Provider",
+    "Partner",
     "Date",
     "Amount",
     "Status",
@@ -24,7 +24,7 @@ export function exportBookingsToCsv(rows: BookingListItem[]) {
       row.id,
       row.customerName,
       row.service,
-      row.providerName,
+      row.partnerName,
       row.bookingDate,
       row.amount,
       row.status,
@@ -44,3 +44,5 @@ export function exportBookingsToCsv(rows: BookingListItem[]) {
 
   URL.revokeObjectURL(objectUrl);
 }
+
+

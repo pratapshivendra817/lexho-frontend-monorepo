@@ -1,63 +1,134 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { Client } from "@stomp/stompjs";
+
 import { getAccessToken } from "@/utils/authSession";
 
 type AdminNotificationSocketOptions = {
   enabled?: boolean;
-  onMessage?: () => void;
+  onMessage?: (data?: unknown) => void;
 };
 
-function resolveSocketUrl() {
-  const explicit = import.meta.env.VITE_ADMIN_NOTIFICATIONS_WS_URL;
-  if (explicit) return explicit;
-  const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8082";
-  const wsBase = base.replace(/^http/i, "ws");
-  return `${wsBase}/ws/admin/notifications`;
+const DEFAULT_BROKER_URL = "ws://localhost:8082/ws/admin/notifications";
+const DEFAULT_TOPIC = "/topic/admin/notifications";
+const IS_DEV = import.meta.env.DEV;
+
+function resolveBrokerUrl() {
+  return import.meta.env.VITE_ADMIN_NOTIFICATIONS_WS_URL || DEFAULT_BROKER_URL;
+}
+
+function devLog(message: string, payload?: unknown) {
+  if (!IS_DEV) return;
+  // eslint-disable-next-line no-console
+  console.info(message, payload ?? "");
 }
 
 export function useAdminNotificationSocket({ enabled = true, onMessage }: AdminNotificationSocketOptions) {
+  const clientRef = useRef<Client | null>(null);
+  const onMessageRef = useRef(onMessage);
+  const isConnectingRef = useRef(false);
+  const lastCloseLogAtRef = useRef(0);
+  const shouldConnectRef = useRef(false);
+  const isSubscribedRef = useRef(false);
+
   useEffect(() => {
-    if (!enabled) return;
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
+
+  useEffect(() => {
+    shouldConnectRef.current = enabled;
+    if (!enabled) return undefined;
 
     const token = getAccessToken();
     if (!token) {
-      return;
+      devLog("[admin-notifications-ws] skipped: no admin token");
+      return undefined;
     }
 
-    const socketUrl = new URL(resolveSocketUrl());
-    socketUrl.searchParams.set("token", token);
+    const brokerURL = resolveBrokerUrl();
+    if (brokerURL !== DEFAULT_BROKER_URL) {
+      devLog(`[admin-notifications-ws] brokerURL from env: ${brokerURL}`);
+    } else {
+      devLog(`[admin-notifications-ws] brokerURL: ${DEFAULT_BROKER_URL}`);
+    }
 
-    let isClosedManually = false;
-    let socket: WebSocket | null = null;
-    let reconnectTimer: number | null = null;
-    let reconnectAttempts = 0;
-    const maxReconnectAttempts = 5;
-    const baseDelayMs = 3000;
-    const maxDelayMs = 30000;
+    if (!clientRef.current) {
+      clientRef.current = new Client({
+        brokerURL,
+        reconnectDelay: 5000,
+        connectHeaders: {
+          Authorization: `Bearer ${token}`,
+        },
+        onConnect: () => {
+          isConnectingRef.current = false;
+          devLog(`[admin-notifications-ws] onConnect active=${Boolean(clientRef.current?.active)}`);
+          if (!isSubscribedRef.current) {
+            clientRef.current?.subscribe(DEFAULT_TOPIC, (frame) => {
+              try {
+                onMessageRef.current?.(JSON.parse(frame.body));
+              } catch {
+                onMessageRef.current?.(frame.body);
+              }
+            });
+            isSubscribedRef.current = true;
+          }
+        },
+        onStompError: (frame) => {
+          isConnectingRef.current = false;
+          if (IS_DEV) {
+            // eslint-disable-next-line no-console
+            console.error("[admin-notifications-ws] onStompError", frame.headers["message"], frame.body);
+          }
+        },
+        onWebSocketClose: (event) => {
+          isConnectingRef.current = false;
+          isSubscribedRef.current = false;
+          const now = Date.now();
+          if (IS_DEV && now - lastCloseLogAtRef.current > 4000) {
+            lastCloseLogAtRef.current = now;
+            // eslint-disable-next-line no-console
+            console.warn(`[admin-notifications-ws] close code=${event.code} reason="${event.reason || "-"}" clean=${event.wasClean}`);
+          }
+        },
+        onWebSocketError: (event) => {
+          isConnectingRef.current = false;
+          if (IS_DEV) {
+            // eslint-disable-next-line no-console
+            console.error("[admin-notifications-ws] onWebSocketError", event);
+          }
+        },
+      });
+    }
 
-    const connect = () => {
-      socket = new WebSocket(socketUrl.toString());
-      socket.onopen = () => {
-        reconnectAttempts = 0;
-      };
-      socket.onmessage = () => {
-        onMessage?.();
-      };
-      socket.onclose = () => {
-        if (isClosedManually) return;
-        if (reconnectAttempts >= maxReconnectAttempts) return;
-        reconnectAttempts += 1;
-        const exponentialDelay = Math.min(baseDelayMs * 2 ** (reconnectAttempts - 1), maxDelayMs);
-        const jitter = Math.floor(Math.random() * 400);
-        reconnectTimer = window.setTimeout(connect, exponentialDelay + jitter);
-      };
-    };
+    const client = clientRef.current;
+    devLog(`[admin-notifications-ws] before activate active=${Boolean(client?.active)} connecting=${isConnectingRef.current}`);
+    if (client?.active || isConnectingRef.current) {
+      return undefined;
+    }
 
-    connect();
+    isConnectingRef.current = true;
+    client?.activate();
+    devLog(`[admin-notifications-ws] activate called active=${Boolean(client?.active)}`);
 
     return () => {
-      isClosedManually = true;
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      socket?.close();
+      shouldConnectRef.current = false;
+      const current = clientRef.current;
+      devLog(`[admin-notifications-ws] before deactivate active=${Boolean(current?.active)}`);
+      if (current?.active) {
+        void current.deactivate().finally(() => {
+          isConnectingRef.current = false;
+          isSubscribedRef.current = false;
+          devLog(`[admin-notifications-ws] after deactivate active=${Boolean(current.active)}`);
+          const tokenAfterDeactivate = getAccessToken();
+          if (shouldConnectRef.current && tokenAfterDeactivate && !current.active && !isConnectingRef.current) {
+            isConnectingRef.current = true;
+            current.activate();
+            devLog("[admin-notifications-ws] re-activate after deactivate");
+          }
+        });
+      } else {
+        isConnectingRef.current = false;
+        isSubscribedRef.current = false;
+      }
     };
-  }, [enabled, onMessage]);
+  }, [enabled]);
 }

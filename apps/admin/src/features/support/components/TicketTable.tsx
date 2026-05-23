@@ -4,7 +4,7 @@ import StatusBadge from "./StatusBadge";
 interface Props {
   tickets: Ticket[];
   onSelect: (ticket: Ticket) => void;
-  selectedId?: string;
+  selectedId?: string | number;
 }
 
 export default function TicketTable({ tickets, onSelect, selectedId }: Props) {
@@ -16,8 +16,9 @@ export default function TicketTable({ tickets, onSelect, selectedId }: Props) {
           <tr>
             <th className="p-3">Ticket ID</th>
             <th>User</th>
-            <th>Issue</th>
+            <th>Subject</th>
             <th>Status</th>
+            <th>Priority</th>
             <th>Date</th>
           </tr>
         </thead>
@@ -30,11 +31,12 @@ export default function TicketTable({ tickets, onSelect, selectedId }: Props) {
                 selectedId === t.id ? "bg-purple-900/30" : ""
               }`}
             >
-              <td className="p-3">{t.id}</td>
-              <td>{t.user}</td>
-              <td>{t.issue}</td>
+              <td className="p-3">{t.ticketId ?? t.id}</td>
+              <td>{t.userId ?? "-"}</td>
+              <td>{t.subject}</td>
               <td><StatusBadge status={t.status} /></td>
-              <td>{t.date}</td>
+              <td>{t.priority ?? "-"}</td>
+              <td>{t.createdAt ? new Date(t.createdAt).toLocaleString() : "-"}</td>
             </tr>
           ))}
         </tbody>

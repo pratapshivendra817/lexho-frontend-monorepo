@@ -7,6 +7,7 @@ import type {
   BookingListResponse,
   BookingStats,
   BookingStatus,
+  DispatchLifecycleStatus,
   ServiceType,
   UpdateBookingPayload,
 } from "../types";
@@ -66,7 +67,7 @@ const readArray = (payload: unknown, keys: string[]): UnknownRecord[] => {
 
 const toListItem = (row: UnknownRecord): BookingListItem => {
   const customer = asRecord(row.customer);
-  const provider = asRecord(row.provider);
+  const partner = asRecord(row.partner);
   const service = asRecord(row.service);
 
   return {
@@ -74,7 +75,7 @@ const toListItem = (row: UnknownRecord): BookingListItem => {
     customerName: asString(row.customerName ?? customer.name),
     service: asString(row.serviceName ?? row.service ?? service.name),
     serviceType: normalizeServiceType(row.serviceType ?? service.type),
-    providerName: asString(row.providerName ?? provider.name),
+    partnerName: asString(row.partnerName ?? partner.name),
     bookingDate: asString(row.bookingDate ?? row.date),
     amount: asNumber(row.amount ?? row.totalAmount),
     status: normalizeStatus(row.status),
@@ -93,7 +94,7 @@ const toDetails = (payload: unknown, id: string): BookingDetails | null => {
   }
 
   const customer = asRecord(source.customer);
-  const provider = asRecord(source.provider);
+  const partner = asRecord(source.partner);
   const service = asRecord(source.service);
   const payment = asRecord(source.payment);
   const timelineRows = readArray(source.timeline ?? source.history, ["timeline", "history"]);
@@ -113,12 +114,12 @@ const toDetails = (payload: unknown, id: string): BookingDetails | null => {
       email: asString(customer.email),
       address: asString(customer.address),
     },
-    provider: {
-      id: asString(provider.id ?? source.providerId),
-      name: asString(source.providerName ?? provider.name),
-      phone: asString(provider.phone),
-      email: asString(provider.email),
-      rating: asNumber(provider.rating),
+    partner: {
+      id: asString(partner.id ?? source.partnerId),
+      name: asString(source.partnerName ?? partner.name),
+      phone: asString(partner.phone),
+      email: asString(partner.email),
+      rating: asNumber(partner.rating),
     },
     payment: {
       amount: asNumber(source.amount ?? payment.amount),
@@ -192,3 +193,13 @@ export async function cancelBooking(id: string) {
 export async function softDeleteBooking(id: string) {
   await api.delete(`/api/admin/bookings/${id}`);
 }
+
+export async function manualDispatchOrder(orderId: string) {
+  await api.post(`/api/admin/dispatch/orders/${orderId}`);
+}
+
+export async function updateOrderLifecycle(orderId: string, lifecycle: DispatchLifecycleStatus) {
+  await api.patch(`/api/admin/dispatch/orders/${orderId}/lifecycle`, { lifecycle });
+}
+
+

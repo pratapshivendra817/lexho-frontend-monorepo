@@ -19,7 +19,7 @@ export type BookingCustomer = {
   address?: string;
 };
 
-export type BookingProvider = {
+export type BookingPartner = {
   id?: string;
   name: string;
   phone?: string;
@@ -47,7 +47,7 @@ export type BookingListItem = {
   customerName: string;
   service: string;
   serviceType: ServiceType;
-  providerName: string;
+  partnerName: string;
   bookingDate: string;
   amount: number;
   status: BookingStatus;
@@ -63,7 +63,7 @@ export type BookingDetails = {
   bookingTime?: string;
   notes?: string;
   customer: BookingCustomer;
-  provider: BookingProvider;
+  partner: BookingPartner;
   payment: BookingPayment;
   timeline: BookingTimelineItem[];
 };
@@ -90,7 +90,19 @@ export type BookingListParams = {
 export type UpdateBookingPayload = {
   bookingDate: string;
   bookingTime: string;
-  providerId: number;
+  partnerId: number;
   amount: number;
   notes?: string;
 };
+
+export type DispatchLifecycleStatus =
+  | "BOOKING_CREATED"
+  | "PARTNER_SEARCH"
+  | "PARTNER_ASSIGNED"
+  | "PARTNER_ACCEPTED"
+  | "PARTNER_REACHED"
+  | "SERVICE_STARTED"
+  | "SERVICE_COMPLETED"
+  | "PAYMENT_COMPLETED";
+
+

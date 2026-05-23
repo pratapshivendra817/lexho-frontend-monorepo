@@ -17,14 +17,14 @@ export type AuthUserDto = {
   avatar?: string;
 };
 
-export type SendOtpRequest = { mobile: string };
+export type SendOtpRequest = { mobile: string; role?: "CUSTOMER" | "PARTNER" };
 export type SendOtpResponse = { success?: boolean; message?: string; resendAfter?: number; otp?: string; code?: string };
 
 export type VerifyOtpRequest = { mobile: string; otp: string };
 export type VerifyOtpResponse = { token: string; refreshToken?: string; user?: AuthUserDto };
 
-export type RefreshTokenRequest = { refreshToken: string };
-export type RefreshTokenResponse = { token: string; refreshToken?: string };
+export type RefreshTokenRequest = { refreshToken: string; deviceId: string };
+export type RefreshTokenResponse = { accessToken: string; refreshToken?: string; expiresIn?: number };
 
 export type BannerDto = {
   id?: string;
@@ -53,7 +53,43 @@ export type CategoryDto = {
   activeStatus?: boolean | string;
 };
 export type ServiceDto = { id: string; categoryId?: string; name: string; description?: string; price?: number; durationMinutes?: number; imageUrl?: string };
-export type BookingSummaryDto = { id: string; status?: string; serviceName?: string; createdAt?: string };
+export type BookingType = "INSTANT" | "SCHEDULED";
+export type AssignmentStatus =
+  | "SEARCHING_PARTNER"
+  | "PARTNER_ASSIGNED"
+  | "PARTNER_ON_THE_WAY"
+  | "ARRIVED"
+  | "IN_PROGRESS"
+  | "INSTANT_FAILED"
+  | "SCHEDULED"
+  | "CANCELLED"
+  | "COMPLETED";
+export type BookingSummaryDto = {
+  id: string;
+  serviceId?: string;
+  status?: string;
+  serviceName?: string;
+  createdAt?: string;
+  scheduledAt?: string;
+  completedAt?: string;
+  amount?: number;
+  totalAmount?: number;
+  price?: number;
+  address?: string;
+  fullAddress?: string;
+  bookingType?: BookingType;
+  assignmentStatus?: AssignmentStatus | string;
+  promisedStartTime?: string;
+  slaMinutes?: number;
+  unavailableReason?: string;
+  message?: string;
+  etaMinutes?: number;
+  partnerName?: string;
+  partnerPhone?: string;
+  partnerId?: string;
+  partnerRating?: number;
+  partnerProfileImage?: string;
+};
 
 export type HomeDashboardResponse = {
   greeting?: string;
@@ -72,9 +108,15 @@ export type CartItemDto = { id: string; serviceId: string; name?: string; quanti
 export type AddCartRequest = { serviceId: string; quantity: number };
 export type UpdateCartRequest = { id: string; quantity: number };
 
-export type CreateBookingRequest = { serviceId: string; addressId: string; slot?: string; note?: string };
+export type CreateBookingRequest = { serviceId: string; addressId: string; date?: string; slot?: string; note?: string };
 export type RescheduleBookingRequest = { date: string };
 export type LiveLocationResponse = { lat?: number; lng?: number; eta?: string };
+export type SlotOption = {
+  slot: string;
+  etaMinutes?: number;
+  instantEligible?: boolean;
+  available?: boolean;
+};
 
 export type PaymentMode = "UPI" | "CARD" | "WALLET" | "COD";
 export type InitiatePaymentRequest = { mode: PaymentMode; bookingId?: string; amount?: number };

@@ -1,7 +1,7 @@
-import type { Provider } from "@/types/provider";
+﻿import type { Partner } from "@/types/partner";
 import { Card } from "@lexho/ui";
 
-export default function ProviderDocuments({ data }: { data: Provider }) {
+export default function PartnerDocuments({ data }: { data: Partner }) {
   return (
     <Card>
       <h2 className="text-lg font-semibold mb-4">Documents</h2>
@@ -14,3 +14,5 @@ export default function ProviderDocuments({ data }: { data: Provider }) {
     </Card>
   );
 }
+
+

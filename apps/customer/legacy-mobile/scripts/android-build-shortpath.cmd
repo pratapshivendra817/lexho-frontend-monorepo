@@ -3,18 +3,14 @@ setlocal
 
 set "PROJECT_DIR=%~dp0.."
 for %%I in ("%PROJECT_DIR%") do set "PROJECT_DIR=%%~fI"
-set "TARGET_DIR=%PROJECT_DIR%"
-set "SHORT_LINK=%USERPROFILE%\lxcust"
+set "TARGET_ANDROID_DIR=%PROJECT_DIR%\android"
+set "GRADLE_USER_HOME=%USERPROFILE%\.gradle"
 
-if not exist "%SHORT_LINK%" (
-  mklink /J "%SHORT_LINK%" "%PROJECT_DIR%" >nul 2>nul
+if /I "%RN_USE_SHORTPATH%"=="1" (
+  if exist "C:\lxc\android" (
+    set "TARGET_ANDROID_DIR=C:\lxc\android"
+  )
 )
-if exist "%SHORT_LINK%\" (
-  set "TARGET_DIR=%SHORT_LINK%"
-)
-
-set "TARGET_ANDROID_DIR=%TARGET_DIR%android"
-
 cd /d "%TARGET_ANDROID_DIR%"
 call gradlew.bat app:assembleDebug --console=plain
 set "EXIT_CODE=%ERRORLEVEL%"

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIcons";
 import { Text } from "react-native-paper";
 
@@ -52,7 +52,7 @@ export function ServiceDetailScreen({ route, navigation }: any) {
 
   const canLoad = useMemo(() => Number.isFinite(Number(serviceIdParam)) && Number(serviceIdParam) > 0, [serviceIdParam]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!canLoad) {
       setError("Invalid service id");
       setState("error");
@@ -68,11 +68,24 @@ export function ServiceDetailScreen({ route, navigation }: any) {
       setError(e?.message ?? "Unable to load service details");
       setState("error");
     }
-  };
+  }, [canLoad, serviceIdParam]);
+
+  const onShareService = useCallback(async () => {
+    if (!details) return;
+    const message = [
+      `Check this service: ${details.serviceName}`,
+      `Service ID: ${details.serviceId}`,
+      "Book quickly from the Lexho app.",
+    ].join("\n");
+    await Share.share({
+      title: details.serviceName,
+      message,
+    });
+  }, [details]);
 
   useEffect(() => {
     void load();
-  }, [serviceIdParam]);
+  }, [load]);
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
@@ -95,7 +108,12 @@ export function ServiceDetailScreen({ route, navigation }: any) {
       {state === "success" && details ? (
         <>
           <View style={styles.heroCard}>
-            <Text style={styles.title}>{details.serviceName}</Text>
+            <View style={styles.heroTop}>
+              <Text style={styles.title}>{details.serviceName}</Text>
+              <TouchableOpacity style={styles.shareBtn} onPress={() => void onShareService()}>
+                <MaterialCommunityIcon name="share-variant-outline" size={18} color={palette.primaryDark} />
+              </TouchableOpacity>
+            </View>
             <Text style={styles.subtitle}>Review what this service includes before booking.</Text>
           </View>
 
@@ -153,6 +171,15 @@ const styles = StyleSheet.create({
     borderColor: palette.borderSoft,
     backgroundColor: palette.card,
     padding: spacing.md,
+  },
+  heroTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  shareBtn: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: palette.borderSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: palette.card,
   },
   title: { fontSize: 22, fontWeight: "900", color: palette.text },
   subtitle: { marginTop: 6, fontSize: 13, color: palette.muted, lineHeight: 19 },

@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../api/api';
+import { API_BASE_URL } from '../constants/env';
 
 const ASSET_PATH_MAP = {
   'asset://service-cleaning-dark-1': '/assets/images/services/cleaning-dark-1.png',

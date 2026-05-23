@@ -2,12 +2,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, FlatList, Image, ImageBackground, ScrollView, StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import { useQuery } from "@tanstack/react-query";
 import { Button, Searchbar, Text } from "react-native-paper";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import LinearGradient from "react-native-linear-gradient";
 import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIcons";
 import { getPopularCleaningServices, getPopularCookServices } from "../../api/popularServicesApi";
-import { fetchCustomerServicesCatalog } from "../../api/serviceApi";
+import { fetchCustomerServicesByCategory, fetchCustomerServicesCatalog } from "../../api/serviceApi";
+import { searchServices } from "../../api/homeApi";
+import { getUnreadNotificationCount } from "../../api/notificationApi";
 import { PopularServicesShimmer } from "../../components/home/PopularServicesShimmer";
 import { SectionHeader } from "../../components/home/SectionHeader";
 import { ServiceCard as PopularServiceCard } from "../../components/home/ServiceCard";
@@ -17,11 +20,14 @@ import { QuickBookingSheet } from "../../components/common/QuickBookingSheet";
 import { SkeletonList } from "../../components/common/SkeletonList";
 import { StaggeredFadeIn } from "../../components/common/StaggeredFadeIn";
 import { palette } from "../../constants/theme";
+import { ENABLE_LIVE_TRACKING } from "../../constants/env";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { addToCartThunk, fetchCustomerAddressesThunk, fetchCustomerCartThunk } from "../../redux/cartSlice";
 import { fetchHomeData } from "../../redux/homeSlice";
 import { DynamicHomeSections } from "../../modules/home/DynamicHomeSections";
-import { useHomeSections } from "../../modules/home/useHomeSections";
+import { resolveImageSource } from "../../utils/assetMap";
+import { fetchAllAddressesThunk } from "../../redux/locationSlice";
+import { resolveUserIdFromAuth } from "../../utils/authUser";
 
 const BANNER_PLACEHOLDER = require("../../assets/images/splash-lexho.jpeg");
 
@@ -73,13 +79,49 @@ function renderHighlightedText(value: string, query: string, stylesRef: any) {
   );
 }
 
+function toSafeUri(value: unknown) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function toResolvedImage(value: unknown) {
+  const source = resolveImageSource(value as any);
+  if (!source) return { source: null as any, uri: null as string | null };
+  if (typeof source === "number") return { source, uri: null as string | null };
+  const uri = typeof (source as any)?.uri === "string" ? String((source as any).uri).trim() : null;
+  return { source, uri: uri && uri.length > 0 ? uri : null };
+}
+
+function normalizeSearchText(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isSearchMatch(text: unknown, query: unknown) {
+  const normalizedText = normalizeSearchText(text);
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return true;
+  if (!normalizedText) return false;
+  return normalizedText.includes(normalizedQuery);
+}
+
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
 export function HomeScreen({ navigation }: any) {
   const dispatch = useAppDispatch();
   const { loading, error, banners, categories, popular, recommended, quick } = useAppSelector((s) => s.home);
   const authToken = useAppSelector((s) => s.auth.token);
-  const cartItems = useAppSelector((s) => s.cart.items);
-  const addresses = useAppSelector((s) => s.cart.addresses);
+  const cartItems = useAppSelector((s) => asArray<any>(s.cart.items));
+  const addresses = useAppSelector((s) => asArray<any>(s.cart.addresses));
   const selectedAddressId = useAppSelector((s) => s.cart.selectedAddressId);
+  const locationCurrentAddress = useAppSelector((s) => (s.location as any)?.currentAddress);
+  const locationServiceAvailable = useAppSelector((s) => (s.location as any)?.serviceAvailable as boolean | null);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
@@ -94,6 +136,7 @@ export function HomeScreen({ navigation }: any) {
   const [popularCookError, setPopularCookError] = useState<string | null>(null);
   const [popularCleaningServices, setPopularCleaningServices] = useState<any[]>([]);
   const [popularCookServices, setPopularCookServices] = useState<any[]>([]);
+  const [categoryMatchedServices, setCategoryMatchedServices] = useState<any[]>([]);
   const [brokenBannerIds, setBrokenBannerIds] = useState<Record<string, boolean>>({});
   const [brokenCategoryIds, setBrokenCategoryIds] = useState<Record<string, boolean>>({});
   const bannerListRef = useRef<FlatList<any>>(null);
@@ -104,12 +147,16 @@ export function HomeScreen({ navigation }: any) {
   const categoryItemSize = width / 4.5;
   const serviceCardWidth = Math.min(Math.max(width * 0.4, 140), 160);
   const cartItemsCount = useMemo(() => cartItems.length, [cartItems]);
-  const isSearchMode = searchQuery.trim().length >= 2;
-  const toSafeUri = useCallback((value: unknown) => {
-    if (typeof value !== "string") return null;
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }, []);
+  const unreadCountQuery = useQuery({
+    queryKey: ["notifications", "unread-count"],
+    queryFn: getUnreadNotificationCount,
+    enabled: Boolean(authToken),
+    refetchInterval: 10000,
+  });
+  const unreadCount = Math.max(0, Number(unreadCountQuery.data ?? 0));
+  const isSearchMode = searchQuery.trim().length >= 1;
+  const authUserId = useAppSelector((s) => s.auth.user?.id ?? 0);
+  const locationUserId = useMemo(() => resolveUserIdFromAuth(authUserId, String(authToken ?? "").trim()), [authToken, authUserId]);
 
   useEffect(() => {
     dispatch(fetchHomeData());
@@ -125,7 +172,9 @@ export function HomeScreen({ navigation }: any) {
         if (Array.isArray(parsed)) {
           setRecentSearches(parsed.filter((row) => typeof row === "string" && row.trim().length > 0).slice(0, MAX_RECENT_SEARCHES));
         }
-      } catch {}
+      } catch {
+        // Ignore recent-search cache parse failures.
+      }
     })();
     return () => {
       mounted = false;
@@ -137,54 +186,49 @@ export function HomeScreen({ navigation }: any) {
       if (!authToken) return;
       void dispatch(fetchCustomerCartThunk());
       void dispatch(fetchCustomerAddressesThunk());
-    }, [authToken, dispatch]),
+      if (Number.isFinite(locationUserId) && locationUserId > 0) {
+        void dispatch(fetchAllAddressesThunk({ userId: locationUserId }));
+      }
+    }, [authToken, dispatch, locationUserId]),
   );
 
-  const { sections } = useHomeSections();
-
-  const quickActions = useMemo(() => {
-    const source = sections.find((section) => section.title.trim().toUpperCase() === "QUICK_ACTIONS");
-    if (!source) return [];
-    return source.items.map((item) => {
-      const routeName = String(item.value ?? "").trim();
-      return {
-        label: item.title,
-        onPress: () => {
-          setSheetVisible(false);
-          if (routeName) {
-            navigation.navigate(routeName);
-            return;
-          }
-          navigation.navigate("CartCrud");
-        },
-      };
-    });
-  }, [navigation, sections]);
+  const quickActions = useMemo(() => [], []);
 
   const bannerItems = useMemo(
-    () => (Array.isArray(banners) ? banners : []).map((item: any, index: number) => ({
-      id: String(item?.bannerId ?? item?.id ?? index),
-      title: item?.title ?? "Home services in under 30 mins",
-      subtitle: item?.subtitle ?? "Verified partners, fixed pricing, fast support",
-      imageUrl: toSafeUri(item?.bannerImageUrl ?? item?.imageUrl),
-      redirectType: item?.redirectType,
-      redirectValue: item?.redirectValue,
-      ctaLabel: item?.ctaLabel ?? item?.ctaText ?? "Explore now",
-    })),
-    [banners, toSafeUri],
+    () =>
+      (Array.isArray(banners) ? banners : []).map((item: any, index: number) => {
+        const resolvedImage = toResolvedImage(item?.bannerImageUrl ?? item?.imageUrl);
+        return {
+          id: String(item?.bannerId ?? item?.id ?? index),
+          title: item?.title ?? "Home services in under 30 mins",
+          subtitle: item?.subtitle ?? "Verified partners, fixed pricing, fast support",
+          imageUrl: resolvedImage.uri ?? toSafeUri(item?.bannerImageUrl ?? item?.imageUrl),
+          imageSource: resolvedImage.source,
+          redirectType: item?.redirectType,
+          redirectValue: item?.redirectValue,
+          ctaLabel: item?.ctaLabel ?? item?.ctaText ?? "Explore now",
+        };
+      }),
+    [banners],
   );
 
   const categoryItems = useMemo(
     () => (Array.isArray(categories) ? categories : [])
-      .map((item: any, index: number) => ({
-        id: String(item?.categoryId ?? item?.id ?? index),
-        name: String(item?.categoryName ?? item?.name ?? "").trim(),
-        iconUrl: toSafeUri(item?.categoryIcon ?? item?.iconUrl ?? item?.icon),
-        imageUrl: toSafeUri(item?.categoryImage ?? item?.iconUrl ?? item?.imageUrl),
-        gradient: CATEGORY_GRADIENTS[index % CATEGORY_GRADIENTS.length],
-      }))
+      .map((item: any, index: number) => {
+        const iconResolved = toResolvedImage(item?.categoryIcon ?? item?.iconUrl ?? item?.icon);
+        const imageResolved = toResolvedImage(item?.categoryImage ?? item?.iconUrl ?? item?.imageUrl);
+        return {
+          id: String(item?.categoryId ?? item?.id ?? index),
+          name: String(item?.categoryName ?? item?.name ?? "").trim(),
+          iconUrl: iconResolved.uri ?? toSafeUri(item?.categoryIcon ?? item?.iconUrl ?? item?.icon),
+          imageUrl: imageResolved.uri ?? toSafeUri(item?.categoryImage ?? item?.iconUrl ?? item?.imageUrl),
+          iconSource: iconResolved.source,
+          imageSource: imageResolved.source,
+          gradient: CATEGORY_GRADIENTS[index % CATEGORY_GRADIENTS.length],
+        };
+      })
       .filter((item) => item.name.length > 0 && item.name.toLowerCase() !== "category"),
-    [categories, toSafeUri],
+    [categories],
   );
   const cleaningCategory = useMemo(
     () =>
@@ -220,30 +264,30 @@ export function HomeScreen({ navigation }: any) {
         };
       })
         .filter((item) => item.id.length > 0),
-    [toSafeUri],
+    [],
   );
   const mappedPopularCleaningServices = useMemo(
     () => {
       const rows = mapPopularServices(popularCleaningServices);
-      const query = searchQuery.trim().toLowerCase();
+      const query = searchQuery.trim();
       if (!query) return rows;
-      return rows.filter((item) => item.name.toLowerCase().includes(query));
+      return rows.filter((item) => isSearchMatch(item.name, query));
     },
     [mapPopularServices, popularCleaningServices, searchQuery],
   );
   const mappedPopularCookServices = useMemo(
     () => {
       const rows = mapPopularServices(popularCookServices);
-      const query = searchQuery.trim().toLowerCase();
+      const query = searchQuery.trim();
       if (!query) return rows;
-      return rows.filter((item) => item.name.toLowerCase().includes(query));
+      return rows.filter((item) => isSearchMatch(item.name, query));
     },
     [mapPopularServices, popularCookServices, searchQuery],
   );
 
   const saveRecentSearch = useCallback(async (query: string) => {
     const clean = query.trim();
-    if (clean.length < 2) return;
+    if (clean.length < 1) return;
     setRecentSearches((prev) => {
       const next = [clean, ...prev.filter((row) => row.toLowerCase() !== clean.toLowerCase())].slice(0, MAX_RECENT_SEARCHES);
       void AsyncStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
@@ -255,12 +299,14 @@ export function HomeScreen({ navigation }: any) {
     setRecentSearches([]);
     try {
       await AsyncStorage.removeItem(RECENT_SEARCHES_KEY);
-    } catch {}
+    } catch {
+      // Ignore storage failures for clearing recent searches.
+    }
   }, []);
 
   const fuzzyScore = useCallback((name: string, query: string) => {
-    const n = name.toLowerCase().trim();
-    const q = query.toLowerCase().trim();
+    const n = normalizeSearchText(name);
+    const q = normalizeSearchText(query);
     if (!q) return 0;
     if (n.includes(q)) return 100 - (n.indexOf(q) || 0);
 
@@ -281,7 +327,7 @@ export function HomeScreen({ navigation }: any) {
 
   const fuzzyLocalResults = useMemo(() => {
     const query = searchQuery.trim();
-    if (query.length < 2) return [];
+    if (query.length < 1) return [];
     const source = [
       ...(Array.isArray(popularCleaningServices) ? popularCleaningServices : []),
       ...(Array.isArray(popularCookServices) ? popularCookServices : []),
@@ -308,12 +354,12 @@ export function HomeScreen({ navigation }: any) {
   }, [fuzzyScore, popular, popularCleaningServices, popularCookServices, quick, recommended, searchQuery]);
 
   const containsCatalogResults = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (query.length < 2) return [];
+    const query = searchQuery.trim();
+    if (query.length < 1) return [];
     return catalogCache
       .filter((item: any) => {
-        const name = String(item?.name ?? item?.serviceName ?? "").toLowerCase();
-        return name.includes(query);
+        const name = String(item?.name ?? item?.serviceName ?? "");
+        return isSearchMatch(name, query);
       })
       .slice(0, 20);
   }, [catalogCache, searchQuery]);
@@ -323,7 +369,7 @@ export function HomeScreen({ navigation }: any) {
       catalogCache.map((item: any, index: number) => {
         const id = String(item?.id ?? item?.serviceId ?? `row-${index}`);
         const name = String(item?.name ?? item?.serviceName ?? "");
-        const normalized = name.toLowerCase().trim();
+        const normalized = normalizeSearchText(name);
         const tokens = normalized.split(/\s+/).filter(Boolean);
         return { id, item, normalized, tokens };
       }),
@@ -331,8 +377,8 @@ export function HomeScreen({ navigation }: any) {
   );
 
   const indexedCatalogResults = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (query.length < 2 || catalogSearchIndex.length === 0) return [];
+    const query = normalizeSearchText(searchQuery);
+    if (query.length < 1 || catalogSearchIndex.length === 0) return [];
     const queryTokens = query.split(/\s+/).filter(Boolean);
     const rows = catalogSearchIndex
       .map((row) => {
@@ -353,11 +399,11 @@ export function HomeScreen({ navigation }: any) {
 
   useEffect(() => {
     const query = searchQuery.trim();
-    if (query.length < 2 || catalogCacheLoaded) return;
+    if (query.length < 1 || catalogCacheLoaded) return;
     let cancelled = false;
     (async () => {
       try {
-        const rows = await fetchCustomerServicesCatalog({ page: 0, size: 300 });
+        const rows = await fetchCustomerServicesCatalog({ page: 0, size: 1000 });
         if (!cancelled) {
           setCatalogCache(rows);
           setCatalogCacheLoaded(true);
@@ -375,7 +421,7 @@ export function HomeScreen({ navigation }: any) {
 
   useEffect(() => {
     const query = searchQuery.trim();
-    if (query.length < 2) {
+    if (query.length < 1) {
       setSearchLoading(false);
       setSearchError(null);
       setSearchedServices([]);
@@ -387,7 +433,19 @@ export function HomeScreen({ navigation }: any) {
       setSearchLoading(true);
       setSearchError(null);
       try {
-        const rows = await fetchCustomerServicesCatalog({ page: 0, size: 20, search: query });
+        const [catalogRes, keywordRes] = await Promise.allSettled([
+          fetchCustomerServicesCatalog({ page: 0, size: 100, search: query }),
+          searchServices(query),
+        ]);
+        const catalogRows = catalogRes.status === "fulfilled" ? catalogRes.value : [];
+        const keywordRows = keywordRes.status === "fulfilled" ? keywordRes.value : [];
+        const mergedRows = [...asArray<any>(catalogRows), ...asArray<any>(keywordRows)];
+        const dedup = new Map<string, any>();
+        mergedRows.forEach((item: any, index: number) => {
+          const id = String(item?.id ?? item?.serviceId ?? `row-${index}`);
+          if (!dedup.has(id)) dedup.set(id, item);
+        });
+        const rows = Array.from(dedup.values());
         if (!cancelled) {
           setSearchedServices(rows);
           if (rows.length > 0) {
@@ -413,9 +471,15 @@ export function HomeScreen({ navigation }: any) {
   }, [saveRecentSearch, searchQuery]);
 
   const allServicesToRender = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (query.length >= 2) {
-      const merged = [...searchedServices, ...indexedCatalogResults, ...containsCatalogResults, ...fuzzyLocalResults];
+    const query = searchQuery.trim();
+    if (query.length >= 1) {
+      const merged = [
+        ...asArray<any>(searchedServices),
+        ...asArray<any>(categoryMatchedServices),
+        ...asArray<any>(indexedCatalogResults),
+        ...asArray<any>(containsCatalogResults),
+        ...asArray<any>(fuzzyLocalResults),
+      ];
       const dedup = new Map<string, any>();
       merged.forEach((item: any, index: number) => {
         const id = String(item?.id ?? item?.serviceId ?? `row-${index}`);
@@ -428,17 +492,64 @@ export function HomeScreen({ navigation }: any) {
     const filterRows = (rows: any[]) => {
       if (!query) return rows;
       return rows.filter((row) =>
-        String(row?.name ?? row?.serviceName ?? "").toLowerCase().includes(query),
+        isSearchMatch(String(row?.name ?? row?.serviceName ?? ""), query),
       );
     };
     if (fromPopular.length > 0) return filterRows(fromPopular).slice(0, 8);
     const fromRecommended = Array.isArray(recommended) ? recommended : [];
     if (fromRecommended.length > 0) return filterRows(fromRecommended).slice(0, 8);
     return filterRows(Array.isArray(quick) ? quick : []).slice(0, 8);
-  }, [containsCatalogResults, fuzzyLocalResults, indexedCatalogResults, popular, quick, recommended, searchQuery, searchedServices]);
+  }, [categoryMatchedServices, containsCatalogResults, fuzzyLocalResults, indexedCatalogResults, popular, quick, recommended, searchQuery, searchedServices]);
+  const normalizedSearchQuery = searchQuery.trim();
+  const matchedCategories = useMemo(
+    () =>
+      normalizedSearchQuery.length >= 1
+        ? categoryItems.filter((item) => isSearchMatch(item.name, normalizedSearchQuery)).slice(0, 8)
+        : [],
+    [categoryItems, normalizedSearchQuery],
+  );
+  const matchedCategorySubset = useMemo(() => matchedCategories.slice(0, 3), [matchedCategories]);
+  const matchedCategorySubsetKey = useMemo(
+    () => matchedCategorySubset.map((item) => String(item.id)).join("|"),
+    [matchedCategorySubset],
+  );
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (query.length < 1 || matchedCategorySubset.length === 0) {
+      setCategoryMatchedServices([]);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const responses = await Promise.allSettled(
+        matchedCategorySubset.map((category) => fetchCustomerServicesByCategory({ categoryId: category.id, page: 0, size: 50 })),
+      );
+      if (cancelled) return;
+
+      const mergedRows = responses
+        .filter((res): res is PromiseFulfilledResult<any[]> => res.status === "fulfilled")
+        .flatMap((res) => res.value);
+      const dedup = new Map<string, any>();
+      mergedRows.forEach((item: any, index: number) => {
+        const id = String(item?.id ?? item?.serviceId ?? `cat-row-${index}`);
+        if (!dedup.has(id)) dedup.set(id, item);
+      });
+      setCategoryMatchedServices(Array.from(dedup.values()));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matchedCategorySubset, matchedCategorySubsetKey, searchQuery]);
 
   const locationLabel = useMemo(() => {
-    if (addresses.length === 0) return "Select your address";
+    const currentAddressLine = String(locationCurrentAddress?.addressLine ?? "").trim();
+    if (currentAddressLine.length > 0 && currentAddressLine.toLowerCase() !== "current location") {
+      return currentAddressLine;
+    }
+    if (addresses.length === 0) return "Home";
     const selected =
       addresses.find((row) => row.id === selectedAddressId) ??
       addresses.find((row) => row.default) ??
@@ -447,7 +558,14 @@ export function HomeScreen({ navigation }: any) {
     if (parts.length > 0) return parts.join(", ");
     if (selected?.fullAddress && selected.fullAddress.trim().length > 0) return selected.fullAddress;
     return "Address selected";
-  }, [addresses, selectedAddressId]);
+  }, [addresses, locationCurrentAddress, selectedAddressId]);
+
+  const headerLocationText = useMemo(() => {
+    const raw = String(locationLabel ?? "").trim();
+    const match = raw.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (!match) return raw;
+    return "Home";
+  }, [locationLabel]);
 
   useEffect(() => {
     if (__DEV__) {
@@ -548,7 +666,9 @@ export function HomeScreen({ navigation }: any) {
     if (redirectType === "coupon" || redirectType === "offer") return navigation.navigate("Coupon");
     if (redirectType === "cart") return navigation.navigate("CartCrud");
     if (redirectType === "payment") return navigation.navigate("PaymentStatus");
-    if (redirectType === "tracking") return navigation.navigate("LiveTracking");
+    if (redirectType === "tracking") {
+      return ENABLE_LIVE_TRACKING ? navigation.navigate("LiveTracking") : navigation.navigate("Main", { screen: "Bookings" });
+    }
 
     const routeMap: Record<string, string> = {
       CARTCRUD: "CartCrud",
@@ -557,8 +677,8 @@ export function HomeScreen({ navigation }: any) {
       ADDRESS: "Address",
       PAYMENTSTATUS: "PaymentStatus",
       PAYMENT: "PaymentStatus",
-      LIVETRACKING: "LiveTracking",
-      TRACKING: "LiveTracking",
+      LIVETRACKING: ENABLE_LIVE_TRACKING ? "LiveTracking" : "Main",
+      TRACKING: ENABLE_LIVE_TRACKING ? "LiveTracking" : "Main",
       REFERRAL: "Referral",
       REVIEWS: "Reviews",
       FAVORITES: "Favorites",
@@ -610,13 +730,24 @@ export function HomeScreen({ navigation }: any) {
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <StaggeredFadeIn delay={30}>
         <View style={styles.topHeader}>
-          <View>
-            <Text style={styles.locLabel}>Current Location</Text>
-            <Text style={styles.locValue} numberOfLines={1}>{locationLabel}</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.locationInfoWrap}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate("LocationSearch")}
+          >
+            <View style={styles.locationValueWrap}>
+              <MaterialCommunityIcon name="map-marker-radius-outline" color="#0284C7" size={18} />
+              <Text style={styles.locValue} numberOfLines={1}>{headerLocationText}</Text>
+            </View>
+          </TouchableOpacity>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate("Notifications")} activeOpacity={0.85}>
               <MaterialCommunityIcon name="bell-outline" color={colors.primaryText} size={20} />
+              {unreadCount > 0 ? (
+                <View style={styles.cartBadge}>
+                  <Text style={styles.cartBadgeText}>{unreadCount > 99 ? "99+" : String(unreadCount)}</Text>
+                </View>
+              ) : null}
             </TouchableOpacity>
             <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate("CartCrud")} activeOpacity={0.85}>
               <MaterialCommunityIcon name="cart-outline" color={colors.primaryText} size={20} />
@@ -666,72 +797,159 @@ export function HomeScreen({ navigation }: any) {
             </ScrollView>
           </View>
         ) : null}
+        {isSearchMode ? (
+          <View style={styles.searchOverlayPanel}>
+            <ScrollView style={styles.searchOverlayBody} showsVerticalScrollIndicator={false}>
+              {searchLoading ? <SkeletonList rows={2} /> : null}
+              {!searchLoading && searchError ? <EmptyStateCard title="Search failed" subtitle={searchError} /> : null}
+              {!searchLoading && !searchError && matchedCategories.length > 0 ? (
+                <View style={styles.overlaySection}>
+                  <View style={styles.overlayCategoriesWrap}>
+                    {matchedCategories.map((item) => (
+                      <TouchableOpacity
+                        key={`cat-${item.id}`}
+                        style={styles.overlayCategoryChip}
+                        activeOpacity={0.9}
+                        onPress={() => handleCategoryPress({ id: item.id, name: item.name })}
+                      >
+                        <Text style={styles.overlayCategoryChipText}>{item.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+              {!searchLoading && !searchError && allServicesToRender.length > 0 ? (
+                <View style={styles.overlaySection}>
+                  <View style={styles.searchResultsWrap}>
+                    {allServicesToRender.map((item: any, i: number) => {
+                      const parsedServiceId = Number(item?.id ?? item?.serviceId);
+                      const serviceId = Number.isFinite(parsedServiceId) && parsedServiceId > 0 ? String(parsedServiceId) : "";
+                      const serviceName = String(item?.name ?? item?.serviceName ?? "Service");
+                      const serviceDesc = String(item?.description ?? "Trusted professionals near your location");
+                      const servicePrice = Number(item?.price ?? item?.discountedPrice ?? 0);
+                      const imageUrl = item?.imageUrl ?? item?.thumbnailUrl;
+                      return (
+                        <TouchableOpacity
+                          key={`overlay-${serviceId}-${i}`}
+                          style={styles.searchResultCard}
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            if (serviceId) handlePopularServicePress(serviceId);
+                          }}
+                        >
+                          {imageUrl ? (
+                            <Image source={{ uri: String(imageUrl) }} style={styles.searchResultImage} resizeMode="cover" />
+                          ) : (
+                            <View style={styles.searchResultImageFallback}>
+                              <MaterialCommunityIcon name="briefcase-outline" size={18} color={palette.muted} />
+                            </View>
+                          )}
+                          <View style={styles.searchResultBody}>
+                            {renderHighlightedText(serviceName, searchQuery, styles)}
+                            <Text style={styles.searchResultDesc} numberOfLines={1}>{serviceDesc}</Text>
+                            {servicePrice > 0 ? <Text style={styles.searchResultPrice}>{`INR ${servicePrice.toFixed(2)}`}</Text> : null}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
+              {!searchLoading && !searchError && matchedCategories.length === 0 && allServicesToRender.length === 0 ? (
+                <EmptyStateCard title="No matching services" subtitle="Try another keyword." />
+              ) : null}
+            </ScrollView>
+          </View>
+        ) : null}
       </StaggeredFadeIn>
 
       <StaggeredFadeIn delay={120}>
-        {loading ? <SkeletonList rows={1} /> : null}
-        {!loading && bannerItems.length === 0 ? <EmptyStateCard title="No active banners" subtitle="Offers from admin panel will show here." /> : null}
-        {!loading && bannerItems.length > 0 ? (
-          <FlatList
-            ref={bannerListRef}
-            horizontal
-            pagingEnabled
-            data={bannerItems}
-            keyExtractor={(item) => item.id}
-            showsHorizontalScrollIndicator={false}
-            getItemLayout={(_, index) => ({
-              length: bannerWidth,
-              offset: bannerWidth * index,
-              index,
-            })}
-            onScrollToIndexFailed={(info) => {
-              const safeIndex = Math.max(0, Math.min(info.index, Math.max(0, bannerItems.length - 1)));
-              bannerIndexRef.current = safeIndex;
-              requestAnimationFrame(() => {
-                bannerListRef.current?.scrollToOffset({ offset: bannerWidth * safeIndex, animated: true });
-              });
-            }}
-            renderItem={({ item }) => {
-              const imageBroken = !!brokenBannerIds[item.id];
-              return (
-                <TouchableOpacity activeOpacity={0.9} onPress={() => handleBannerPress(item)} style={[styles.bannerItem, { width: bannerWidth, height: bannerHeight }]}>
-                  <ImageBackground
-                    source={item.imageUrl && !imageBroken ? { uri: item.imageUrl } : BANNER_PLACEHOLDER}
-                    resizeMode="cover"
-                    style={styles.hero}
-                    imageStyle={styles.heroImage}
-                    onError={() => {
-                      if (__DEV__) {
-                        // eslint-disable-next-line no-console
-                        console.log("[home:bannerImage:onError]", { id: item.id, imageUrl: item.imageUrl });
-                      }
-                      setBrokenBannerIds((prev) => ({ ...prev, [item.id]: true }));
-                    }}
-                  >
-                    <View style={styles.heroOverlay}>
-                      <Text style={styles.heroTag}>LEXHO PREMIUM CARE</Text>
-                      <Text style={styles.heroTitle}>{item.title}</Text>
-                      <Text style={styles.heroSub}>{item.subtitle}</Text>
-                      <TouchableOpacity activeOpacity={0.9} onPress={() => handleBannerPress(item)} style={styles.heroCtaWrap}>
-                        <LinearGradient colors={["#22D3EE", "#0EA5E9", "#0284C7"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroCta}>
-                          <Text style={styles.heroCtaText}>{item.ctaLabel}</Text>
-                        </LinearGradient>
-                      </TouchableOpacity>
-                      <View style={styles.heroDots}>
-                        {bannerItems.slice(0, 5).map((bannerDot, dotIndex) => (
-                          <View
-                            key={bannerDot.id}
-                            style={[styles.heroDot, dotIndex === bannerIndexRef.current && styles.heroDotActive]}
-                          />
-                        ))}
-                      </View>
-                    </View>
-                  </ImageBackground>
-                </TouchableOpacity>
-              );
-            }}
-          />
-        ) : null}
+        {locationServiceAvailable === false ? (
+          <View style={styles.comingSoonCard}>
+            <Text style={styles.comingSoonTitle}>WE ARE COMING SOON</Text>
+            <Text style={styles.comingSoonSub}>
+              We are currently live in select areas and expanding quickly.
+            </Text>
+            <View style={styles.comingSoonActions}>
+              <Button
+                mode="contained"
+                buttonColor="#16A34A"
+                onPress={() => Alert.alert("Thanks!", "We will notify you when services are available in your area.")}
+              >
+                Notify me
+              </Button>
+              <Button mode="text" textColor="#0F766E" onPress={() => navigation.navigate("LocationSearch")}>
+                Change location
+              </Button>
+            </View>
+          </View>
+        ) : (
+          <>
+            {loading ? <SkeletonList rows={1} /> : null}
+            {!loading && bannerItems.length === 0 ? <EmptyStateCard title="No active banners" subtitle="Offers from admin panel will show here." /> : null}
+            {!loading && bannerItems.length > 0 ? (
+              <FlatList
+                ref={bannerListRef}
+                horizontal
+                pagingEnabled
+                data={bannerItems}
+                keyExtractor={(item) => item.id}
+                showsHorizontalScrollIndicator={false}
+                getItemLayout={(_, index) => ({
+                  length: bannerWidth,
+                  offset: bannerWidth * index,
+                  index,
+                })}
+                onScrollToIndexFailed={(info) => {
+                  const safeIndex = Math.max(0, Math.min(info.index, Math.max(0, bannerItems.length - 1)));
+                  bannerIndexRef.current = safeIndex;
+                  requestAnimationFrame(() => {
+                    bannerListRef.current?.scrollToOffset({ offset: bannerWidth * safeIndex, animated: true });
+                  });
+                }}
+                renderItem={({ item }) => {
+                  const imageBroken = !!brokenBannerIds[item.id];
+                  return (
+                    <TouchableOpacity activeOpacity={0.9} onPress={() => handleBannerPress(item)} style={[styles.bannerItem, { width: bannerWidth, height: bannerHeight }]}>
+                      <ImageBackground
+                        source={item.imageSource && !imageBroken ? item.imageSource : BANNER_PLACEHOLDER}
+                        resizeMode="cover"
+                        style={styles.hero}
+                        imageStyle={styles.heroImage}
+                        onError={() => {
+                          if (__DEV__) {
+                            // eslint-disable-next-line no-console
+                            console.log("[home:bannerImage:onError]", { id: item.id, imageUrl: item.imageUrl });
+                          }
+                          setBrokenBannerIds((prev) => ({ ...prev, [item.id]: true }));
+                        }}
+                      >
+                        <View style={styles.heroOverlay}>
+                          <Text style={styles.heroTag}>LEXHO PREMIUM CARE</Text>
+                          <Text style={styles.heroTitle}>{item.title}</Text>
+                          <Text style={styles.heroSub}>{item.subtitle}</Text>
+                          <TouchableOpacity activeOpacity={0.9} onPress={() => handleBannerPress(item)} style={styles.heroCtaWrap}>
+                            <LinearGradient colors={["#22D3EE", "#0EA5E9", "#0284C7"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroCta}>
+                              <Text style={styles.heroCtaText}>{item.ctaLabel}</Text>
+                            </LinearGradient>
+                          </TouchableOpacity>
+                          <View style={styles.heroDots}>
+                            {bannerItems.slice(0, 5).map((bannerDot, dotIndex) => (
+                              <View
+                                key={bannerDot.id}
+                                style={[styles.heroDot, dotIndex === bannerIndexRef.current && styles.heroDotActive]}
+                              />
+                            ))}
+                          </View>
+                        </View>
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            ) : null}
+          </>
+        )}
       </StaggeredFadeIn>
 
       <StaggeredFadeIn delay={160}>
@@ -750,7 +968,8 @@ export function HomeScreen({ navigation }: any) {
             contentContainerStyle={styles.categoriesRow}
             renderItem={({ item, index }) => {
               const imageBroken = !!brokenCategoryIds[item.id];
-              const imageSource = item.imageUrl || item.iconUrl;
+              const imageUri = item.imageUrl || item.iconUrl;
+              const imageSource = item.imageSource || item.iconSource;
               return (
                 <TouchableOpacity
                   style={[styles.categoryItem, index === categoryItems.length - 1 && styles.lastItem]}
@@ -760,13 +979,13 @@ export function HomeScreen({ navigation }: any) {
                   <LinearGradient colors={item.gradient} style={[styles.categoryIconWrap, { width: categoryItemSize, height: categoryItemSize, borderRadius: categoryItemSize / 2 }]}>
                     {imageSource && !imageBroken ? (
                       <Image
-                        source={{ uri: imageSource }}
+                        source={imageSource}
                         style={[styles.categoryImage, { width: categoryItemSize, height: categoryItemSize, borderRadius: categoryItemSize / 2 }]}
                         resizeMode="cover"
                         onError={() => {
                           if (__DEV__) {
                             // eslint-disable-next-line no-console
-                            console.log("[home:categoryImage:onError]", { id: item.id, imageSource });
+                            console.log("[home:categoryImage:onError]", { id: item.id, imageSource: imageUri });
                           }
                           setBrokenCategoryIds((prev) => ({ ...prev, [item.id]: true }));
                         }}
@@ -785,14 +1004,8 @@ export function HomeScreen({ navigation }: any) {
 
       <StaggeredFadeIn delay={220}>
         <SectionHeader
-          title={
-            sections.find((section) => section.title.trim().toUpperCase() === "POPULAR_CLEANING")?.subtitle ||
-            "Popular Cleaning Services"
-          }
-          subtitle={
-            sections.find((section) => section.title.trim().toUpperCase() === "POPULAR_CLEANING")?.title ||
-            "Most booked services near your location"
-          }
+          title={"Popular Cleaning Services"}
+          subtitle={"Most booked services near your location"}
           rightSlot={(
             <Button
               compact
@@ -852,14 +1065,8 @@ export function HomeScreen({ navigation }: any) {
         <>
           <StaggeredFadeIn delay={240}>
             <SectionHeader
-              title={
-                sections.find((section) => section.title.trim().toUpperCase() === "POPULAR_COOK")?.subtitle ||
-                "Popular Cook Services"
-              }
-              subtitle={
-                sections.find((section) => section.title.trim().toUpperCase() === "POPULAR_COOK")?.title ||
-                "Trending cook services near your location"
-              }
+              title={"Popular Cook Services"}
+              subtitle={"Trending cook services near your location"}
               rightSlot={(
                 <Button
                   compact
@@ -922,62 +1129,9 @@ export function HomeScreen({ navigation }: any) {
       <StaggeredFadeIn delay={260}>
         <DynamicHomeSections navigation={navigation} />
       </StaggeredFadeIn>
-      {(loading || searchLoading || isSearchMode || allServicesToRender.length > 0) ? (
+      {(loading || (!isSearchMode && allServicesToRender.length > 0)) ? (
         <View style={styles.sectionCard}>
-          {loading || searchLoading ? <SkeletonList rows={2} /> : null}
-          {!loading && !searchLoading && searchError && allServicesToRender.length === 0 ? <EmptyStateCard title="Search failed" subtitle={searchError} /> : null}
-          {!loading && !searchLoading && !searchError && isSearchMode && allServicesToRender.length === 0 ? (
-            <EmptyStateCard title="No matching services" subtitle="Try another keyword." />
-          ) : null}
-          {!loading && isSearchMode && allServicesToRender.length > 0 ? (
-            <View style={styles.searchResultsWrap}>
-              {allServicesToRender.map((item: any, i: number) => {
-                const parsedServiceId = Number(item?.id ?? item?.serviceId);
-                const serviceId = Number.isFinite(parsedServiceId) && parsedServiceId > 0 ? String(parsedServiceId) : "";
-                const serviceName = String(item?.name ?? item?.serviceName ?? "Service");
-                const serviceDesc = String(item?.description ?? "Trusted professionals near your location");
-                const servicePrice = Number(item?.price ?? item?.discountedPrice ?? 0);
-                const imageUrl = item?.imageUrl ?? item?.thumbnailUrl;
-
-                return (
-                  <TouchableOpacity
-                    key={`${serviceId}-${i}`}
-                    style={styles.searchResultCard}
-                    activeOpacity={0.9}
-                    onPress={() => {
-                      if (serviceId) {
-                        handlePopularServicePress(serviceId);
-                      }
-                    }}
-                  >
-                    {imageUrl ? (
-                      <Image source={{ uri: String(imageUrl) }} style={styles.searchResultImage} resizeMode="cover" />
-                    ) : (
-                      <View style={styles.searchResultImageFallback}>
-                        <MaterialCommunityIcon name="briefcase-outline" size={18} color={palette.muted} />
-                      </View>
-                    )}
-                    <View style={styles.searchResultBody}>
-                      {renderHighlightedText(serviceName, searchQuery, styles)}
-                      <Text style={styles.searchResultDesc} numberOfLines={1}>{serviceDesc}</Text>
-                      {servicePrice > 0 ? <Text style={styles.searchResultPrice}>{`INR ${servicePrice.toFixed(2)}`}</Text> : null}
-                    </View>
-                    <TouchableOpacity
-                      style={styles.searchResultBookBtn}
-                      onPress={() => {
-                        if (serviceId) {
-                          void handlePopularServiceAdd(serviceId);
-                        }
-                      }}
-                      activeOpacity={0.9}
-                    >
-                      <Text style={styles.searchResultBookText}>Book</Text>
-                    </TouchableOpacity>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ) : null}
+          {loading ? <SkeletonList rows={2} /> : null}
           {!loading && !isSearchMode && allServicesToRender.length > 0 ? (
             <FlatList
               horizontal
@@ -1001,7 +1155,7 @@ export function HomeScreen({ navigation }: any) {
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      {!loading && !error && categories.length === 0 && popular.length === 0 ? <EmptyStateCard title="No services yet" subtitle="Try again in a moment or change location." /> : null}
+      {!loading && !error && asArray<any>(categories).length === 0 && asArray<any>(popular).length === 0 ? <EmptyStateCard title="No services yet" subtitle="Try again in a moment or change location." /> : null}
       <QuickBookingSheet visible={sheetVisible} onClose={() => setSheetVisible(false)} actions={quickActions} />
     </ScrollView>
   );
@@ -1023,6 +1177,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  locationInfoWrap: { flex: 1, paddingRight: 10 },
+  locationValueWrap: { flexDirection: "row", alignItems: "center", gap: 8 },
   headerActions: { flexDirection: "row", gap: 8 },
   headerIconBtn: {
     width: 36,
@@ -1069,6 +1225,51 @@ const styles = StyleSheet.create({
   searchHistoryTitle: { color: colors.secondaryText, fontSize: 12, fontWeight: "700" },
   searchHistoryClear: { color: "#0284C7", fontSize: 12, fontWeight: "800" },
   searchChipsWrap: { paddingTop: 8, paddingHorizontal: 2, gap: 8 },
+  searchOverlayPanel: {
+    marginTop: 10,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: palette.borderSoft,
+    shadowColor: "#000",
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+    maxHeight: 420,
+  },
+  searchOverlayHead: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.borderSoft,
+  },
+  searchOverlayTitle: { color: colors.primaryText, fontSize: 14, fontWeight: "800" },
+  searchOverlaySubtitle: { color: colors.secondaryText, fontSize: 12, marginTop: 2 },
+  searchOverlayBody: { paddingVertical: 10 },
+  overlaySection: { gap: 8, paddingBottom: 8 },
+  overlaySectionTitle: {
+    color: colors.primaryText,
+    fontSize: 12,
+    fontWeight: "700",
+    paddingHorizontal: 16,
+  },
+  overlayCategoriesWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  overlayCategoryChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#BAE6FD",
+    backgroundColor: "#F0F9FF",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  overlayCategoryChipText: { color: "#075985", fontSize: 12, fontWeight: "700" },
   searchChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -1081,6 +1282,36 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   searchChipText: { color: "#075985", fontSize: 12, fontWeight: "700" },
+  comingSoonCard: {
+    marginHorizontal: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#D1FAE5",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+    alignItems: "center",
+    gap: 8,
+  },
+  comingSoonTitle: {
+    color: "#14532D",
+    fontWeight: "900",
+    fontSize: 28,
+    textAlign: "center",
+    lineHeight: 34,
+  },
+  comingSoonSub: {
+    color: "#4B5563",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  comingSoonActions: {
+    marginTop: 8,
+    width: "100%",
+    alignItems: "center",
+    gap: 6,
+  },
   bannerItem: {
     marginHorizontal: 4,
     borderRadius: 18,
@@ -1126,8 +1357,8 @@ const styles = StyleSheet.create({
     width: 16,
     backgroundColor: "#FFFFFF",
   },
-  locLabel: { color: colors.secondaryText, fontSize: 12, marginTop: 0 },
-  locValue: { color: colors.primaryText, fontSize: 18, fontWeight: "800", marginTop: 4 },
+  locLabel: { color: colors.secondaryText, fontSize: 12, marginTop: 0, fontWeight: "700" },
+  locValue: { color: colors.primaryText, fontSize: 18, fontWeight: "800", flexShrink: 1 },
   sectionTitle: { fontSize: 18, fontWeight: "700", marginTop: 20, marginHorizontal: 16, color: colors.primaryText },
   sectionSubtitle: { fontSize: 12, color: colors.secondaryText, marginHorizontal: 16, marginTop: 4 },
   categoriesRow: { paddingHorizontal: 16, marginTop: 12 },

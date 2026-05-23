@@ -94,7 +94,9 @@ export async function getCustomerHomeBanners(placement: HomeBannerPlacement = "B
     const primaryRows = extractRows(primary.data);
     const primaryMapped = normalize(primaryRows);
     if (primaryMapped.length > 0) return primaryMapped;
-  } catch {}
+  } catch {
+    // Ignore primary source failure and continue with fallback endpoint.
+  }
 
   try {
     // Fallback to the same banner source used by admin `/banners` flow.

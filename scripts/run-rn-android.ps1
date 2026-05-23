@@ -3,14 +3,13 @@ param(
   [ValidateSet("customer", "partner")]
   [string]$App,
   [int]$Port = 8081,
-  [int[]]$BackendPorts = @(8082),
-  [string]$PreferredAvd = "P",
+  [int[]]$BackendPorts = @(8082, 8083),
   [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
 $script:AdbCmd = "adb"
-$script:EmulatorCmd = "emulator"
+$script:AndroidSdkRoot = $null
 
 function Write-Step {
   param([string]$Message)
@@ -26,10 +25,9 @@ function Resolve-AndroidTooling {
 
   foreach ($sdk in $sdkCandidates) {
     $adb = Join-Path $sdk "platform-tools\adb.exe"
-    $emu = Join-Path $sdk "emulator\emulator.exe"
-    if ((Test-Path $adb) -and (Test-Path $emu)) {
+    if (Test-Path $adb) {
       $script:AdbCmd = $adb
-      $script:EmulatorCmd = $emu
+      $script:AndroidSdkRoot = $sdk
       Write-Step "Using Android SDK tools from: $sdk"
       return
     }
@@ -60,7 +58,22 @@ function Invoke-Step {
 
   Push-Location $WorkingDirectory
   try {
-    & $FilePath @Arguments 2>&1 | ForEach-Object { $_ | Out-Host }
+    $hasNativePref = $null -ne (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue)
+    if ($hasNativePref) {
+      $previousNativePref = $PSNativeCommandUseErrorActionPreference
+      $script:PSNativeCommandUseErrorActionPreference = $false
+    }
+
+    try {
+      # Allow native tools to write warnings/notes to stderr without PowerShell
+      # converting them into terminating errors.
+      & $FilePath @Arguments | Out-Host
+    } finally {
+      if ($hasNativePref) {
+        $script:PSNativeCommandUseErrorActionPreference = $previousNativePref
+      }
+    }
+
     $exitCode = $LASTEXITCODE
     if ($null -eq $exitCode) {
       $exitCode = 0
@@ -149,6 +162,88 @@ function Get-ConnectedDevices {
   return $devices
 }
 
+function Get-AdbDeviceSnapshot {
+  if ($DryRun) {
+    return @(@{ serial = "dry-run-device"; state = "device"; isEmulator = $false })
+  }
+
+  $hasNativePref = $null -ne (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue)
+  if ($hasNativePref) {
+    $previousNativePref = $PSNativeCommandUseErrorActionPreference
+    $script:PSNativeCommandUseErrorActionPreference = $false
+  }
+
+  try {
+    & $script:AdbCmd start-server 1>$null 2>$null
+    $raw = & $script:AdbCmd devices 2>$null
+    if ($LASTEXITCODE -ne 0) {
+      return @()
+    }
+  } catch {
+    return @()
+  } finally {
+    if ($hasNativePref) {
+      $script:PSNativeCommandUseErrorActionPreference = $previousNativePref
+    }
+  }
+
+  $snapshot = @()
+  foreach ($line in $raw) {
+    if ($line -match "^\s*$") { continue }
+    if ($line -match "^List of devices attached") { continue }
+    $parts = $line -split "\s+"
+    if ($parts.Count -lt 2) { continue }
+    $serial = $parts[0]
+    $state = $parts[1]
+    $snapshot += @{
+      serial = $serial
+      state = $state
+      isEmulator = ($serial -like "emulator-*")
+    }
+  }
+  return $snapshot
+}
+
+function Format-AdbSnapshot {
+  param([object[]]$Snapshot)
+
+  if ($null -eq $Snapshot -or $Snapshot.Count -eq 0) {
+    return "none"
+  }
+
+  return (($Snapshot | ForEach-Object { "$($_.serial) [$($_.state)]" }) -join ", ")
+}
+
+function Wait-ForPhysicalDevice {
+  param(
+    [int]$Attempts = 6,
+    [int]$DelaySeconds = 2
+  )
+
+  for ($i = 1; $i -le $Attempts; $i++) {
+    $snapshot = Get-AdbDeviceSnapshot
+    $devices = @($snapshot | Where-Object { $_.state -eq "device" } | ForEach-Object { $_.serial })
+    $physicalDevices = @($devices | Where-Object { $_ -notlike "emulator-*" })
+    if ($physicalDevices.Count -gt 0) {
+      return @{
+        found = $true
+        device = $physicalDevices[0]
+        snapshot = $snapshot
+      }
+    }
+
+    if ($i -lt $Attempts) {
+      Start-Sleep -Seconds $DelaySeconds
+    }
+  }
+
+  return @{
+    found = $false
+    device = $null
+    snapshot = (Get-AdbDeviceSnapshot)
+  }
+}
+
 function Restart-AdbServer {
   if ($DryRun) { return }
   try { & $script:AdbCmd kill-server 1>$null 2>$null } catch {}
@@ -156,174 +251,232 @@ function Restart-AdbServer {
   try { & $script:AdbCmd start-server 1>$null 2>$null } catch {}
 }
 
-function Wait-ForAnyEmulatorSerial {
-  param(
-    [int]$MaxAttempts = 60,
-    [int]$DelaySeconds = 3
-  )
+function Stop-ConnectedEmulators {
+  param([string[]]$EmulatorSerials)
 
-  for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-    $devices = Get-ConnectedDevices
-    $emulators = @($devices | Where-Object { $_ -like "emulator-*" })
-    if ($emulators.Count -gt 0) {
-      return $emulators[0]
-    }
+  if ($DryRun) {
+    Write-Step "Dry run: would stop connected emulators: $($EmulatorSerials -join ', ')"
+    return
+  }
 
-    if ($attempt % 4 -eq 0) {
-      Write-Step "Still waiting for emulator to appear in adb (attempt $attempt/$MaxAttempts), restarting adb server."
-      Restart-AdbServer
-    } else {
-      Write-Step "Waiting for emulator serial in adb (attempt $attempt/$MaxAttempts)..."
+  foreach ($serial in $EmulatorSerials) {
+    if ([string]::IsNullOrWhiteSpace($serial)) { continue }
+    Write-Step "Stopping connected emulator: $serial"
+    try {
+      & $script:AdbCmd -s $serial emu kill 1>$null 2>$null
+    } catch {}
+  }
+}
+
+function Get-EmulatorCmd {
+  if ($DryRun) {
+    return "emulator"
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($script:AndroidSdkRoot)) {
+    $sdkEmulator = Join-Path $script:AndroidSdkRoot "emulator\emulator.exe"
+    if (Test-Path $sdkEmulator) {
+      return $sdkEmulator
     }
-    Start-Sleep -Seconds $DelaySeconds
+  }
+
+  $emulatorCmd = Get-Command "emulator" -ErrorAction SilentlyContinue
+  if ($emulatorCmd) {
+    return $emulatorCmd.Source
   }
 
   return $null
 }
 
-function Show-AdbDiagnostics {
-  if ($DryRun) { return }
-  Write-Step "adb diagnostics:"
-  try { & $script:AdbCmd version 2>&1 | ForEach-Object { Write-Step "  $_" } } catch {}
-  try { & $script:AdbCmd devices -l 2>&1 | ForEach-Object { Write-Step "  $_" } } catch {}
-  try {
-    $emu = Get-Process -Name "qemu-system-x86_64","emulator64-crash-service","emulator" -ErrorAction SilentlyContinue
-    if ($emu) {
-      $emu | Select-Object Id, ProcessName, StartTime | ForEach-Object {
-        Write-Step ("  emulator process: PID={0} Name={1} Started={2}" -f $_.Id, $_.ProcessName, $_.StartTime)
-      }
-    } else {
-      Write-Step "  no emulator process found."
+function Get-AvdManagerCmd {
+  if ($DryRun) {
+    return "avdmanager"
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($script:AndroidSdkRoot)) {
+    $sdkAvdManager = Join-Path $script:AndroidSdkRoot "cmdline-tools\latest\bin\avdmanager.bat"
+    if (Test-Path $sdkAvdManager) {
+      return $sdkAvdManager
     }
-  } catch {}
+  }
+
+  $avdManagerCmd = Get-Command "avdmanager" -ErrorAction SilentlyContinue
+  if ($avdManagerCmd) {
+    return $avdManagerCmd.Source
+  }
+
+  return $null
 }
 
-function Wait-ForEmulatorBootCompleted {
-  param(
-    [string]$Serial,
-    [int]$MaxAttempts = 40,
-    [int]$DelaySeconds = 3
-  )
+function Get-AvdNames {
+  param([string]$EmulatorCmd, [string]$AvdManagerCmd)
 
-  for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+  $names = @()
+
+  if (-not [string]::IsNullOrWhiteSpace($EmulatorCmd)) {
     try {
-      $boot = (& $script:AdbCmd -s $Serial shell getprop sys.boot_completed 2>$null | Select-Object -First 1).Trim()
-      if ($LASTEXITCODE -eq 0 -and $boot -eq "1") {
-        return $true
+      $emulatorAvds = & $EmulatorCmd -list-avds 2>$null
+      if ($LASTEXITCODE -eq 0) {
+        $names += @($emulatorAvds | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
       }
     } catch {}
-    Start-Sleep -Seconds $DelaySeconds
   }
 
-  return $false
+  if ($names.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($AvdManagerCmd)) {
+    try {
+      $avdListOutput = & $AvdManagerCmd list avd 2>$null
+      if ($LASTEXITCODE -eq 0) {
+        $parsed = @(
+          $avdListOutput |
+            Where-Object { $_ -match "^\s*Name:\s+" } |
+            ForEach-Object { ($_ -replace "^\s*Name:\s+", "").Trim() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        )
+        $names += $parsed
+      }
+    } catch {}
+  }
+
+  $uniqueNames = @($names | Select-Object -Unique)
+  return ,$uniqueNames
 }
 
-function Start-EmulatorIfNeeded {
-  param([string]$PreferredAvdName)
+function Try-CreateDefaultAvd {
+  param([string]$AvdManagerCmd)
 
-  $targetAvd = $PreferredAvdName
-  if ([string]::IsNullOrWhiteSpace($targetAvd)) {
-    $targetAvd = "P"
-  }
   if ($DryRun) {
-    Write-Step "Dry run: selecting emulator target '$targetAvd'."
+    Write-Step "Dry run: would create default AVD profile."
+    return $true
+  }
+
+  if ([string]::IsNullOrWhiteSpace($AvdManagerCmd)) {
+    Write-Step "avdmanager not found; cannot auto-create AVD."
+    return $false
+  }
+
+  $defaultAvdName = "Lexho_Auto_API30"
+  $defaultImage = "system-images;android-30;google_apis;x86"
+  Write-Step "No AVD found for current user. Creating default AVD: $defaultAvdName"
+
+  # Pipe "no" to avoid custom hardware profile prompt.
+  & cmd /c "echo no|`"$AvdManagerCmd`" create avd -n $defaultAvdName -k `"$defaultImage`" -d pixel" 1>$null 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Step "Auto-create AVD failed. Ensure system image exists: $defaultImage"
+    return $false
+  }
+
+  Write-Step "Created AVD: $defaultAvdName"
+  return $true
+}
+
+function Try-StartEmulatorAndWait {
+  if ($DryRun) {
+    Write-Step "Dry run: would start emulator and wait for adb device."
     return "dry-run-device"
   }
 
-  function Get-RunningEmulatorSerialByAvdName {
-    param([string]$AvdName)
-    $devices = Get-ConnectedDevices
-    foreach ($device in $devices) {
-      if (-not $device.StartsWith("emulator-")) { continue }
-      try {
-        $name = (& $script:AdbCmd -s $device emu avd name 2>$null | Select-Object -First 1)
-        if ($LASTEXITCODE -eq 0 -and $name -eq $AvdName) {
-          return $device
-        }
-      } catch {
-        continue
-      }
-    }
+  $emulatorCmd = Get-EmulatorCmd
+  if ([string]::IsNullOrWhiteSpace($emulatorCmd)) {
+    Write-Step "Emulator binary not found. Install Android Emulator from Android SDK Manager."
     return $null
   }
 
-  $existingPreferred = Get-RunningEmulatorSerialByAvdName -AvdName $targetAvd
-  if ($existingPreferred) {
-    Write-Step "Using running emulator '$targetAvd' ($existingPreferred)"
-    return $existingPreferred
-  }
-
-  $devices = Get-ConnectedDevices
-  if ($devices.Count -gt 0) {
-    $emulators = @($devices | Where-Object { $_ -like "emulator-*" })
-    if ($emulators.Count -gt 0) {
-      Write-Step "Preferred AVD '$targetAvd' not running; using emulator $($emulators[0])."
-      return $emulators[0]
+  $avdManagerCmd = Get-AvdManagerCmd
+  $avds = Get-AvdNames -EmulatorCmd $emulatorCmd -AvdManagerCmd $avdManagerCmd
+  if ($avds.Count -eq 0) {
+    $created = Try-CreateDefaultAvd -AvdManagerCmd $avdManagerCmd
+    if ($created) {
+      Start-Sleep -Seconds 1
+      $avds = Get-AvdNames -EmulatorCmd $emulatorCmd -AvdManagerCmd $avdManagerCmd
     }
   }
 
-  $avds = & $script:EmulatorCmd -list-avds 2>$null
-  if ($LASTEXITCODE -ne 0 -or $avds.Count -eq 0) {
-    throw "No Android device connected and no AVD found. Open emulator or connect USB device."
+  if ($avds.Count -eq 0) {
+    Write-Step "No Android Virtual Device (AVD) found. Create one in Android Studio Device Manager."
+    return $null
   }
 
-  $avd = $null
-  if ($avds -contains $targetAvd) {
-    $avd = $targetAvd
-  } else {
-    $avd = $avds[0]
-    Write-Step "Preferred AVD '$targetAvd' not found. Falling back to '$avd'."
-  }
+  $selectedAvd = if ($avds -is [string]) { $avds } else { $avds[0] }
+  Write-Step "Starting emulator AVD: $selectedAvd"
+  Start-Process -FilePath $emulatorCmd -ArgumentList @("-avd", $selectedAvd) -WindowStyle Hidden | Out-Null
 
-  Write-Step "Starting emulator: $avd"
-  $emulatorProcess = $null
-  if (-not $DryRun) {
-    $emulatorProcess = Start-Process -FilePath $script:EmulatorCmd -ArgumentList @(
-      "-avd", $avd,
-      "-no-snapshot-load",
-      "-netdelay", "none",
-      "-netspeed", "full"
-    ) -PassThru
-    Start-Sleep -Seconds 4
-    if ($emulatorProcess -and $emulatorProcess.HasExited) {
-      throw "Emulator process exited immediately (exit code: $($emulatorProcess.ExitCode)). Open AVD Manager and start '$avd' once manually."
+  # Wait up to 2 minutes for emulator to appear as a ready adb device.
+  for ($i = 0; $i -lt 24; $i++) {
+    Start-Sleep -Seconds 5
+    $snapshot = Get-AdbDeviceSnapshot
+    $readyEmulators = @(
+      $snapshot |
+        Where-Object { $_.state -eq "device" -and $_.serial -like "emulator-*" } |
+        ForEach-Object { $_.serial }
+    )
+    if ($readyEmulators.Count -gt 0) {
+      Write-Step "Emulator ready: $($readyEmulators[0])"
+      return $readyEmulators[0]
     }
   }
 
+  Write-Step "Emulator launch timed out before adb reported a ready device."
+  return $null
+}
+
+function Get-PhysicalDeviceOrThrow {
   if ($DryRun) {
     return "dry-run-device"
   }
 
-  Write-Step "Waiting for emulator registration in adb..."
-  $serial = Wait-ForAnyEmulatorSerial
-  if (-not $serial) {
-    Show-AdbDiagnostics
-    throw "Emulator started but no emulator serial detected in adb."
+  $firstTry = Wait-ForPhysicalDevice -Attempts 4 -DelaySeconds 1
+  if ($firstTry.found) {
+    Write-Step "Using connected physical device: $($firstTry.device)"
+    return $firstTry.device
   }
 
-  Write-Step "Emulator detected as $serial. Waiting for boot completion..."
-  $booted = Wait-ForEmulatorBootCompleted -Serial $serial
-  if (-not $booted) {
-    Write-Step "Warning: emulator did not report boot completion in time; continuing anyway."
+  Write-Step "No physical device detected. adb snapshot: $(Format-AdbSnapshot -Snapshot $firstTry.snapshot)"
+  Write-Step "Restarting adb server, reconnecting USB devices, and retrying."
+  Restart-AdbServer
+  try { & $script:AdbCmd reconnect 1>$null 2>$null } catch {}
+  Start-Sleep -Seconds 1
+
+  $secondTry = Wait-ForPhysicalDevice -Attempts 8 -DelaySeconds 2
+  if ($secondTry.found) {
+    Write-Step "Using connected physical device after adb restart: $($secondTry.device)"
+    return $secondTry.device
   }
 
-  $namedSerial = Get-RunningEmulatorSerialByAvdName -AvdName $avd
-  if ($namedSerial) {
-    return $namedSerial
+  $snapshot = $secondTry.snapshot
+  $devices = @($snapshot | Where-Object { $_.state -eq "device" } | ForEach-Object { $_.serial })
+
+  $allowEmulatorFallback = $false
+  if ($env:RN_ALLOW_EMULATOR_FALLBACK -eq "1") {
+    $allowEmulatorFallback = $true
   }
 
-  $serial = Get-RunningEmulatorSerialByAvdName -AvdName $avd
-  if ($serial) {
-    return $serial
+  $emulatorDevices = @($devices | Where-Object { $_ -like "emulator-*" })
+  if ($emulatorDevices.Count -gt 0) {
+    if ($allowEmulatorFallback) {
+      Write-Step "Physical device not found. Falling back to connected emulator: $($emulatorDevices[0])"
+      return $emulatorDevices[0]
+    }
+    Write-Step "Physical device not found. Emulator fallback is disabled by default (set RN_ALLOW_EMULATOR_FALLBACK=1 to enable)."
+    Stop-ConnectedEmulators -EmulatorSerials $emulatorDevices
+  } elseif ($allowEmulatorFallback) {
+    Write-Step "No physical device detected. Attempting to start an Android emulator fallback."
+    $startedEmulator = Try-StartEmulatorAndWait
+    if (-not [string]::IsNullOrWhiteSpace($startedEmulator)) {
+      Write-Step "Using emulator fallback device: $startedEmulator"
+      return $startedEmulator
+    }
   }
 
-  $updatedDevices = Get-ConnectedDevices
-  $fallbackEmulator = @($updatedDevices | Where-Object { $_ -like "emulator-*" } | Select-Object -First 1)
-  if ($fallbackEmulator.Count -gt 0) {
-    return $fallbackEmulator[0]
+  $otherStates = @(
+    $snapshot |
+      Where-Object { $_.state -ne "device" } |
+      ForEach-Object { "$($_.serial) [$($_.state)]" }
+  )
+  if ($otherStates.Count -gt 0) {
+    throw "No ready physical Android device detected. adb found: $($otherStates -join ', '). If state is unauthorized, unlock phone and accept USB debugging prompt, then run: adb devices -l"
   }
 
-  throw "Emulator started but no emulator serial detected."
+  throw "No physical Android device detected in adb. Connect phone with USB debugging enabled and run: adb devices -l"
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -343,29 +496,41 @@ if (-not $DryRun) {
   if (-not (Get-Command $script:AdbCmd -ErrorAction SilentlyContinue)) {
     throw "adb not found in PATH. Install Android platform-tools and reopen terminal."
   }
-
-  if (-not (Get-Command $script:EmulatorCmd -ErrorAction SilentlyContinue)) {
-    Write-Step "emulator command not found in PATH; will continue if a device is already connected."
-  }
 }
 
 $shortRoot = if ($App -eq "partner") { "C:\lxp" } else { "C:\lxc" }
 $targetProjectDir = $projectDir
 if (-not $DryRun) {
-  if (-not (Test-Path $shortRoot)) {
-    Write-Step "Creating short project link: $shortRoot -> $projectDir"
-    & cmd /c "mklink /J `"$shortRoot`" `"$projectDir`"" 1>$null 2>$null
+  # Default to short path mode on Windows. Native CMake/Ninja builds can still
+  # hit 260-char limits in some toolchains even when LongPathsEnabled=1.
+  # Set RN_USE_SHORTPATH=0 to force real project path mode.
+  $useShortPath = $true
+  if ($env:RN_USE_SHORTPATH -eq "0") {
+    $useShortPath = $false
   }
-  if (Test-Path $shortRoot) {
-    $targetProjectDir = $shortRoot
+  if ($useShortPath) {
+    if (-not (Test-Path $shortRoot)) {
+      Write-Step "Creating short project link: $shortRoot -> $projectDir"
+      & cmd /c "mklink /J `"$shortRoot`" `"$projectDir`"" 1>$null 2>$null
+    }
+    if (Test-Path $shortRoot) {
+      $targetProjectDir = $shortRoot
+      Write-Step "Using short project path: $targetProjectDir"
+    } else {
+      Write-Step "Warning: short project path link was not available; using real project path."
+    }
+  } else {
+    Write-Step "Using real project path (RN_USE_SHORTPATH=0)."
   }
 
-  $env:GRADLE_USER_HOME = "C:\.gradle"
+  $env:GRADLE_USER_HOME = Join-Path $env:USERPROFILE ".gradle"
+  # Ensure child scripts keep the same short-path decision.
+  $env:RN_USE_SHORTPATH = if ($useShortPath) { "1" } else { "0" }
   Write-Step "Using GRADLE_USER_HOME=$($env:GRADLE_USER_HOME)"
 }
 
 Write-Step "Project: $targetProjectDir"
-$targetDevice = Start-EmulatorIfNeeded -PreferredAvdName $PreferredAvd
+$targetDevice = Get-PhysicalDeviceOrThrow
 Write-Step "Target device: $targetDevice"
 
 if (Test-PortListening -PortNumber $Port) {
@@ -375,7 +540,8 @@ if (Test-PortListening -PortNumber $Port) {
 
 Write-Step "Starting Metro in a new terminal with script 'start'."
 if (-not $DryRun) {
-  Start-Process -FilePath "powershell" -WorkingDirectory $targetProjectDir -ArgumentList @(
+  # Keep Metro on real path to avoid module identity issues with junction paths.
+  Start-Process -FilePath "powershell" -WorkingDirectory $projectDir -ArgumentList @(
     "-NoExit",
     "-Command",
     "npm run start -- --reset-cache"
@@ -397,7 +563,15 @@ foreach ($backendPort in $BackendPorts | Select-Object -Unique) {
   }
 }
 
-$androidExit = Invoke-Step -FilePath "npm" -Arguments @("run", "android:run:shortpath", "--", "--deviceId", $targetDevice) -WorkingDirectory $targetProjectDir
+$androidScript = "android"
+if ($env:RN_FORCE_ANDROID_SHORTPATH -eq "1") {
+  $androidScript = "android:run:shortpath"
+  Write-Step "Using forced shortpath android runner (RN_FORCE_ANDROID_SHORTPATH=1)."
+} else {
+  Write-Step "Using direct android runner to avoid nested drive remap conflicts."
+}
+
+$androidExit = Invoke-Step -FilePath "npm" -Arguments @("run", $androidScript, "--", "--no-packager", "--device", $targetDevice) -WorkingDirectory $targetProjectDir
 if ($androidExit -ne 0) {
   throw "Android run failed with exit code $androidExit"
 }

@@ -1,6 +1,6 @@
-// src/types/user.ts
+﻿// src/types/user.ts
 
-export type Role = "CUSTOMER" | "PROVIDER";
+export type Role = "CUSTOMER" | "PARTNER";
 export type Status = "ACTIVE" | "BLOCKED";
 
 export interface Booking {
@@ -18,7 +18,7 @@ export interface Activity {
 }
 
 export interface User {
-  id: string; // ✅ FIXED (no 'any')
+  id: string; // âœ… FIXED (no 'any')
 
   name: string;
   phone: string;
@@ -44,3 +44,5 @@ export interface UsersResponse {
   users?: User[];
   totalElements?: number;
 }
+
+

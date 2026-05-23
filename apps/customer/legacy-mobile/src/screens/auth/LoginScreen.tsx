@@ -7,7 +7,7 @@ import { z } from "zod";
 import { sendOtp } from "../../api/authApi";
 import { PrimaryButton } from "../../components/buttons/PrimaryButton";
 
-const schema = z.object({ mobile: z.string().regex(/^\d{10}$/, "Enter valid 10-digit mobile") });
+const schema = z.object({ mobile: z.string().regex(/^[6-9][0-9]{9}$/, "Enter valid 10-digit mobile") });
 type Form = z.infer<typeof schema>;
 
 export function LoginScreen({ navigation }: any) {

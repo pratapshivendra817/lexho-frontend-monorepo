@@ -2,7 +2,7 @@
 
 import type { UserStatus } from "./types";
 
-const userRoleSchema = z.enum(["CUSTOMER", "PROVIDER", "ADMIN"]);
+const userRoleSchema = z.enum(["CUSTOMER", "PARTNER", "ADMIN"]);
 const userStatusSchema = z.enum(["ACTIVE", "BLOCKED", "INACTIVE"] satisfies [
   Exclude<UserStatus, "DELETED">,
   ...Exclude<UserStatus, "DELETED">[],
@@ -18,4 +18,6 @@ export const userFormSchema = z.object({
 });
 
 export type UserFormValues = z.infer<typeof userFormSchema>;
+
+
 

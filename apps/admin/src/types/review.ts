@@ -1,9 +1,10 @@
-// src/types/review.ts
+﻿// src/types/review.ts
 export interface Review {
   id: string;
   user: string;
-  provider: string;
+  partner: string;
   service: string;
   rating: number;
   comment: string;
 }
+

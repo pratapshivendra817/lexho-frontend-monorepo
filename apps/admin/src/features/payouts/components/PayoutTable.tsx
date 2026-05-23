@@ -1,4 +1,4 @@
-import type { Payout } from "@/types/payout";
+﻿import type { Payout } from "@/types/payout";
 
 interface Props {
   data: Payout[];
@@ -25,7 +25,7 @@ export default function PayoutTable({ data }: Props) {
       <table className="w-full text-sm">
         <thead className="bg-gray-800 text-gray-400">
           <tr>
-            <th className="p-3 text-left">Provider</th>
+            <th className="p-3 text-left">Partner</th>
             <th className="p-3 text-left">Earnings</th>
             <th className="p-3 text-left">Platform Fee</th>
             <th className="p-3 text-left">Final Payout</th>
@@ -37,11 +37,11 @@ export default function PayoutTable({ data }: Props) {
         <tbody>
           {data.map((item) => (
             <tr key={item.id} className="border-t border-gray-800">
-              <td className="p-3">{item.providerName}</td>
-              <td className="p-3">₹{item.earnings}</td>
-              <td className="p-3">₹{item.platformFee}</td>
+              <td className="p-3">{item.partnerName ?? item.providerName}</td>
+              <td className="p-3">â‚¹{item.earnings}</td>
+              <td className="p-3">â‚¹{item.platformFee}</td>
               <td className="p-3 font-medium text-green-400">
-                ₹{item.finalPayout}
+                â‚¹{item.finalPayout}
               </td>
 
               <td className="p-3">
@@ -65,3 +65,4 @@ export default function PayoutTable({ data }: Props) {
     </div>
   );
 }
+

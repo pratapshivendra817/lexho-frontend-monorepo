@@ -1,21 +1,21 @@
-export type BookingStatus =
+﻿export type BookingStatus =
   | "PENDING"
   | "CONFIRMED"
   | "COMPLETED"
   | "CANCELLED";
 
-// ✅ LIST PAGE
+// âœ… LIST PAGE
 export interface BookingListItem {
   id: string;
   customerName: string;
   service: string;
-  provider: string;
+  partner: string;
   date: string;
   amount: number;
   status: BookingStatus;
 }
 
-// ✅ DETAILS PAGE (THIS WAS MISSING ❌)
+// âœ… DETAILS PAGE (THIS WAS MISSING âŒ)
 export interface BookingDetails {
   id: string;
   status: BookingStatus;
@@ -30,7 +30,7 @@ export interface BookingDetails {
     address: string;
   };
 
-  provider: {
+  partner: {
     name: string;
     phone: string;
     rating: number;
@@ -43,3 +43,4 @@ export interface BookingDetails {
     transactionId: string;
   };
 }
+

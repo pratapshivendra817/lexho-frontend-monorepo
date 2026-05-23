@@ -4,13 +4,14 @@ import { clearAccessToken, getAccessToken } from "@/utils/authSession";
 import type {
   AdminBanner,
   BannerFormPayload,
+  BannerReorderPayload,
   BannersListResponse,
   BannersQueryParams,
   BannersStats,
 } from "../types";
 
 type UnknownRecord = Record<string, unknown>;
-const HOME_BANNERS_BASE = "/api/admin/home-banners";
+const HOME_BANNERS_BASE = "/api/admin/home/banners";
 
 const asRecord = (value: unknown): UnknownRecord =>
   value && typeof value === "object" ? (value as UnknownRecord) : {};
@@ -19,15 +20,17 @@ const asString = (value: unknown): string =>
   typeof value === "string" || typeof value === "number" ? String(value) : "";
 
 const asNumber = (value: unknown, fallback = 0): number => {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
+  if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
     const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
+    if (Number.isFinite(parsed)) return parsed;
   }
+  return fallback;
+};
+
+const asBoolean = (value: unknown, fallback = false) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.toLowerCase() === "true";
   return fallback;
 };
 
@@ -43,157 +46,52 @@ const withAdminAuthHeader = () => {
   return { Authorization: `Bearer ${token}` };
 };
 
-const handleAuthFailure = (error: unknown) => {
-  const e = error as any;
-  const status = e?.response?.status;
-  const message = String(e?.response?.data?.message ?? e?.message ?? "").toLowerCase();
-  const unauthorized =
-    status === 401 ||
-    message.includes("authorization token is required") ||
-    message.includes("invalid or expired token");
-  if (!unauthorized) return;
-
-  clearAccessToken();
-  if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-    window.location.replace("/login");
-  }
-};
-
-const toDateTimeLocal = (value?: string) => {
-  if (!value) return undefined;
-  const v = value.trim();
-  if (!v) return undefined;
-  const [datePart, timePart = ""] = v.replace(" ", "T").split("T");
-  if (!datePart) return undefined;
-  const hhmm = timePart.slice(0, 5);
-  if (!hhmm) return `${datePart}T00:00`;
-  return `${datePart}T${hhmm}`;
-};
-
 const readArray = (payload: unknown): UnknownRecord[] => {
-  if (Array.isArray(payload)) {
-    return payload as UnknownRecord[];
-  }
-
+  if (Array.isArray(payload)) return payload as UnknownRecord[];
   const root = asRecord(payload);
-  const keys = ["content", "data", "items", "banners", "results"];
-  for (const key of keys) {
-    const value = root[key];
-    if (Array.isArray(value)) {
-      return value as UnknownRecord[];
-    }
-  }
-
+  if (Array.isArray(root.content)) return root.content as UnknownRecord[];
+  if (Array.isArray(root.data)) return root.data as UnknownRecord[];
+  if (Array.isArray(root.items)) return root.items as UnknownRecord[];
+  if (Array.isArray(root.banners)) return root.banners as UnknownRecord[];
   const nested = asRecord(root.data);
-  if (Array.isArray(nested.content)) {
-    return nested.content as UnknownRecord[];
-  }
-
+  if (Array.isArray(nested.content)) return nested.content as UnknownRecord[];
   return [];
-};
-
-const normalizeStatus = (value: unknown): "ACTIVE" | "INACTIVE" | "DRAFT" => {
-  const status = asString(value).toUpperCase();
-  if (status === "ACTIVE") return "ACTIVE";
-  if (status === "INACTIVE") return "INACTIVE";
-  return "DRAFT";
-};
-
-const normalizePromoType = (value: unknown): "PROMO" | "OFFER" | "ENGAGE" | "" => {
-  const promoType = asString(value).toUpperCase();
-  if (promoType === "PROMO") return "PROMO";
-  if (promoType === "OFFER") return "OFFER";
-  if (promoType === "ENGAGE") return "ENGAGE";
-  return "";
-};
-
-const normalizePlatformType = (value: unknown): "WEB" | "ANDROID" | "IOS" | "ALL" | "" => {
-  const platform = asString(value).toUpperCase();
-  if (platform === "WEB") return "WEB";
-  if (platform === "ANDROID") return "ANDROID";
-  if (platform === "IOS") return "IOS";
-  if (platform === "ALL") return "ALL";
-  return "";
-};
-
-const normalizePlacement = (value: unknown): "TOP" | "BOTTOM" => {
-  const placement = asString(value).toUpperCase();
-  if (placement === "TOP" || placement === "HOME_TOP") return "TOP";
-  if (placement === "BOTTOM" || placement === "HOME_BOTTOM") return "BOTTOM";
-  return "BOTTOM";
 };
 
 const toBanner = (row: UnknownRecord): AdminBanner => ({
   id: asString(row.id ?? row.bannerId),
-  title: asString(row.title ?? row.name),
-  description: asString(row.description) || undefined,
-  city: asString(row.city) || undefined,
-  promoType: normalizePromoType(row.promoType ?? row.tag),
-  platformType: normalizePlatformType(row.platformType),
-  placement: normalizePlacement(row.placement ?? row.bannerPlacement ?? row.section),
-  status: normalizeStatus(row.status),
-  bannerImageUrl: asString(row.bannerImageUrl ?? row.imageUrl ?? row.image ?? row.thumbnailUrl) || undefined,
-  startDate: asString(row.startDate ?? row.startsAt ?? row.startAt) || undefined,
-  endDate: asString(row.endDate ?? row.endsAt ?? row.endAt) || undefined,
-  slotNumber: asNumber(row.slotNumber ?? row.slot, 1),
+  title: asString(row.title),
+  subtitle: asString(row.subtitle) || undefined,
+  imageUrl: asString(row.imageUrl ?? row.bannerImageUrl) || undefined,
+  redirectType: (asString(row.redirectType).toUpperCase() || "NONE") as AdminBanner["redirectType"],
+  redirectId: asString(row.redirectId) || null,
   priority: asNumber(row.priority, 1),
+  active: asBoolean(row.active, true),
+  bannerType: (asString(row.bannerType).toUpperCase() || "PROMO") as AdminBanner["bannerType"],
+  audience: (asString(row.audience).toUpperCase() || "CUSTOMER") as AdminBanner["audience"],
   createdAt: asString(row.createdAt) || undefined,
 });
 
-const toRelativePath = (url?: string) => {
-  if (!url) return null;
-  const value = url.trim();
-  if (!value) return null;
-  if (/^https?:\/\//i.test(value)) {
-    return value.replace(/^https?:\/\/[^/]+/i, "");
-  }
-  return value;
-};
-
-const buildBannerPayload = (payload: BannerFormPayload) => {
-  const bannerImageUrl = toRelativePath(payload.bannerImageUrl);
-
-  const requestPayload: Record<string, unknown> = {
-    title: payload.title.trim(),
-    bannerImageUrl,
-    promoType: payload.promoType || "PROMO",
-    platformType: payload.platformType || "WEB",
-    placement: payload.placement || "BOTTOM",
-    redirectType: "NONE",
-    redirectValue: "",
-    status: payload.status || "ACTIVE",
-    slotNumber: payload.slotNumber,
-    priority: payload.priority,
-  };
-
-  const description = payload.description?.trim();
-  if (description) {
-    requestPayload.description = description;
-  }
-
-  const city = payload.city?.trim();
-  if (city) {
-    requestPayload.city = city;
-  }
-
-  const startDate = toDateTimeLocal(payload.startDate);
-  if (startDate) {
-    requestPayload.startDate = startDate;
-  }
-
-  const endDate = toDateTimeLocal(payload.endDate);
-  if (endDate) {
-    requestPayload.endDate = endDate;
-  }
-
-  return requestPayload;
-};
+const buildBannerPayload = (payload: BannerFormPayload) => ({
+  title: payload.title.trim(),
+  subtitle: payload.subtitle?.trim() || "",
+  imageUrl: payload.imageUrl?.trim() || "",
+  redirectType: payload.redirectType,
+  redirectId: payload.redirectId ?? null,
+  priority: payload.priority,
+  active: payload.active,
+  bannerType: payload.bannerType,
+  audience: payload.audience,
+});
 
 export async function uploadBannerImage(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
   const { data } = await api.post("/api/admin/banners/upload/image", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
+    headers: {
+      "Content-Type": "multipart/form-data",
+      ...withAdminAuthHeader(),
+    },
   });
   const root = asRecord(data);
   const nested = asRecord(root.data);
@@ -202,102 +100,79 @@ export async function uploadBannerImage(file: File): Promise<string> {
 
 export async function getBanners(params: BannersQueryParams): Promise<BannersListResponse> {
   const query = {
-    page: params.page,
-    size: params.size,
-    sortBy: "createdAt",
-    sortDir: "desc",
-    status: params.status || undefined,
-    city: params.city || undefined,
-    promoType: params.promoType || undefined,
-    platformType: params.platformType || undefined,
-    placement: params.placement || undefined,
-    search: params.search || undefined,
+    audience: params.audience || undefined,
   };
+  const { data } = await api.get(HOME_BANNERS_BASE, {
+    params: query,
+    headers: withAdminAuthHeader(),
+  });
 
-  const { data } = await api.get(HOME_BANNERS_BASE, { params: query });
-  const content = readArray(data).map(toBanner);
-  const root = asRecord(data);
-  const nested = asRecord(root.data);
-  const source = Object.keys(nested).length > 0 ? nested : root;
+  const allRows = readArray(data).map(toBanner);
+  const filteredRows = params.search
+    ? allRows.filter((row) =>
+        `${row.title} ${row.subtitle ?? ""}`.toLowerCase().includes(params.search!.toLowerCase()),
+      )
+    : allRows;
+
+  const page = params.page ?? 0;
+  const size = params.size ?? 10;
+  const start = page * size;
+  const content = filteredRows.slice(start, start + size);
+  const totalElements = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalElements / size));
 
   return {
     content,
-    totalElements: asNumber(source.totalElements ?? source.total ?? content.length, content.length),
-    totalPages: asNumber(source.totalPages, Math.max(1, Math.ceil(content.length / params.size))),
-    pageNumber: asNumber(source.pageNumber ?? source.page ?? params.page, params.page),
+    totalElements,
+    totalPages,
+    pageNumber: page,
   };
 }
 
 export async function getBannerById(id: string): Promise<AdminBanner | null> {
-  try {
-    const { data } = await api.get(`${HOME_BANNERS_BASE}/${id}`, {
-      headers: withAdminAuthHeader(),
-    });
-    const root = asRecord(data);
-    const nested = asRecord(root.data);
-    const source = Object.keys(nested).length > 0 ? nested : root;
-    if (Object.keys(source).length === 0) {
-      return null;
-    }
-    return toBanner(source);
-  } catch (error) {
-    handleAuthFailure(error);
-    throw error;
-  }
+  const { data } = await api.get(`${HOME_BANNERS_BASE}/${id}`, {
+    headers: withAdminAuthHeader(),
+  });
+  const root = asRecord(data);
+  const nested = asRecord(root.data);
+  const source = Object.keys(nested).length > 0 ? nested : root;
+  if (Object.keys(source).length === 0) return null;
+  return toBanner(source);
 }
 
 export async function createBanner(payload: BannerFormPayload) {
-  const requestPayload = buildBannerPayload(payload);
-  console.log("FINAL PAYLOAD:", requestPayload);
-  const { data } = await api.post(HOME_BANNERS_BASE, requestPayload);
+  const { data } = await api.post(HOME_BANNERS_BASE, buildBannerPayload(payload), {
+    headers: withAdminAuthHeader(),
+  });
   return data;
 }
 
 export async function updateBanner(id: string, payload: BannerFormPayload) {
-  const primaryPayload = buildBannerPayload(payload);
-  console.log("FINAL PAYLOAD:", { id, ...primaryPayload });
+  const { data } = await api.put(`${HOME_BANNERS_BASE}/${id}`, buildBannerPayload(payload), {
+    headers: withAdminAuthHeader(),
+  });
+  return data;
+}
 
-  try {
-    const { data } = await api.put(`${HOME_BANNERS_BASE}/${id}`, primaryPayload, {
-      headers: withAdminAuthHeader(),
-    });
-    return data;
-  } catch (error: any) {
-    handleAuthFailure(error);
-    throw error;
-  }
+export async function reorderBanners(payload: BannerReorderPayload) {
+  const { data } = await api.patch(`${HOME_BANNERS_BASE}/reorder`, payload, {
+    headers: withAdminAuthHeader(),
+  });
+  return data;
 }
 
 export async function deleteBanner(id: string) {
-  await api.delete(`${HOME_BANNERS_BASE}/${id}`);
-}
-
-export async function activateBanner(id: string) {
-  await api.patch(`${HOME_BANNERS_BASE}/${id}/activate`);
-}
-
-export async function deactivateBanner(id: string) {
-  await api.patch(`${HOME_BANNERS_BASE}/${id}/deactivate`);
-}
-
-export async function draftBanner(id: string) {
-  await api.patch(`${HOME_BANNERS_BASE}/${id}/draft`);
+  await api.delete(`${HOME_BANNERS_BASE}/${id}`, {
+    headers: withAdminAuthHeader(),
+  });
 }
 
 export async function getBannerStats(): Promise<BannersStats> {
-  const { data } = await api.get(`${HOME_BANNERS_BASE}/stats`);
-  const root = asRecord(data);
-  const nested = asRecord(root.data);
-  const source = Object.keys(nested).length > 0 ? nested : root;
-
-  const active = asNumber(source.active);
-  const inactive = asNumber(source.inactive);
-  const draft = asNumber(source.draft);
-
-  return {
-    active,
-    inactive,
-    draft,
-    total: asNumber(source.total, active + inactive + draft),
-  };
+  const { content } = await getBanners({ page: 0, size: 500 });
+  const active = content.filter((item) => item.active).length;
+  const inactive = content.length - active;
+  const customer = content.filter((item) => item.audience === "CUSTOMER").length;
+  const partner = content.filter((item) => item.audience === "PARTNER").length;
+  const both = content.filter((item) => item.audience === "BOTH").length;
+  return { total: content.length, active, inactive, customer, partner, both };
 }

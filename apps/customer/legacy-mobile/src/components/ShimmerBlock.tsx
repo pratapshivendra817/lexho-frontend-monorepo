@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Animated, StyleSheet, View, type ViewStyle } from "react-native";
+import { Animated, StyleSheet, type ViewStyle } from "react-native";
 
 type Props = {
   height?: number;

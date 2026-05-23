@@ -4,10 +4,11 @@ export default function StatsCards({ tickets }: { tickets: Ticket[] }) {
   const open = tickets.filter(t => t.status === "OPEN").length;
   const progress = tickets.filter(t => t.status === "IN_PROGRESS").length;
   const resolved = tickets.filter(t => t.status === "RESOLVED").length;
+  const closed = tickets.filter(t => t.status === "CLOSED").length;
 
   const Card = ({ label, value }: any) => (
-    <div className="bg-white p-4 rounded-xl shadow flex-1">
-      <p className="text-gray-500 text-sm">{label}</p>
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow flex-1">
+      <p className="text-[var(--color-muted)] text-sm">{label}</p>
       <p className="text-2xl font-bold">{value}</p>
     </div>
   );
@@ -17,6 +18,7 @@ export default function StatsCards({ tickets }: { tickets: Ticket[] }) {
       <Card label="Open Tickets" value={open} />
       <Card label="In Progress" value={progress} />
       <Card label="Resolved" value={resolved} />
+      <Card label="Closed" value={closed} />
     </div>
   );
 }

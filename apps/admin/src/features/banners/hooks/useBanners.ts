@@ -1,17 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  activateBanner,
   createBanner,
-  deactivateBanner,
   deleteBanner,
-  draftBanner,
   getBannerById,
   getBanners,
   getBannerStats,
+  reorderBanners,
   updateBanner,
 } from "../api/bannersApi";
-import type { BannerFormPayload, BannersQueryParams } from "../types";
+import type { BannerFormPayload, BannerReorderPayload, BannersQueryParams } from "../types";
 
 export function useBannerStatsQuery() {
   return useQuery({
@@ -60,16 +58,8 @@ export function useBannerMutations() {
       mutationFn: (id: string) => deleteBanner(id),
       onSuccess: invalidateBanners,
     }),
-    activateBannerMutation: useMutation({
-      mutationFn: (id: string) => activateBanner(id),
-      onSuccess: invalidateBanners,
-    }),
-    deactivateBannerMutation: useMutation({
-      mutationFn: (id: string) => deactivateBanner(id),
-      onSuccess: invalidateBanners,
-    }),
-    draftBannerMutation: useMutation({
-      mutationFn: (id: string) => draftBanner(id),
+    reorderBannersMutation: useMutation({
+      mutationFn: (payload: BannerReorderPayload) => reorderBanners(payload),
       onSuccess: invalidateBanners,
     }),
   };

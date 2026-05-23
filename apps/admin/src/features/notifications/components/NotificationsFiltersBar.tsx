@@ -1,4 +1,4 @@
-type NotificationsFiltersBarProps = {
+﻿type NotificationsFiltersBarProps = {
   search: string;
   userType: string;
   notificationType: string;
@@ -42,7 +42,9 @@ export function NotificationsFiltersBar({
         <option value="">All Users</option>
         <option value="ALL_USERS">All Users</option>
         <option value="CUSTOMERS">Customers</option>
-        <option value="PROVIDERS">Providers</option>
+        <option value="PARTNERS">Partners</option>
+        <option value="ADMINS">Admins</option>
+        <option value="ADMIN">Admin</option>
         <option value="CITY_USERS">City Users</option>
         <option value="PREMIUM_USERS">Premium Users</option>
         <option value="INACTIVE_USERS">Inactive Users</option>
@@ -99,3 +101,5 @@ export function NotificationsFiltersBar({
     </div>
   );
 }
+
+

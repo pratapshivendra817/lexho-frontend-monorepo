@@ -1,4 +1,5 @@
 import { api } from "@/api/axios";
+import axios from "axios";
 
 import type {
   AdminNotification,
@@ -56,6 +57,21 @@ const toNotification = (row: UnknownRecord): AdminNotification => ({
   clickCount: asNumber(row.clickCount, 0),
 });
 
+const toLegacyTargetUserType = (value: string): string => {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "CUSTOMERS") return "CUSTOMER";
+  if (normalized === "PARTNERS") return "PARTNER";
+  return normalized;
+};
+
+const toScheduleTimeIso = (value?: string): string | undefined => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return undefined;
+  const date = new Date(raw);
+  if (!Number.isNaN(date.getTime())) return date.toISOString();
+  return raw;
+};
+
 const readPagination = (payload: unknown, size: number, page: number) => {
   const root = asRecord(payload);
   const nested = asRecord(root.data);
@@ -87,7 +103,61 @@ export async function getAdminNotificationById(id: string): Promise<AdminNotific
 }
 
 export async function sendAdminNotification(payload: SendAdminNotificationPayload) {
-  await api.post("/api/admin/notifications/send", payload);
+  const normalizedPayload = {
+    ...payload,
+    targetUserType: toLegacyTargetUserType(payload.targetUserType),
+    scheduledTime: toScheduleTimeIso(payload.scheduledTime),
+  };
+
+  const legacyShapedPayload = {
+    ...normalizedPayload,
+    channelType: normalizedPayload.channels?.[0],
+    scheduleTime: normalizedPayload.scheduledTime,
+  };
+
+  const attempts: Array<{ endpoint: string; body: Record<string, unknown> }> = [
+    { endpoint: "/api/admin/notifications", body: payload as unknown as Record<string, unknown> },
+    { endpoint: "/api/admin/notifications/send", body: payload as unknown as Record<string, unknown> },
+    { endpoint: "/api/admin/notifications/send", body: normalizedPayload as unknown as Record<string, unknown> },
+    { endpoint: "/api/admin/notifications/send", body: legacyShapedPayload as unknown as Record<string, unknown> },
+    { endpoint: "/api/admin/notifications", body: normalizedPayload as unknown as Record<string, unknown> },
+  ];
+
+  let lastError: unknown = null;
+  for (const attempt of attempts) {
+    try {
+      if (import.meta.env.DEV) {
+        console.log("[admin:notifications:send:attempt]", {
+          endpoint: attempt.endpoint,
+          body: attempt.body,
+        });
+      }
+      await api.post(attempt.endpoint, attempt.body);
+      if (import.meta.env.DEV) {
+        console.log("[admin:notifications:send:success]", {
+          endpoint: attempt.endpoint,
+        });
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+      if (import.meta.env.DEV) {
+        console.log("[admin:notifications:send:failed]", {
+          endpoint: attempt.endpoint,
+          status: axios.isAxiosError(error) ? error.response?.status : "UNKNOWN",
+          message: axios.isAxiosError(error) ? error.response?.data?.message : String(error),
+        });
+      }
+      if (!axios.isAxiosError(error)) {
+        throw error;
+      }
+      const status = error.response?.status ?? 0;
+      if (![400, 404, 405, 422, 500].includes(status)) {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
 }
 
 export async function retryAdminNotification(id: string) {

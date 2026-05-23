@@ -1,201 +1,108 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const TOKEN_KEY = 'token';
-const SESSION_KEY = 'session';
-const DEFAULT_ROLE = 'CUSTOMER';
+const TOKEN_KEY = "@lexho/customer/token";
+const REFRESH_TOKEN_KEY = "@lexho/customer/refresh-token";
+const USER_KEY = "@lexho/customer/user";
+const DEVICE_ID_KEY = "@lexho/customer/device-id";
+const LEGACY_TOKEN_KEY = "@customer/auth-token";
+const LEGACY_USER_KEY = "@customer/user";
 
-const normalizeStorageString = value => {
-  if (value === null || value === undefined) {
-    return null;
+const asString = (value) => (typeof value === "string" ? value : value == null ? "" : String(value));
+
+const toUserJson = (user) => {
+  try {
+    return JSON.stringify(user);
+  } catch {
+    return "";
   }
-
-  const normalized = String(value);
-  return normalized.length ? normalized : null;
 };
 
-const isValidStorageKey = key => typeof key === 'string' && key.trim().length > 0;
+export async function saveSession(token, refreshToken, user) {
+  if (typeof AsyncStorage?.setItem !== "function") return;
+  const safeToken = asString(token).trim();
+  if (!safeToken) return;
+  await AsyncStorage.setItem(TOKEN_KEY, safeToken);
+  await AsyncStorage.setItem(LEGACY_TOKEN_KEY, safeToken);
+  const safeRefresh = asString(refreshToken).trim();
+  if (safeRefresh) await AsyncStorage.setItem(REFRESH_TOKEN_KEY, safeRefresh);
+  if (user) {
+    const userJson = toUserJson(user);
+    if (userJson) {
+      await AsyncStorage.setItem(USER_KEY, userJson);
+      await AsyncStorage.setItem(LEGACY_USER_KEY, userJson);
+    }
+  }
+}
 
-const safeSetItem = async (key, value) => {
-  if (!isValidStorageKey(key)) return;
-  const normalizedValue = normalizeStorageString(value);
-  if (!normalizedValue) return;
-  await AsyncStorage.setItem(key, normalizedValue);
-};
-
-const safeRemoveItem = async key => {
-  if (!isValidStorageKey(key)) return;
-  await AsyncStorage.removeItem(key);
-};
-
-const safeMultiRemove = async keys => {
-  const validKeys = (keys || []).filter(isValidStorageKey);
-  if (!validKeys.length) return;
-  await AsyncStorage.multiRemove(validKeys);
-};
-
-export const saveToken = async (token) => {
-  const normalizedToken = normalizeStorageString(token);
-  if (!normalizedToken) {
-    await safeRemoveItem(TOKEN_KEY);
+export async function clearSession() {
+  if (typeof AsyncStorage?.multiRemove === "function") {
+    await AsyncStorage.multiRemove([TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY, LEGACY_TOKEN_KEY, LEGACY_USER_KEY]);
     return;
   }
-
-  await safeSetItem(TOKEN_KEY, normalizedToken);
-};
-
-export const getToken = async () => {
-  if (!isValidStorageKey(TOKEN_KEY)) {
-    return null;
+  if (typeof AsyncStorage?.removeItem === "function") {
+    await AsyncStorage.removeItem(TOKEN_KEY);
+    await AsyncStorage.removeItem(REFRESH_TOKEN_KEY);
+    await AsyncStorage.removeItem(USER_KEY);
+    await AsyncStorage.removeItem(LEGACY_TOKEN_KEY);
+    await AsyncStorage.removeItem(LEGACY_USER_KEY);
   }
-  return await AsyncStorage.getItem(TOKEN_KEY);
-};
+}
 
-export const removeToken = async () => {
-  await safeRemoveItem(TOKEN_KEY);
-};
+export async function getRefreshToken() {
+  if (typeof AsyncStorage?.getItem !== "function") return null;
+  return AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+}
 
-const extractUser = (payload = {}) => {
-  return (
-    payload.user ||
-    payload.customer ||
-    payload.profile ||
-    payload.result?.user ||
-    payload.result?.customer ||
-    payload.result?.profile ||
-    payload.data?.user ||
-    payload.data?.customer ||
-    payload.data?.profile ||
-    null
-  );
-};
-
-export const extractToken = (payload = {}) => {
-  return (
-    payload.token ||
-    payload.accessToken ||
-    payload.authToken ||
-    payload.jwt ||
-    payload.jwtToken ||
-    payload.result?.token ||
-    payload.result?.accessToken ||
-    payload.data?.token ||
-    payload.data?.accessToken ||
-    null
-  );
-};
-
-export const extractUserId = (payload = {}) => {
-  const user = extractUser(payload);
-
-  return (
-    user?.id ||
-    user?.userId ||
-    user?._id ||
-    user?.user_id ||
-    user?.customerId ||
-    user?.customer_id ||
-    payload.id ||
-    payload._id ||
-    payload.userId ||
-    payload.user_id ||
-    payload.customerId ||
-    payload.customer_id ||
-    payload.result?.id ||
-    payload.result?._id ||
-    payload.result?.userId ||
-    payload.result?.user_id ||
-    payload.result?.customerId ||
-    payload.result?.customer_id ||
-    payload.data?.userId ||
-    payload.data?.user_id ||
-    payload.data?.customerId ||
-    payload.data?.customer_id ||
-    payload.data?.id ||
-    payload.data?._id ||
-    null
-  );
-};
-
-const normalizeRole = (role) => {
-  const value = String(role || DEFAULT_ROLE).toUpperCase();
-  if (value === 'ADMIN') return 'ADMIN';
-  if (value === 'PARTNER') return 'PARTNER';
-  return 'CUSTOMER';
-};
-
-export const extractRole = (payload = {}) => {
-  const user = extractUser(payload);
-  return normalizeRole(
-    payload.role ||
-      payload.userRole ||
-      payload.accountType ||
-      payload.result?.role ||
-      payload.result?.userRole ||
-      payload.data?.role ||
-      payload.data?.userRole ||
-      user?.role ||
-      user?.userRole ||
-      user?.accountType
-  );
-};
-
-export const saveSession = async (payload = {}) => {
-  const token = normalizeStorageString(extractToken(payload));
-  const user = extractUser(payload);
-  const userId = extractUserId(payload);
-  const role = extractRole(payload);
-
-  if (!token) {
-    return null;
+export async function getOrCreateDeviceId() {
+  if (typeof AsyncStorage?.getItem !== "function" || typeof AsyncStorage?.setItem !== "function") {
+    return `customer-${Date.now()}`;
   }
+  const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
+  if (existing && existing.trim()) return existing;
+  const created = `customer-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, created);
+  return created;
+}
 
-  const session = {
-    token,
-    role,
-    user,
-    userId,
-  };
-
-  const pairs = [
-    [TOKEN_KEY, token],
-    [SESSION_KEY, JSON.stringify(session)],
-  ].filter(([key, value]) => isValidStorageKey(key) && normalizeStorageString(value));
-  if (pairs.length) {
-    await AsyncStorage.multiSet(pairs);
-  }
-
-  return session;
-};
-
-export const getSession = async () => {
-  if (!isValidStorageKey(SESSION_KEY)) {
-    return null;
-  }
-  const rawSession = await AsyncStorage.getItem(SESSION_KEY);
-
-  if (!rawSession) {
-    const token = await getToken();
-    return token ? { token, role: DEFAULT_ROLE, user: null, userId: null } : null;
-  }
-
+export async function loadSession() {
   try {
-    const parsed = JSON.parse(rawSession);
-    if (!parsed?.token) {
-      return null;
-    }
-    return {
-      token: parsed.token,
-      role: normalizeRole(parsed.role),
-      user: parsed.user || null,
-      userId: parsed.userId || null,
-    };
-  } catch {
-    await safeRemoveItem(SESSION_KEY);
-    const token = await getToken();
-    return token ? { token, role: DEFAULT_ROLE, user: null, userId: null } : null;
-  }
-};
+    let tokenValue = null;
+    let refreshValue = null;
+    let userRaw = null;
 
-export const clearSession = async () => {
-  await safeMultiRemove([TOKEN_KEY, SESSION_KEY]);
-};
+    if (typeof AsyncStorage?.multiGet === "function") {
+      const result = await AsyncStorage.multiGet([TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY, LEGACY_TOKEN_KEY, LEGACY_USER_KEY]);
+      tokenValue = result?.[0]?.[1] ?? null;
+      refreshValue = result?.[1]?.[1] ?? null;
+      userRaw = result?.[2]?.[1] ?? null;
+      if (!tokenValue) tokenValue = result?.[3]?.[1] ?? null;
+      if (!userRaw) userRaw = result?.[4]?.[1] ?? null;
+    } else if (typeof AsyncStorage?.getItem === "function") {
+      tokenValue = await AsyncStorage.getItem(TOKEN_KEY);
+      refreshValue = await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+      userRaw = await AsyncStorage.getItem(USER_KEY);
+      if (!tokenValue) tokenValue = await AsyncStorage.getItem(LEGACY_TOKEN_KEY);
+      if (!userRaw) userRaw = await AsyncStorage.getItem(LEGACY_USER_KEY);
+    }
+
+    let user = null;
+    if (userRaw) {
+      try {
+        user = JSON.parse(userRaw);
+      } catch {
+        user = null;
+      }
+    }
+    return { token: tokenValue, refreshToken: refreshValue, user };
+  } catch {
+    return { token: null, refreshToken: null, user: null };
+  }
+}
+
+export async function getToken() {
+  if (typeof AsyncStorage?.getItem !== "function") return null;
+  const token = await AsyncStorage.getItem(TOKEN_KEY);
+  if (token) return token;
+  return AsyncStorage.getItem(LEGACY_TOKEN_KEY);
+}
+

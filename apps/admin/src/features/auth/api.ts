@@ -1,4 +1,4 @@
-import { createApiClient } from "@lexho/api";
+﻿import { createApiClient } from "@lexho/api";
 import { isAxiosError } from "axios";
 
 import { appConfig } from "../../config";
@@ -38,13 +38,13 @@ function extractApiError(error: unknown, fallback: string) {
 }
 
 export const requestAdminOtp = async (payload: {
-  identifier: string;
+  email: string;
   password: string;
 }) => {
-  const identifier = payload.identifier.trim();
+  const email = payload.email.trim();
   const password = payload.password.trim();
 
-  const requestPayload = { email: identifier.toLowerCase(), password };
+  const requestPayload = { email: email.toLowerCase(), password };
   try {
     return await authClient.post(ADMIN_AUTH_ENDPOINTS.login, requestPayload);
   } catch (error) {
@@ -53,14 +53,15 @@ export const requestAdminOtp = async (payload: {
 };
 
 export const verifyAdminOtp = async (payload: {
-  identifier: string;
+  email: string;
   otp: string;
 }) => {
-  const identifier = payload.identifier.trim();
-  const requestPayload = { email: identifier.toLowerCase(), otp: payload.otp.trim() };
+  const email = payload.email.trim();
+  const requestPayload = { email: email.toLowerCase(), otp: payload.otp.trim() };
   try {
     return await authClient.post(ADMIN_AUTH_ENDPOINTS.verifyOtp, requestPayload);
   } catch (error) {
     throw new Error(extractApiError(error, "OTP verification failed"));
   }
 };
+

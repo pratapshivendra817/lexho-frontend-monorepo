@@ -1,128 +1,266 @@
+import { useState } from "react";
 import toast from "react-hot-toast";
 import { Link, useParams } from "react-router-dom";
 
 import { DataState } from "@/components/admin";
 import { extractApiError } from "@/utils/apiError";
+import { shareContent } from "@/utils/share";
 
-import { ProviderStatusBadge } from "../components";
-import { downloadProviderDocument } from "../api/providersApi";
-import { useProviderDetailsQuery } from "../hooks/useProviders";
+import { downloadPartnerDocument } from "../api/partnersApi";
+import { PartnerStatusBadge } from "../components";
+import { usePartnerDashboardStatsQuery, usePartnerDetailsQuery, usePartnerMutations } from "../hooks/usePartners";
 
-export default function ProviderDetailsPage() {
+export default function PartnerDetailsPage() {
   const { id } = useParams();
-  const detailsQuery = useProviderDetailsQuery(id);
+  const detailsQuery = usePartnerDetailsQuery(id);
+  const statsQuery = usePartnerDashboardStatsQuery(id);
+  const {
+    updatePartnerAvailabilityMutation,
+    reviewPartnerKycDocumentMutation,
+    forcePartnerAvailabilityMutation,
+    updatePartnerSkillsGovernanceMutation,
+    runPartnerRiskActionMutation,
+  } = usePartnerMutations();
+  const [lockMinutes, setLockMinutes] = useState("1440");
+  const [forceReason, setForceReason] = useState("Quality audit hold");
+  const [categoryIds, setCategoryIds] = useState("");
+  const [subServiceIds, setSubServiceIds] = useState("");
+  const [riskReason, setRiskReason] = useState("Fraudulent behavior detected");
 
-  const provider = detailsQuery.data;
+  const partner = detailsQuery.data;
+  const stats = statsQuery.data;
+  const online = Boolean(partner?.online);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-[var(--color-text)]">Provider Details</h2>
-          <p className="text-sm text-[var(--color-muted)]">Review profile, documents and status history</p>
+          <h2 className="text-lg font-semibold text-[var(--color-text)]">Partner Details</h2>
+          <p className="text-sm text-[var(--color-muted)]">Review profile, documents and governance controls</p>
         </div>
-        <Link to="/providers" className="rounded border border-[var(--color-border)] px-3 py-1.5 text-sm">
-          Back
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={!partner}
+            onClick={() => {
+              if (!partner) return;
+              void shareContent({
+                title: `Partner ${partner.name || partner.id}`,
+                text: `Status: ${partner.status}\nCity: ${partner.city || "-"}\nService: ${partner.serviceType || "-"}\nPhone: ${partner.phone || "-"}`,
+                url: window.location.href,
+                successMessage: "Partner details copied",
+              });
+            }}
+            className="rounded border border-[var(--color-border)] px-3 py-1.5 text-sm disabled:opacity-60"
+          >
+            Share
+          </button>
+          <Link to="/partners" className="rounded border border-[var(--color-border)] px-3 py-1.5 text-sm">
+            Back
+          </Link>
+        </div>
       </div>
 
       <DataState
         isLoading={detailsQuery.isLoading}
         isError={detailsQuery.isError}
-        isEmpty={!provider}
-        loadingText="Loading provider details..."
-        errorText="Unable to load provider details"
-        emptyText="Provider not found"
-        onRetry={() => {
-          void detailsQuery.refetch();
-        }}
+        isEmpty={!partner}
+        loadingText="Loading partner details..."
+        errorText="Unable to load partner details"
+        emptyText="Partner not found"
+        onRetry={() => void detailsQuery.refetch()}
       >
         <div className="grid gap-4 xl:grid-cols-3">
           <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 xl:col-span-2">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Profile</h3>
             <div className="grid gap-3 sm:grid-cols-2">
-              <InfoRow label="Provider ID" value={provider?.id} />
-              <InfoRow label="Name" value={provider?.name} />
-              <InfoRow label="Email" value={provider?.email} />
-              <InfoRow label="Phone" value={provider?.phone} />
-              <InfoRow label="Gender" value={provider?.gender} />
-              <InfoRow label="DOB" value={provider?.dob} />
-              <InfoRow label="City" value={provider?.city} />
-              <InfoRow label="State" value={provider?.state} />
-              <InfoRow label="Address" value={provider?.address} full />
-              <InfoRow label="Service Type" value={provider?.serviceType} />
-              <InfoRow label="Experience" value={provider?.experience} />
-              <InfoRow label="Availability Type" value={provider?.availabilityType} />
-              <InfoRow label="Service Areas" value={provider?.serviceAreas?.join(", ")} full />
-              <InfoRow label="Working Days" value={provider?.workingDays?.join(", ")} full />
-              <InfoRow label="Work Time" value={`${provider?.startTime ?? "-"} to ${provider?.endTime ?? "-"}`} />
-              <InfoRow label="Bank A/C" value={provider?.accountNumber} />
-              <InfoRow label="IFSC" value={provider?.ifscCode} />
+              <InfoRow label="Partner ID" value={partner?.id} />
+              <InfoRow label="Name" value={partner?.name} />
+              <InfoRow label="Email" value={partner?.email} />
+              <InfoRow label="Phone" value={partner?.phone} />
+              <InfoRow label="City" value={partner?.city} />
+              <InfoRow label="State" value={partner?.state} />
+              <InfoRow label="Address" value={partner?.address} full />
+              <InfoRow label="Service Type" value={partner?.serviceType} />
+              <InfoRow label="Bank A/C" value={partner?.accountNumber} />
+              <InfoRow label="IFSC" value={partner?.ifscCode} />
             </div>
           </section>
 
           <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
             <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Status</h3>
-            {provider ? <ProviderStatusBadge status={provider.status} /> : null}
-
-            <h4 className="mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">Status History</h4>
-            <div className="mt-3 grid gap-2">
-              {provider?.statusHistory.length ? (
-                provider.statusHistory.map((item, index) => (
-                  <div key={`${item.status}-${item.changedAt ?? index}`} className="rounded-lg border border-[var(--color-border)] p-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <ProviderStatusBadge status={item.status} />
-                      <span className="text-[var(--color-muted)]">{item.changedAt ?? "-"}</span>
-                    </div>
-                    {item.reason ? <p className="mt-2 text-[var(--color-text)]">{item.reason}</p> : null}
-                    {item.changedBy ? <p className="mt-1 text-[var(--color-muted)]">By: {item.changedBy}</p> : null}
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-[var(--color-muted)]">No status history available.</p>
-              )}
+            {partner ? <PartnerStatusBadge status={partner.status} /> : null}
+            <div className="mt-4 rounded-lg border border-[var(--color-border)] p-3">
+              <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Availability</p>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-[var(--color-text)]">{online ? "Online" : "Offline"}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!partner) return;
+                    const nextOnline = !online;
+                    updatePartnerAvailabilityMutation.mutate(
+                      { id: partner.id, online: nextOnline },
+                      {
+                        onSuccess: () => toast.success(`Partner marked ${nextOnline ? "Online" : "Offline"}`),
+                        onError: (error) => toast.error(extractApiError(error, "Failed to update availability")),
+                      },
+                    );
+                  }}
+                  disabled={updatePartnerAvailabilityMutation.isPending}
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold bg-zinc-500/20 text-zinc-300"
+                >
+                  {updatePartnerAvailabilityMutation.isPending ? "Updating..." : online ? "Set Offline" : "Set Online"}
+                </button>
+              </div>
             </div>
           </section>
         </div>
 
         <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Governance Controls</h3>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded border border-[var(--color-border)] p-3">
+              <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Force Availability</p>
+              <input value={lockMinutes} onChange={(event) => setLockMinutes(event.target.value)} placeholder="Lock minutes" className="mt-2 w-full rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs" />
+              <input value={forceReason} onChange={(event) => setForceReason(event.target.value)} placeholder="Reason" className="mt-2 w-full rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs" />
+              <button
+                type="button"
+                className="mt-2 rounded border border-[var(--color-border)] px-2 py-1 text-xs"
+                onClick={() => {
+                  if (!partner) return;
+                  forcePartnerAvailabilityMutation.mutate(
+                    { partnerId: partner.id, online: false, lockMinutes: Number(lockMinutes) || 0, reason: forceReason },
+                    {
+                      onSuccess: () => toast.success("Availability force-updated"),
+                      onError: (error) => toast.error(extractApiError(error, "Force availability failed")),
+                    },
+                  );
+                }}
+              >
+                Force Offline
+              </button>
+            </div>
+            <div className="rounded border border-[var(--color-border)] p-3">
+              <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Skills Governance</p>
+              <input value={categoryIds} onChange={(event) => setCategoryIds(event.target.value)} placeholder="Category IDs (1,2)" className="mt-2 w-full rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs" />
+              <input value={subServiceIds} onChange={(event) => setSubServiceIds(event.target.value)} placeholder="SubService IDs (11,12)" className="mt-2 w-full rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs" />
+              <button
+                type="button"
+                className="mt-2 rounded border border-[var(--color-border)] px-2 py-1 text-xs"
+                onClick={() => {
+                  if (!partner) return;
+                  const cids = categoryIds.split(",").map((v) => Number(v.trim())).filter((v) => Number.isFinite(v));
+                  const sids = subServiceIds.split(",").map((v) => Number(v.trim())).filter((v) => Number.isFinite(v));
+                  updatePartnerSkillsGovernanceMutation.mutate(
+                    { partnerId: partner.id, categoryIds: cids, subServiceIds: sids },
+                    {
+                      onSuccess: () => toast.success("Skills updated"),
+                      onError: (error) => toast.error(extractApiError(error, "Skills update failed")),
+                    },
+                  );
+                }}
+              >
+                Update Skills
+              </button>
+            </div>
+            <div className="rounded border border-[var(--color-border)] p-3 md:col-span-2">
+              <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Risk / Fraud Actions</p>
+              <input value={riskReason} onChange={(event) => setRiskReason(event.target.value)} placeholder="Reason" className="mt-2 w-full rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs" />
+              <div className="mt-2 flex flex-wrap gap-2">
+                {["SOFT_BLOCK", "HARD_BLOCK", "UNBLOCK", "FLAG_FRAUD"].map((action) => (
+                  <button
+                    key={action}
+                    type="button"
+                    className="rounded border border-[var(--color-border)] px-2 py-1 text-xs"
+                    onClick={() => {
+                      if (!partner) return;
+                      runPartnerRiskActionMutation.mutate(
+                        { partnerId: partner.id, action: action as "SOFT_BLOCK" | "HARD_BLOCK" | "UNBLOCK" | "FLAG_FRAUD", reason: riskReason },
+                        {
+                          onSuccess: () => toast.success(`${action} applied`),
+                          onError: (error) => toast.error(extractApiError(error, "Risk action failed")),
+                        },
+                      );
+                    }}
+                  >
+                    {action}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Dashboard Stats</h3>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <StatItem label="Today Earnings" value={`INR ${stats?.todayEarnings ?? 0}`} />
+            <StatItem label="Completed Orders" value={String(stats?.totalCompletedOrders ?? 0)} />
+            <StatItem label="Pending Orders" value={String(stats?.pendingOrders ?? 0)} />
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Documents</h3>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {provider?.documents.length ? (
-              provider.documents.map((document) => {
-                const isImage = document.contentType.includes("image");
-                const isPdf = document.contentType.includes("pdf");
-
-                return (
-                  <div key={document.id} className="rounded-lg border border-[var(--color-border)] p-3">
-                    <p className="text-sm font-medium text-[var(--color-text)]">{document.name || document.documentType}</p>
-                    <p className="text-xs text-[var(--color-muted)]">{document.documentType}</p>
-
-                    <div className="mt-3 overflow-hidden rounded-md border border-[var(--color-border)]">
-                      {document.previewUrl && isImage ? (
-                        <img src={document.previewUrl} alt={document.name} className="h-40 w-full object-cover" />
-                      ) : document.previewUrl && isPdf ? (
-                        <iframe title={document.name} src={document.previewUrl} className="h-40 w-full" />
-                      ) : (
-                        <div className="grid h-40 place-items-center text-xs text-[var(--color-muted)]">Preview unavailable</div>
-                      )}
-                    </div>
-
+            {partner?.documents.length ? (
+              partner.documents.map((document) => (
+                <div key={document.id} className="rounded-lg border border-[var(--color-border)] p-3">
+                  <p className="text-sm font-medium text-[var(--color-text)]">{document.name || document.documentType}</p>
+                  <p className="text-xs text-[var(--color-muted)]">{document.documentType}</p>
+                  <button
+                    type="button"
+                    className="mt-3 w-full rounded border border-[var(--color-border)] px-3 py-1.5 text-sm"
+                    onClick={() => {
+                      if (!partner) return;
+                      if (!document.previewUrl) {
+                        toast.error("Document URL not available");
+                        return;
+                      }
+                      downloadPartnerDocument(partner.id, document.id, document.previewUrl).catch((error) => {
+                        toast.error(extractApiError(error, "Unable to download document"));
+                      });
+                    }}
+                  >
+                    Download
+                  </button>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      className="mt-3 w-full rounded border border-[var(--color-border)] px-3 py-1.5 text-sm"
+                      className="rounded border border-emerald-500/40 px-2 py-1 text-xs text-emerald-300"
                       onClick={() => {
-                        if (!provider) return;
-                        downloadProviderDocument(provider.id, document.id).catch((error) => {
-                          toast.error(extractApiError(error, "Unable to download document"));
-                        });
+                        if (!partner) return;
+                        reviewPartnerKycDocumentMutation.mutate(
+                          { partnerId: partner.id, documentId: document.id, decision: "APPROVED", reason: "Document is clear and valid" },
+                          {
+                            onSuccess: () => toast.success("Document approved"),
+                            onError: (error) => toast.error(extractApiError(error, "KYC review failed")),
+                          },
+                        );
                       }}
                     >
-                      Download
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-rose-500/40 px-2 py-1 text-xs text-rose-300"
+                      onClick={() => {
+                        if (!partner) return;
+                        reviewPartnerKycDocumentMutation.mutate(
+                          { partnerId: partner.id, documentId: document.id, decision: "REJECTED", reason: "Document mismatch" },
+                          {
+                            onSuccess: () => toast.success("Document rejected"),
+                            onError: (error) => toast.error(extractApiError(error, "KYC review failed")),
+                          },
+                        );
+                      }}
+                    >
+                      Reject
                     </button>
                   </div>
-                );
-              })
+                </div>
+              ))
             ) : (
               <p className="text-sm text-[var(--color-muted)]">No documents uploaded.</p>
             )}
@@ -138,6 +276,15 @@ function InfoRow({ label, value, full = false }: { label: string; value?: string
     <div className={full ? "sm:col-span-2" : ""}>
       <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
       <p className="mt-1 text-sm text-[var(--color-text)]">{value && value.length > 0 ? value : "-"}</p>
+    </div>
+  );
+}
+
+function StatItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-soft)] p-3">
+      <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-[var(--color-text)]">{value}</p>
     </div>
   );
 }

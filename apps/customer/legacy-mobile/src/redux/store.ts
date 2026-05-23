@@ -7,6 +7,8 @@ import cartReducer from "./cartSlice";
 import favoritesReducer from "./favoritesSlice";
 import subscriptionsReducer from "./subscriptionSlice";
 import serviceReducer from "./serviceSlice";
+import locationReducer from "./locationSlice";
+import customerProfileReducer from "./customerProfileSlice";
 
 export const store = configureStore({
   reducer: {
@@ -18,6 +20,8 @@ export const store = configureStore({
     favorites: favoritesReducer,
     subscriptions: subscriptionsReducer,
     service: serviceReducer,
+    location: locationReducer,
+    customerProfile: customerProfileReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

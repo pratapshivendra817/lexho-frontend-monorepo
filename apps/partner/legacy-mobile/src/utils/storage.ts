@@ -1,7 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const TOKEN_KEY = "admin_jwt_token";
+const REFRESH_TOKEN_KEY = "partner_refresh_token";
 const PROFILE_KEY = "admin_profile";
+const DEVICE_ID_KEY = "partner_device_id";
+const PROVIDER_ID_KEY = "partner_provider_id";
 
 export type StoredAdminProfile = {
   email: string;
@@ -48,11 +51,37 @@ export const saveToken = async (token: unknown): Promise<void> => {
   await safeSetItem(TOKEN_KEY, normalizedToken);
 };
 
+export const saveRefreshToken = async (token: unknown): Promise<void> => {
+  const normalized = normalizeStorageString(token);
+  if (!normalized) {
+    await safeRemoveItem(REFRESH_TOKEN_KEY);
+    return;
+  }
+  await safeSetItem(REFRESH_TOKEN_KEY, normalized);
+};
+
 export const getToken = async (): Promise<string | null> => {
   if (!isValidStorageKey(TOKEN_KEY)) {
     return null;
   }
   return AsyncStorage.getItem(TOKEN_KEY);
+};
+
+export const getRefreshToken = async (): Promise<string | null> => {
+  if (!isValidStorageKey(REFRESH_TOKEN_KEY)) {
+    return null;
+  }
+  return AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+};
+
+export const getOrCreateDeviceId = async (): Promise<string> => {
+  const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
+  if (existing && existing.trim().length > 0) {
+    return existing;
+  }
+  const created = `partner-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  await AsyncStorage.setItem(DEVICE_ID_KEY, created);
+  return created;
 };
 
 export const saveAdminProfile = async (profile: StoredAdminProfile | null | undefined): Promise<void> => {
@@ -82,7 +111,23 @@ export const getAdminProfile = async (): Promise<StoredAdminProfile | null> => {
 };
 
 export const clearSession = async (): Promise<void> => {
-  await safeMultiRemove([TOKEN_KEY, PROFILE_KEY]);
+  await safeMultiRemove([TOKEN_KEY, REFRESH_TOKEN_KEY, PROFILE_KEY, PROVIDER_ID_KEY]);
+};
+
+export const savePartnerProviderId = async (providerId: string | number | null | undefined): Promise<void> => {
+  const normalized = normalizeStorageString(providerId);
+  if (!normalized) {
+    await safeRemoveItem(PROVIDER_ID_KEY);
+    return;
+  }
+  await safeSetItem(PROVIDER_ID_KEY, normalized);
+};
+
+export const getPartnerProviderId = async (): Promise<string | null> => {
+  if (!isValidStorageKey(PROVIDER_ID_KEY)) {
+    return null;
+  }
+  return AsyncStorage.getItem(PROVIDER_ID_KEY);
 };
 
 export const extractJwtToken = (payload: Record<string, any> = {}): string | null => {

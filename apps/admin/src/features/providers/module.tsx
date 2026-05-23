@@ -3,41 +3,42 @@
 import { LazyScreen } from "../../navigation/LazyScreen";
 import type { AdminNavItem, AdminRouteConfig, AdminRouteMeta } from "../../navigation/types";
 
-const ProvidersPage = lazy(() => import("./pages/ProvidersPage"));
-const ProviderDetailsPage = lazy(() => import("./pages/ProviderVerificationPage"));
+const PartnersPage = lazy(() => import("./pages/ProvidersPage"));
+const PartnerDetailsPage = lazy(() => import("./pages/ProviderVerificationPage"));
 
-export const providersRoutes: AdminRouteConfig[] = [
+export const partnersRoutes: AdminRouteConfig[] = [
   {
-    path: "/providers",
+    path: "/partners",
     children: [
       {
         index: true,
-        element: <LazyScreen component={ProvidersPage} />,
+        element: <LazyScreen component={PartnersPage} />,
       },
       {
         path: ":id",
-        element: <LazyScreen component={ProviderDetailsPage} />,
+        element: <LazyScreen component={PartnerDetailsPage} />,
       },
     ],
   },
 ];
 
-export const providersNavItems: AdminNavItem[] = [
+export const partnersNavItems: AdminNavItem[] = [
   {
-    path: "/providers",
-    label: "Providers",
+    path: "/partners",
+    label: "Partners",
   },
 ];
 
-export const providersRouteMeta: AdminRouteMeta[] = [
+export const partnersRouteMeta: AdminRouteMeta[] = [
   {
-    pathPrefix: "/providers/",
-    title: "Provider Details",
-    breadcrumb: "Providers / Details",
+    pathPrefix: "/partners/",
+    title: "Partner Details",
+    breadcrumb: "Partners / Details",
   },
   {
-    pathPrefix: "/providers",
-    title: "Providers",
-    breadcrumb: "providers",
+    pathPrefix: "/partners",
+    title: "Partners",
+    breadcrumb: "partners",
   },
 ];
+

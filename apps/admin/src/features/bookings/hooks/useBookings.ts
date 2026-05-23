@@ -5,10 +5,18 @@ import {
   getBookingById,
   getBookings,
   getBookingStats,
+  manualDispatchOrder,
   softDeleteBooking,
+  updateOrderLifecycle,
   updateBooking,
 } from "../api/bookingsApi";
-import type { BookingListItem, BookingListParams, BookingListResponse, UpdateBookingPayload } from "../types";
+import type {
+  BookingListItem,
+  BookingListParams,
+  BookingListResponse,
+  DispatchLifecycleStatus,
+  UpdateBookingPayload,
+} from "../types";
 
 export const bookingQueryKeys = {
   stats: ["admin-bookings-stats"] as const,
@@ -142,5 +150,21 @@ export function useBookingMutations() {
         await queryClient.invalidateQueries({ queryKey: bookingQueryKeys.stats });
       },
     }),
+    manualDispatchMutation: useMutation({
+      mutationFn: (orderId: string) => manualDispatchOrder(orderId),
+      onSuccess: async (_, orderId) => {
+        await queryClient.invalidateQueries({ queryKey: bookingQueryKeys.details(orderId) });
+        await queryClient.invalidateQueries({ queryKey: ["admin-bookings-list"] });
+      },
+    }),
+    updateLifecycleMutation: useMutation({
+      mutationFn: ({ orderId, lifecycle }: { orderId: string; lifecycle: DispatchLifecycleStatus }) =>
+        updateOrderLifecycle(orderId, lifecycle),
+      onSuccess: async (_, variables) => {
+        await queryClient.invalidateQueries({ queryKey: bookingQueryKeys.details(variables.orderId) });
+        await queryClient.invalidateQueries({ queryKey: ["admin-bookings-list"] });
+      },
+    }),
   };
 }
+

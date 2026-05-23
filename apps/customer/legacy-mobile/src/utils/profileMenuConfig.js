@@ -10,7 +10,7 @@ export const PROFILE_MENU_ITEMS = [
   {
     id: "rating",
     title: "Rate & Review",
-    subtitle: "Rate providers, build trust",
+    subtitle: "Rate partners, build trust",
     icon: "star",
     color: "#F59E0B",
     routeName: "Review",
@@ -64,3 +64,4 @@ export const PROFILE_MENU_ITEMS = [
 export function getProfileMenuItem(itemId) {
   return PROFILE_MENU_ITEMS.find(item => item.id === itemId) || null;
 }
+

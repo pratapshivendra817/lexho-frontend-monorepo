@@ -76,8 +76,11 @@ export default function ServiceDetailsPage() {
   });
 
   const service = serviceQuery.data;
-  const includedItems = useMemo(() => (service?.details ?? []).filter((row) => row.type === "INCLUDED"), [service?.details]);
-  const excludedItems = useMemo(() => (service?.details ?? []).filter((row) => row.type === "EXCLUDED"), [service?.details]);
+  const details = service?.details ?? [];
+  const includedItems = useMemo(() => details.filter((row) => row.type === "INCLUDED"), [details]);
+  const excludedItems = useMemo(() => details.filter((row) => row.type === "EXCLUDED"), [details]);
+  const faqItems = useMemo(() => details.filter((row) => row.type === "FAQ"), [details]);
+  const instructionItems = useMemo(() => details.filter((row) => row.type === "INSTRUCTION"), [details]);
 
   const openCreateModal = (type: ServiceDetailType) => {
     setModal({ open: true, mode: "create", type, detail: null, value: "" });
@@ -100,12 +103,10 @@ export default function ServiceDetailsPage() {
     addMutation.mutate({ type: modal.type, itemName: value });
   };
 
-  const renderSection = (title: string, icon: string, toneClass: string, type: ServiceDetailType, rows: ServiceDetailItem[]) => (
+  const renderSection = (title: string, type: ServiceDetailType, rows: ServiceDetailItem[]) => (
     <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="flex items-center gap-2 text-base font-semibold text-[var(--color-text)]">
-          <span className={toneClass}>{icon}</span> {title}
-        </h3>
+        <h3 className="text-base font-semibold text-[var(--color-text)]">{title}</h3>
         <button type="button" onClick={() => openCreateModal(type)} className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs">
           Add Item
         </button>
@@ -162,8 +163,10 @@ export default function ServiceDetailsPage() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          {renderSection("Included Items", "✔", "text-emerald-300", "INCLUDED", includedItems)}
-          {renderSection("Excluded Items", "✖", "text-red-300", "EXCLUDED", excludedItems)}
+          {renderSection("Included Items", "INCLUDED", includedItems)}
+          {renderSection("Excluded Items", "EXCLUDED", excludedItems)}
+          {renderSection("FAQs", "FAQ", faqItems)}
+          {renderSection("Instructions", "INSTRUCTION", instructionItems)}
         </div>
       </DataState>
 
@@ -190,13 +193,15 @@ export default function ServiceDetailsPage() {
               onChange={(event) =>
                 setModal((prev) => ({
                   ...prev,
-                  type: event.target.value === "EXCLUDED" ? "EXCLUDED" : "INCLUDED",
+                  type: (event.target.value as ServiceDetailType) || "INCLUDED",
                 }))
               }
               className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
             >
               <option value="INCLUDED">Included</option>
               <option value="EXCLUDED">Excluded</option>
+              <option value="FAQ">FAQ</option>
+              <option value="INSTRUCTION">Instruction</option>
             </select>
           </label>
           <label className="grid gap-1 text-sm">

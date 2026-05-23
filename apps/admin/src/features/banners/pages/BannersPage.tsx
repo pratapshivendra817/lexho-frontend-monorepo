@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
@@ -10,69 +10,39 @@ import { extractApiError } from "@/utils/apiError";
 import { BannerStatusBadge, BannersFiltersBar, BannersStatsCards } from "../components";
 import { uploadBannerImage } from "../api/bannersApi";
 import { useBannerMutations, useBannersQuery, useBannerStatsQuery } from "../hooks/useBanners";
-import type {
-  AdminBanner,
-  BannerFormPayload,
-  BannerPlacementType,
-  BannerPlatformType,
-  BannerPromoType,
-  BannerStatus,
-} from "../types";
+import type { AdminBanner, BannerAudience, BannerFormPayload, BannerType } from "../types";
 
-const parsePage = (value: string | null) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
-};
-
-const defaultFormValues: BannerFormPayload = {
+  const defaultFormValues: BannerFormPayload = {
   title: "",
-  description: "",
-  city: "",
-  promoType: "PROMO",
-  platformType: "WEB",
-  placement: "BOTTOM",
-  bannerImageUrl: "",
-  status: "DRAFT",
-  slotNumber: 1,
+  subtitle: "",
+  imageUrl: "",
+  redirectType: "NONE",
+  redirectId: null,
   priority: 1,
-  startDate: "",
-  endDate: "",
+  active: true,
+  bannerType: "PROMO",
+  audience: "CUSTOMER",
 };
-
-type EditState = { open: false; banner: null } | { open: true; banner: AdminBanner | null };
 
 export default function BannersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState(searchParams.get("search") ?? "");
   const [formValues, setFormValues] = useState<BannerFormPayload>(defaultFormValues);
-  const [editState, setEditState] = useState<EditState>({ open: false, banner: null });
+  const [editBanner, setEditBanner] = useState<AdminBanner | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AdminBanner | null>(null);
-  const [dateError, setDateError] = useState<string>("");
+  const [priorityDraft, setPriorityDraft] = useState<Record<string, number>>({});
 
-  const page = parsePage(searchParams.get("page"));
-  const status = (searchParams.get("status") ?? "") as BannerStatus | "";
-  const city = searchParams.get("city") ?? "";
-  const promoType = (searchParams.get("promoType") ?? "") as BannerPromoType;
-  const platformType = (searchParams.get("platformType") ?? "") as BannerPlatformType;
-  const placement = (searchParams.get("placement") ?? "") as BannerPlacementType | "";
+  const page = Number(searchParams.get("page") ?? "0") || 0;
+  const audience = (searchParams.get("audience") ?? "") as BannerAudience | "";
   const search = searchParams.get("search") ?? "";
-
-  const debouncedSearch = useDebounce(searchInput, 400);
-
-  useEffect(() => {
-    setSearchInput(search);
-  }, [search]);
+  const debouncedSearch = useDebounce(searchInput, 350);
 
   useEffect(() => {
-    if (debouncedSearch === search) {
-      return;
-    }
+    if (debouncedSearch === search) return;
     const next = new URLSearchParams(searchParams);
-    if (debouncedSearch) {
-      next.set("search", debouncedSearch);
-    } else {
-      next.delete("search");
-    }
+    if (debouncedSearch) next.set("search", debouncedSearch);
+    else next.delete("search");
     next.set("page", "0");
     setSearchParams(next);
   }, [debouncedSearch, search, searchParams, setSearchParams]);
@@ -80,125 +50,82 @@ export default function BannersPage() {
   const updateParams = (updates: Record<string, string | undefined>, resetPage = true) => {
     const next = new URLSearchParams(searchParams);
     Object.entries(updates).forEach(([key, value]) => {
-      if (value && value.length > 0) {
-        next.set(key, value);
-      } else {
-        next.delete(key);
-      }
+      if (value && value.length > 0) next.set(key, value);
+      else next.delete(key);
     });
-    if (resetPage) {
-      next.set("page", "0");
-    }
+    if (resetPage) next.set("page", "0");
     setSearchParams(next);
   };
 
   const bannersQuery = useBannersQuery({
     page,
     size: 10,
-    status,
-    city: city || undefined,
-    promoType,
-    platformType,
-    placement,
+    audience,
     search: search || undefined,
   });
   const statsQuery = useBannerStatsQuery();
-  const {
-    createBannerMutation,
-    updateBannerMutation,
-    deleteBannerMutation,
-    activateBannerMutation,
-    deactivateBannerMutation,
-    draftBannerMutation,
-  } = useBannerMutations();
-  const uploadImageMutation = useMutation({
-    mutationFn: (file: File) => uploadBannerImage(file),
-  });
+  const { createBannerMutation, updateBannerMutation, deleteBannerMutation, reorderBannersMutation } = useBannerMutations();
+  const uploadImageMutation = useMutation({ mutationFn: (file: File) => uploadBannerImage(file) });
 
-  const rows = bannersQuery.data?.content ?? [];
+  const rows = useMemo(() => bannersQuery.data?.content ?? [], [bannersQuery.data?.content]);
   const total = bannersQuery.data?.totalElements ?? 0;
-  const stats = statsQuery.data ?? { total: 0, active: 0, inactive: 0, draft: 0 };
+  const stats = statsQuery.data ?? { total: 0, active: 0, inactive: 0, customer: 0, partner: 0, both: 0 };
+
+  const reorderItems = useMemo(
+    () => rows.map((row) => ({ id: row.id, priority: Math.max(1, Number(priorityDraft[row.id] ?? row.priority ?? 1)) })),
+    [priorityDraft, rows],
+  );
 
   const openCreate = () => {
+    setEditBanner(null);
     setFormValues(defaultFormValues);
-    setEditState({ open: true, banner: null });
+    setFormOpen(true);
   };
 
   const openEdit = (banner: AdminBanner) => {
+    setEditBanner(banner);
     setFormValues({
       title: banner.title,
-      description: banner.description ?? "",
-      city: banner.city ?? "",
-      promoType: banner.promoType || "PROMO",
-      platformType: banner.platformType || "WEB",
-      placement: banner.placement || "BOTTOM",
-      bannerImageUrl: banner.bannerImageUrl ?? "",
-      status: banner.status ?? "DRAFT",
-      slotNumber: banner.slotNumber ?? 1,
+      subtitle: banner.subtitle ?? "",
+      imageUrl: banner.imageUrl ?? "",
+      redirectType: "NONE",
+      redirectId: null,
       priority: banner.priority ?? 1,
-      startDate: banner.startDate ?? "",
-      endDate: banner.endDate ?? "",
+      active: banner.active,
+      bannerType: banner.bannerType,
+      audience: banner.audience,
     });
-    setEditState({ open: true, banner });
+    setFormOpen(true);
   };
 
   const submitForm = () => {
-    const trimmedTitle = formValues.title.trim();
-    if (!trimmedTitle) {
+    if (!formValues.title.trim()) {
       toast.error("Title is required");
       return;
     }
-
-    if (!formValues.bannerImageUrl?.trim()) {
-      toast.error("Banner image is required");
-      return;
-    }
-
-    if (formValues.startDate && formValues.endDate && new Date(formValues.endDate) < new Date(formValues.startDate)) {
-      setDateError("End date cannot be before start date");
-      return;
-    }
-    setDateError("");
-
-    const activeSlotConflict = rows.some((row) => {
-      if (row.status !== "ACTIVE") return false;
-      if ((row.placement ?? "BOTTOM") !== formValues.placement) return false;
-      if ((row.slotNumber ?? 1) !== formValues.slotNumber) return false;
-      if (editState.banner && row.id === editState.banner.id) return false;
-      return formValues.status === "ACTIVE";
-    });
-    if (activeSlotConflict) {
-      toast.error(`Active ${formValues.placement.toLowerCase()} slot already in use: ${formValues.slotNumber}`);
-      return;
-    }
-
-    if (!Number.isFinite(formValues.slotNumber) || formValues.slotNumber < 1 || formValues.slotNumber > 5) {
-      toast.error("Slot number must be between 1 and 5");
-      return;
-    }
-
-    if (!Number.isFinite(formValues.priority) || formValues.priority < 1) {
-      toast.error("Priority is required");
+    if (!formValues.imageUrl?.trim()) {
+      toast.error("Image URL is required");
       return;
     }
 
     const payload: BannerFormPayload = {
       ...formValues,
-      title: trimmedTitle,
-      description: formValues.description?.trim() || "",
-      city: formValues.city?.trim() || "",
-      bannerImageUrl: formValues.bannerImageUrl.trim(),
+      title: formValues.title.trim(),
+      subtitle: formValues.subtitle?.trim() || "",
+      imageUrl: formValues.imageUrl.trim(),
+      redirectType: "NONE",
+      redirectId: null,
+      priority: Math.max(1, Number(formValues.priority || 1)),
     };
 
-    if (editState.banner) {
+    if (editBanner) {
       updateBannerMutation.mutate(
-        { id: editState.banner.id, payload },
+        { id: editBanner.id, payload },
         {
           onSuccess: () => {
             toast.success("Banner updated");
-            setEditState({ open: false, banner: null });
-            setFormValues(defaultFormValues);
-            setDateError("");
+            setFormOpen(false);
+            setEditBanner(null);
           },
           onError: (error) => toast.error(extractApiError(error, "Unable to update banner")),
         },
@@ -209,25 +136,9 @@ export default function BannersPage() {
     createBannerMutation.mutate(payload, {
       onSuccess: () => {
         toast.success("Banner created");
-        setEditState({ open: false, banner: null });
-        setFormValues(defaultFormValues);
-        setDateError("");
+        setFormOpen(false);
       },
       onError: (error) => toast.error(extractApiError(error, "Unable to create banner")),
-    });
-  };
-
-  const submitStatusAction = (banner: AdminBanner, action: "activate" | "deactivate" | "draft") => {
-    const mutation =
-      action === "activate"
-        ? activateBannerMutation
-        : action === "deactivate"
-        ? deactivateBannerMutation
-        : draftBannerMutation;
-
-    mutation.mutate(banner.id, {
-      onSuccess: () => toast.success(`Banner ${action}d`),
-      onError: (error) => toast.error(extractApiError(error, `Unable to ${action} banner`)),
     });
   };
 
@@ -235,29 +146,30 @@ export default function BannersPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-[var(--color-text)]">Banners</h2>
-          <p className="text-sm text-[var(--color-muted)]">Manage promotions, visibility and targeting</p>
+          <h2 className="text-lg font-semibold text-[var(--color-text)]">Home Banners</h2>
+          <p className="text-sm text-[var(--color-muted)]">Audience targeted banners for customer and partner apps</p>
         </div>
-        <button type="button" onClick={openCreate} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white">
-          + Create Banner
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => reorderBannersMutation.mutate({ items: reorderItems })}
+            className="rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium"
+          >
+            Save Reorder
+          </button>
+          <button type="button" onClick={openCreate} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white">
+            + Create Banner
+          </button>
+        </div>
       </div>
 
       <BannersStatsCards stats={stats} />
 
       <BannersFiltersBar
         search={searchInput}
-        status={status}
-        city={city}
-        promoType={promoType}
-        platformType={platformType}
-        placement={placement}
+        audience={audience}
         onSearchChange={setSearchInput}
-        onStatusChange={(value) => updateParams({ status: value || undefined })}
-        onCityChange={(value) => updateParams({ city: value || undefined })}
-        onPromoTypeChange={(value) => updateParams({ promoType: value || undefined })}
-        onPlatformTypeChange={(value) => updateParams({ platformType: value || undefined })}
-        onPlacementChange={(value) => updateParams({ placement: value || undefined })}
+        onAudienceChange={(value) => updateParams({ audience: value || undefined })}
         onReset={() => setSearchParams(new URLSearchParams({ page: "0" }))}
       />
 
@@ -281,29 +193,30 @@ export default function BannersPage() {
               key: "image",
               header: "Image",
               render: (item) =>
-                item.bannerImageUrl ? (
-                  <img src={item.bannerImageUrl} alt={item.title} className="h-10 w-16 rounded-md object-cover border border-[var(--color-border)]" />
+                item.imageUrl ? (
+                  <img src={item.imageUrl} alt={item.title} className="h-10 w-16 rounded-md object-cover border border-[var(--color-border)]" />
                 ) : (
                   <span className="text-xs text-[var(--color-muted)]">No image</span>
                 ),
             },
             { key: "title", header: "Title", render: (item) => item.title },
-            { key: "promoType", header: "Promo Type", render: (item) => item.promoType || "-" },
-            { key: "platformType", header: "Platform", render: (item) => item.platformType || "-" },
+            { key: "subtitle", header: "Subtitle", render: (item) => item.subtitle || "-" },
+            { key: "bannerType", header: "Type", render: (item) => item.bannerType },
+            { key: "audience", header: "Audience", render: (item) => item.audience },
+            { key: "status", header: "Status", render: (item) => <BannerStatusBadge active={item.active} /> },
             {
-              key: "placement",
-              header: "Placement",
-              render: (item) => {
-                const placement = item.placement === "TOP" ? "Home Top" : "Home Bottom";
-                const slot = Number(item.slotNumber ?? 1);
-                return `${placement} (Slot ${slot})`;
-              },
+              key: "priority",
+              header: "Priority",
+              render: (item) => (
+                <input
+                  type="number"
+                  min={1}
+                  value={priorityDraft[item.id] ?? item.priority}
+                  onChange={(event) => setPriorityDraft((prev) => ({ ...prev, [item.id]: Math.max(1, Number(event.target.value || 1)) }))}
+                  className="w-20 rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs"
+                />
+              ),
             },
-            { key: "city", header: "City", render: (item) => item.city || "-" },
-            { key: "status", header: "Status", render: (item) => <BannerStatusBadge status={item.status} /> },
-            { key: "startDate", header: "Start Date", render: (item) => item.startDate || "-" },
-            { key: "endDate", header: "End Date", render: (item) => item.endDate || "-" },
-            { key: "priority", header: "Priority", render: (item) => item.priority ?? "-" },
             {
               key: "actions",
               header: "Actions",
@@ -311,15 +224,6 @@ export default function BannersPage() {
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => openEdit(item)} className="rounded border border-[var(--color-border)] px-2 py-1 text-xs">
                     Edit
-                  </button>
-                  <button type="button" onClick={() => submitStatusAction(item, "activate")} className="rounded border border-emerald-500/30 px-2 py-1 text-xs text-emerald-300">
-                    Activate
-                  </button>
-                  <button type="button" onClick={() => submitStatusAction(item, "deactivate")} className="rounded border border-zinc-500/30 px-2 py-1 text-xs text-zinc-300">
-                    Deactivate
-                  </button>
-                  <button type="button" onClick={() => submitStatusAction(item, "draft")} className="rounded border border-amber-500/30 px-2 py-1 text-xs text-amber-300">
-                    Draft
                   </button>
                   <button type="button" onClick={() => setDeleteTarget(item)} className="rounded border border-red-500/40 px-2 py-1 text-xs text-red-300">
                     Delete
@@ -339,12 +243,16 @@ export default function BannersPage() {
       </DataState>
 
       <ModalFormLayout
-        open={editState.open}
-        onClose={() => setEditState({ open: false, banner: null })}
-        title={editState.banner ? "Edit Banner" : "Create Banner"}
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editBanner ? "Edit Banner" : "Create Banner"}
         formId="banner-form"
-        submitLabel={editState.banner ? "Update" : "Create"}
-        isSubmitting={createBannerMutation.isPending || updateBannerMutation.isPending || uploadImageMutation.isPending}
+        submitLabel={editBanner ? "Update" : "Create"}
+        isSubmitting={
+          createBannerMutation.isPending ||
+          updateBannerMutation.isPending ||
+          uploadImageMutation.isPending
+        }
       >
         <form
           id="banner-form"
@@ -365,92 +273,39 @@ export default function BannersPage() {
           </label>
 
           <label className="grid gap-1 text-sm">
-            <span>City</span>
+            <span>Subtitle</span>
             <input
-              value={formValues.city}
-              onChange={(event) => setFormValues((prev) => ({ ...prev, city: event.target.value }))}
+              value={formValues.subtitle ?? ""}
+              onChange={(event) => setFormValues((prev) => ({ ...prev, subtitle: event.target.value }))}
               className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
             />
           </label>
 
           <label className="grid gap-1 text-sm">
-            <span>Promo Type</span>
+            <span>Audience</span>
             <select
-              value={formValues.promoType}
-              onChange={(event) =>
-                setFormValues((prev) => ({ ...prev, promoType: event.target.value as BannerFormPayload["promoType"] }))
-              }
+              value={formValues.audience}
+              onChange={(event) => setFormValues((prev) => ({ ...prev, audience: event.target.value as BannerAudience }))}
+              className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
+            >
+              <option value="CUSTOMER">CUSTOMER</option>
+              <option value="PARTNER">PARTNER</option>
+              <option value="BOTH">BOTH</option>
+            </select>
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            <span>Banner Type</span>
+            <select
+              value={formValues.bannerType}
+              onChange={(event) => setFormValues((prev) => ({ ...prev, bannerType: event.target.value as BannerType }))}
               className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
             >
               <option value="PROMO">PROMO</option>
-              <option value="OFFER">OFFER</option>
-              <option value="ENGAGE">ENGAGE</option>
+              <option value="INCENTIVE">INCENTIVE</option>
+              <option value="SEASONAL">SEASONAL</option>
+              <option value="INFO">INFO</option>
             </select>
-          </label>
-
-          <label className="grid gap-1 text-sm">
-            <span>Platform</span>
-            <select
-              value={formValues.platformType}
-              onChange={(event) =>
-                setFormValues((prev) => ({ ...prev, platformType: event.target.value as BannerFormPayload["platformType"] }))
-              }
-              className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-            >
-              <option value="WEB">WEB</option>
-              <option value="ANDROID">ANDROID</option>
-              <option value="IOS">IOS</option>
-              <option value="ALL">ALL</option>
-            </select>
-          </label>
-
-          <label className="grid gap-1 text-sm">
-            <span>Placement</span>
-            <select
-              value={formValues.placement}
-              onChange={(event) =>
-                setFormValues((prev) => ({ ...prev, placement: event.target.value as BannerPlacementType }))
-              }
-              className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-            >
-              <option value="TOP">Top Banner</option>
-              <option value="BOTTOM">Bottom Banner</option>
-            </select>
-          </label>
-
-          <label className="grid gap-1 text-sm">
-            <span>Status</span>
-            <select
-              value={formValues.status}
-              onChange={(event) =>
-                setFormValues((prev) => ({ ...prev, status: event.target.value as BannerStatus }))
-              }
-              className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-            >
-              <option value="DRAFT">DRAFT</option>
-              <option value="ACTIVE">ACTIVE</option>
-              <option value="INACTIVE">INACTIVE</option>
-            </select>
-          </label>
-
-          <label className="grid gap-1 text-sm">
-            <span>Slot Number</span>
-            <input
-              type="number"
-              min={1}
-              max={5}
-              value={formValues.slotNumber}
-              onChange={(event) =>
-                setFormValues((prev) => ({
-                  ...prev,
-                  slotNumber: Math.min(5, Math.max(1, Number(event.target.value || 1))),
-                }))
-              }
-              className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-            />
-            <span className="text-xs text-[var(--color-muted)]">
-              Selected placement ke andar slot order define karega (1 to 5).
-            </span>
           </label>
 
           <label className="grid gap-1 text-sm">
@@ -464,14 +319,16 @@ export default function BannersPage() {
             />
           </label>
 
-          <label className="grid gap-1 text-sm md:col-span-2">
-            <span>Description</span>
-            <textarea
-              rows={3}
-              value={formValues.description}
-              onChange={(event) => setFormValues((prev) => ({ ...prev, description: event.target.value }))}
+          <label className="grid gap-1 text-sm">
+            <span>Active</span>
+            <select
+              value={String(formValues.active)}
+              onChange={(event) => setFormValues((prev) => ({ ...prev, active: event.target.value === "true" }))}
               className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-            />
+            >
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
           </label>
 
           <div className="grid gap-2 text-sm md:col-span-2">
@@ -484,51 +341,15 @@ export default function BannersPage() {
                 if (!file) return;
                 uploadImageMutation.mutate(file, {
                   onSuccess: (url) => {
-                    setFormValues((prev) => ({ ...prev, bannerImageUrl: url }));
+                    setFormValues((prev) => ({ ...prev, imageUrl: url }));
                     toast.success("Image uploaded");
                   },
                   onError: (error) => toast.error(extractApiError(error, "Image upload failed")),
                 });
               }}
-              className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-white"
+              className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
             />
-            {!formValues.bannerImageUrl ? <p className="text-xs text-amber-300">Upload image is required before create/update.</p> : null}
-            {uploadImageMutation.isPending ? <p className="text-xs text-[var(--color-muted)]">Uploading image...</p> : null}
-            {formValues.bannerImageUrl ? (
-              <div className="flex items-center gap-3">
-                <img src={formValues.bannerImageUrl} alt="Banner preview" className="h-20 w-32 rounded-md object-cover border border-[var(--color-border)]" />
-                <button
-                  type="button"
-                  onClick={() => setFormValues((prev) => ({ ...prev, bannerImageUrl: "" }))}
-                  className="rounded border border-red-500/40 px-2 py-1 text-xs text-red-300"
-                >
-                  Remove Image
-                </button>
-              </div>
-            ) : null}
           </div>
-
-          <label className="grid gap-1 text-sm">
-            <span>Start Date & Time</span>
-            <input
-              type="datetime-local"
-              value={formValues.startDate ?? ""}
-              onChange={(event) => setFormValues((prev) => ({ ...prev, startDate: event.target.value }))}
-              className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-            />
-          </label>
-
-          <label className="grid gap-1 text-sm">
-            <span>End Date & Time</span>
-            <input
-              type="datetime-local"
-              value={formValues.endDate ?? ""}
-              onChange={(event) => setFormValues((prev) => ({ ...prev, endDate: event.target.value }))}
-              className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-            />
-          </label>
-
-          {dateError ? <p className="text-xs text-red-300 md:col-span-2">{dateError}</p> : null}
         </form>
       </ModalFormLayout>
 

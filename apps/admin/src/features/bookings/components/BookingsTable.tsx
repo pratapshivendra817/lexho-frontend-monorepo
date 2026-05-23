@@ -42,9 +42,9 @@ export function BookingsTable({
           render: (row) => row.service,
         },
         {
-          key: "provider",
-          header: "Provider",
-          render: (row) => row.providerName || "Not assigned",
+          key: "partner",
+          header: "Partner",
+          render: (row) => row.partnerName || "Not assigned",
         },
         {
           key: "date",
@@ -79,3 +79,5 @@ export function BookingsTable({
     />
   );
 }
+
+

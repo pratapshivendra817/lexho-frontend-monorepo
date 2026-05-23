@@ -27,7 +27,7 @@ export default function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-transparent text-[var(--color-text)] md:pl-72">
-      <aside className="relative z-30 w-full border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 p-4 backdrop-blur md:fixed md:inset-y-0 md:left-0 md:w-72 md:border-b-0 md:border-r md:p-5">
+      <aside className="relative z-30 w-full border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 p-4 backdrop-blur md:fixed md:inset-y-0 md:left-0 md:h-screen md:w-72 md:overflow-y-auto md:border-b-0 md:border-r md:p-5">
         <h2 className="mb-1 text-xl font-bold tracking-wide">LexhoAdmin</h2>
         <p className="mb-6 text-xs uppercase tracking-wide text-[var(--color-muted)]">Home Services Control Center</p>
 
@@ -40,7 +40,7 @@ export default function AdminLayout() {
         </nav>
       </aside>
 
-      <main className="min-h-screen overflow-x-hidden p-4 md:p-6">
+      <main className="min-h-screen overflow-x-hidden p-4 md:h-screen md:overflow-y-auto md:p-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
           <div>
             <h1 className="text-2xl font-bold">{routeMeta.title}</h1>

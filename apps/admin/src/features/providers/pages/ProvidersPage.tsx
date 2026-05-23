@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Link, useSearchParams } from "react-router-dom";
 
@@ -6,32 +6,34 @@ import { ConfirmDialog, DataState, DataTable, ModalFormLayout, Pagination } from
 import { useDebounce } from "@/hooks/useDebounce";
 import { extractApiError } from "@/utils/apiError";
 
-import { ProviderStatusBadge, ProvidersFiltersBar, ProvidersStatsCards } from "../components";
-import { useProviderMutations, useProvidersQuery, useProviderStatsQuery } from "../hooks/useProviders";
-import type { ProviderListItem, ProviderServiceType, ProviderStatus } from "../types";
+import { PartnerStatusBadge, PartnersFiltersBar, PartnersStatsCards } from "../components";
+import { usePartnerMutations, usePartnersQuery, usePartnerSettlementsQuery, usePartnerStatsQuery } from "../hooks/usePartners";
+import type { PartnerListItem, PartnerServiceType, PartnerSettlementStatus, PartnerStatus } from "../types";
 
 type ActionModalState =
   | { type: "none" }
-  | { type: "approve"; provider: ProviderListItem }
-  | { type: "reject"; provider: ProviderListItem }
-  | { type: "block"; provider: ProviderListItem }
-  | { type: "unblock"; provider: ProviderListItem }
-  | { type: "delete"; provider: ProviderListItem };
+  | { type: "approve"; partner: PartnerListItem }
+  | { type: "reject"; partner: PartnerListItem }
+  | { type: "block"; partner: PartnerListItem }
+  | { type: "unblock"; partner: PartnerListItem }
+  | { type: "delete"; partner: PartnerListItem };
 
 const parsePage = (value: string | null) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
 };
 
-export default function ProvidersPage() {
+export default function PartnersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchInput, setSearchInput] = useState(searchParams.get("search") ?? "");
   const [actionState, setActionState] = useState<ActionModalState>({ type: "none" });
   const [reason, setReason] = useState("");
+  const [settlementSearch, setSettlementSearch] = useState("");
+  const [settlementStatus, setSettlementStatus] = useState<PartnerSettlementStatus | "">("");
 
   const page = parsePage(searchParams.get("page"));
-  const status = (searchParams.get("status") ?? "") as ProviderStatus | "";
-  const serviceType = (searchParams.get("serviceType") ?? "") as ProviderServiceType;
+  const status = (searchParams.get("status") ?? "") as PartnerStatus | "";
+  const serviceType = (searchParams.get("serviceType") ?? "") as PartnerServiceType;
   const city = searchParams.get("city") ?? "";
   const search = searchParams.get("search") ?? "";
   const sortBy = searchParams.get("sortBy") ?? "createdAt";
@@ -72,7 +74,7 @@ export default function ProvidersPage() {
     setSearchParams(next);
   };
 
-  const providersQuery = useProvidersQuery({
+  const partnersQuery = usePartnersQuery({
     page,
     size: 10,
     status,
@@ -82,17 +84,24 @@ export default function ProvidersPage() {
     sortBy,
     sortDir: "desc",
   });
-  const statsQuery = useProviderStatsQuery();
+  const statsQuery = usePartnerStatsQuery();
   const {
-    approveProviderMutation,
-    rejectProviderMutation,
-    blockProviderMutation,
-    unblockProviderMutation,
-    deleteProviderMutation,
-  } = useProviderMutations();
+    approvePartnerMutation,
+    rejectPartnerMutation,
+    blockPartnerMutation,
+    unblockPartnerMutation,
+    deletePartnerMutation,
+    updateSettlementStatusMutation,
+  } = usePartnerMutations();
+  const settlementsQuery = usePartnerSettlementsQuery({
+    page: 0,
+    size: 10,
+    search: settlementSearch || undefined,
+    status: settlementStatus,
+  });
 
-  const rows = providersQuery.data?.content ?? [];
-  const total = providersQuery.data?.totalElements ?? 0;
+  const rows = partnersQuery.data?.content ?? [];
+  const total = partnersQuery.data?.totalElements ?? 0;
   const stats =
     statsQuery.data ?? {
       pending: 0,
@@ -109,64 +118,64 @@ export default function ProvidersPage() {
       return;
     }
 
-    const providerId = activeAction.provider.id;
+    const partnerId = activeAction.partner.id;
     if (activeAction.type === "approve") {
-      approveProviderMutation.mutate(providerId, {
+      approvePartnerMutation.mutate(partnerId, {
         onSuccess: () => {
-          toast.success("Provider approved");
+          toast.success("Partner approved");
           setActionState({ type: "none" });
         },
-        onError: (error) => toast.error(extractApiError(error, "Failed to approve provider")),
+        onError: (error) => toast.error(extractApiError(error, "Failed to approve partner")),
       });
       return;
     }
 
     if (activeAction.type === "unblock") {
-      unblockProviderMutation.mutate(providerId, {
+      unblockPartnerMutation.mutate(partnerId, {
         onSuccess: () => {
-          toast.success("Provider unblocked");
+          toast.success("Partner unblocked");
           setActionState({ type: "none" });
         },
-        onError: (error) => toast.error(extractApiError(error, "Failed to unblock provider")),
+        onError: (error) => toast.error(extractApiError(error, "Failed to unblock partner")),
       });
       return;
     }
 
     if (activeAction.type === "delete") {
-      deleteProviderMutation.mutate(providerId, {
+      deletePartnerMutation.mutate(partnerId, {
         onSuccess: () => {
-          toast.success("Provider deleted");
+          toast.success("Partner deleted");
           setActionState({ type: "none" });
         },
-        onError: (error) => toast.error(extractApiError(error, "Failed to delete provider")),
+        onError: (error) => toast.error(extractApiError(error, "Failed to delete partner")),
       });
       return;
     }
 
     if (activeAction.type === "reject") {
-      rejectProviderMutation.mutate(
-        { id: providerId, reason },
+      rejectPartnerMutation.mutate(
+        { id: partnerId, reason },
         {
           onSuccess: () => {
-            toast.success("Provider rejected");
+            toast.success("Partner rejected");
             setReason("");
             setActionState({ type: "none" });
           },
-          onError: (error) => toast.error(extractApiError(error, "Failed to reject provider")),
+          onError: (error) => toast.error(extractApiError(error, "Failed to reject partner")),
         },
       );
       return;
     }
 
-    blockProviderMutation.mutate(
-      { id: providerId, reason },
+    blockPartnerMutation.mutate(
+      { id: partnerId, reason },
       {
         onSuccess: () => {
-          toast.success("Provider blocked");
+          toast.success("Partner blocked");
           setReason("");
           setActionState({ type: "none" });
         },
-        onError: (error) => toast.error(extractApiError(error, "Failed to block provider")),
+        onError: (error) => toast.error(extractApiError(error, "Failed to block partner")),
       },
     );
   };
@@ -174,13 +183,13 @@ export default function ProvidersPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-[var(--color-text)]">Provider Onboarding Management</h2>
-        <p className="text-sm text-[var(--color-muted)]">Review, approve, reject and manage provider onboarding</p>
+        <h2 className="text-lg font-semibold text-[var(--color-text)]">Partner Onboarding Management</h2>
+        <p className="text-sm text-[var(--color-muted)]">Review, approve, reject and manage partner onboarding</p>
       </div>
 
-      <ProvidersStatsCards stats={stats} />
+      <PartnersStatsCards stats={stats} />
 
-      <ProvidersFiltersBar
+      <PartnersFiltersBar
         search={searchInput}
         status={status}
         serviceType={serviceType}
@@ -202,14 +211,14 @@ export default function ProvidersPage() {
       />
 
       <DataState
-        isLoading={providersQuery.isLoading}
-        isError={providersQuery.isError}
+        isLoading={partnersQuery.isLoading}
+        isError={partnersQuery.isError}
         isEmpty={rows.length === 0}
-        loadingText="Loading providers..."
-        errorText="Failed to load providers"
-        emptyText="No providers found"
+        loadingText="Loading partners..."
+        errorText="Failed to load partners"
+        emptyText="No partners found"
         onRetry={() => {
-          void providersQuery.refetch();
+          void partnersQuery.refetch();
           void statsQuery.refetch();
         }}
       >
@@ -217,34 +226,34 @@ export default function ProvidersPage() {
           rows={rows}
           rowKey={(item) => item.id}
           columns={[
-            { key: "id", header: "Provider ID", render: (item) => item.id },
+            { key: "id", header: "Partner ID", render: (item) => item.id },
             { key: "name", header: "Name", render: (item) => item.name },
             { key: "phone", header: "Phone", render: (item) => item.phone },
             { key: "serviceType", header: "Service", render: (item) => item.serviceType || "N/A" },
             { key: "city", header: "City", render: (item) => item.city || "N/A" },
             { key: "appliedDate", header: "Applied", render: (item) => item.appliedDate || "-" },
-            { key: "status", header: "Status", render: (item) => <ProviderStatusBadge status={item.status} /> },
+            { key: "status", header: "Status", render: (item) => <PartnerStatusBadge status={item.status} /> },
             {
               key: "actions",
               header: "Actions",
               render: (item) => (
                 <div className="flex flex-wrap gap-2">
-                  <Link className="rounded border border-[var(--color-border)] px-2 py-1 text-xs" to={`/providers/${item.id}`}>
+                  <Link className="rounded border border-[var(--color-border)] px-2 py-1 text-xs" to={`/partners/${item.id}`}>
                     View
                   </Link>
-                  <button type="button" onClick={() => setActionState({ type: "approve", provider: item })} className="rounded border border-emerald-500/40 px-2 py-1 text-xs text-emerald-300">
+                  <button type="button" onClick={() => setActionState({ type: "approve", partner: item })} className="rounded border border-emerald-500/40 px-2 py-1 text-xs text-emerald-300">
                     Approve
                   </button>
-                  <button type="button" onClick={() => setActionState({ type: "reject", provider: item })} className="rounded border border-amber-500/40 px-2 py-1 text-xs text-amber-300">
+                  <button type="button" onClick={() => setActionState({ type: "reject", partner: item })} className="rounded border border-amber-500/40 px-2 py-1 text-xs text-amber-300">
                     Reject
                   </button>
-                  <button type="button" onClick={() => setActionState({ type: "block", provider: item })} className="rounded border border-rose-500/40 px-2 py-1 text-xs text-rose-300">
+                  <button type="button" onClick={() => setActionState({ type: "block", partner: item })} className="rounded border border-rose-500/40 px-2 py-1 text-xs text-rose-300">
                     Block
                   </button>
-                  <button type="button" onClick={() => setActionState({ type: "unblock", provider: item })} className="rounded border border-blue-500/40 px-2 py-1 text-xs text-blue-300">
+                  <button type="button" onClick={() => setActionState({ type: "unblock", partner: item })} className="rounded border border-blue-500/40 px-2 py-1 text-xs text-blue-300">
                     Unblock
                   </button>
-                  <button type="button" onClick={() => setActionState({ type: "delete", provider: item })} className="rounded border border-red-500/40 px-2 py-1 text-xs text-red-300">
+                  <button type="button" onClick={() => setActionState({ type: "delete", partner: item })} className="rounded border border-red-500/40 px-2 py-1 text-xs text-red-300">
                     Delete
                   </button>
                 </div>
@@ -261,19 +270,83 @@ export default function ProvidersPage() {
         />
       </DataState>
 
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Settlements</h3>
+          <div className="flex gap-2">
+            <input
+              value={settlementSearch}
+              onChange={(event) => setSettlementSearch(event.target.value)}
+              placeholder="Search payouts"
+              className="rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs"
+            />
+            <select
+              value={settlementStatus}
+              onChange={(event) => setSettlementStatus(event.target.value as PartnerSettlementStatus | "")}
+              className="rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs"
+            >
+              <option value="">All</option>
+              <option value="PENDING">PENDING</option>
+              <option value="PROCESSING">PROCESSING</option>
+              <option value="SETTLED">SETTLED</option>
+              <option value="FAILED">FAILED</option>
+              <option value="REVERSED">REVERSED</option>
+            </select>
+          </div>
+        </div>
+        <DataState
+          isLoading={settlementsQuery.isLoading}
+          isError={settlementsQuery.isError}
+          isEmpty={(settlementsQuery.data?.items?.length ?? 0) === 0}
+          loadingText="Loading settlements..."
+          errorText="Failed to load settlements"
+          emptyText="No settlements found"
+          onRetry={() => void settlementsQuery.refetch()}
+        >
+          <div className="space-y-2">
+            {(settlementsQuery.data?.items ?? []).map((item) => (
+              <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-[var(--color-border)] p-2 text-xs">
+                <div>
+                  <p className="font-medium">Payout #{item.id} | Partner {item.providerId}</p>
+                  <p className="text-[var(--color-muted)]">Amount INR {item.amount} | Booking {item.referenceBookingId || "-"}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>{item.status}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateSettlementStatusMutation.mutate(
+                        { payoutId: item.id, status: "SETTLED", remarks: "Transferred via admin panel" },
+                        {
+                          onSuccess: () => toast.success("Settlement updated"),
+                          onError: (error) => toast.error(extractApiError(error, "Settlement update failed")),
+                        },
+                      )
+                    }
+                    className="rounded border border-[var(--color-border)] px-2 py-1"
+                  >
+                    Mark Settled
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DataState>
+      </section>
+
       <ModalFormLayout
         open={Boolean(activeAction && isReasonModal)}
         onClose={() => {
           setReason("");
           setActionState({ type: "none" });
         }}
-        title={activeAction?.type === "reject" ? "Reject Provider" : "Block Provider"}
-        formId="provider-reason-form"
+        title={activeAction?.type === "reject" ? "Reject Partner" : "Block Partner"}
+        formId="partner-reason-form"
         submitLabel={activeAction?.type === "reject" ? "Reject" : "Block"}
-        isSubmitting={rejectProviderMutation.isPending || blockProviderMutation.isPending}
+        isSubmitting={rejectPartnerMutation.isPending || blockPartnerMutation.isPending}
       >
         <form
-          id="provider-reason-form"
+          id="partner-reason-form"
           className="grid gap-3"
           onSubmit={(event) => {
             event.preventDefault();
@@ -281,7 +354,7 @@ export default function ProvidersPage() {
           }}
         >
           <p className="text-sm text-[var(--color-muted)]">
-            Provide a reason for {activeAction?.type === "reject" ? "rejection" : "blocking"} {activeAction?.provider.name}.
+            Provide a reason for {activeAction?.type === "reject" ? "rejection" : "blocking"} {activeAction?.partner.name}.
           </p>
           <textarea
             value={reason}
@@ -296,10 +369,10 @@ export default function ProvidersPage() {
 
       <ConfirmDialog
         open={Boolean(activeAction && !isReasonModal)}
-        title={activeAction?.type ? `${activeAction.type[0].toUpperCase()}${activeAction.type.slice(1)} Provider` : "Confirm Action"}
+        title={activeAction?.type ? `${activeAction.type[0].toUpperCase()}${activeAction.type.slice(1)} Partner` : "Confirm Action"}
         description={
           activeAction
-            ? `${activeAction.type.toUpperCase()} action for ${activeAction.provider.name} (${activeAction.provider.id}).`
+            ? `${activeAction.type.toUpperCase()} action for ${activeAction.partner.name} (${activeAction.partner.id}).`
             : ""
         }
         confirmLabel="Confirm"
@@ -309,3 +382,5 @@ export default function ProvidersPage() {
     </div>
   );
 }
+
+

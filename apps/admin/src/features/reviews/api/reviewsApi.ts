@@ -1,4 +1,4 @@
-import { api } from "@/api/axios";
+﻿import { api } from "@/api/axios";
 
 import type {
   AdminReview,
@@ -60,7 +60,7 @@ const normalizeStatus = (value: unknown): AdminReview["status"] => {
 const toReview = (row: UnknownRecord): AdminReview => ({
   id: asString(row.id ?? row.reviewId),
   customerName: asString(row.customerName ?? row.userName ?? row.customer),
-  providerName: asString(row.providerName ?? row.provider),
+  partnerName: asString(row.partnerName ?? row.partner),
   serviceName: asString(row.serviceName ?? row.service),
   rating: asNumber(row.rating),
   comment: asString(row.comment ?? row.reviewComment),
@@ -89,7 +89,7 @@ export async function getAdminReviews(params: AdminReviewsQueryParams): Promise<
     size: params.size,
     rating: params.rating,
     status: params.status || undefined,
-    provider: params.provider || undefined,
+    partner: params.partner || undefined,
     service: params.service || undefined,
     search: params.search || undefined,
   };
@@ -135,8 +135,8 @@ export async function getAdminReviewsStats(): Promise<AdminReviewsStats> {
   const nested = asRecord(root.data);
   const source = Object.keys(nested).length > 0 ? nested : root;
 
-  const providerWiseRatings = readArray(source.providerWiseRatings, ["providerWiseRatings", "providerRatings", "providers"]).map((item) => ({
-    name: asString(item.name ?? item.providerName ?? item.label),
+  const partnerWiseRatings = readArray(source.partnerWiseRatings, ["partnerWiseRatings", "partnerRatings", "partners"]).map((item) => ({
+    name: asString(item.name ?? item.partnerName ?? item.label),
     value: asNumber(item.value ?? item.rating ?? item.averageRating),
   }));
 
@@ -150,7 +150,9 @@ export async function getAdminReviewsStats(): Promise<AdminReviewsStats> {
     averageRating: asNumber(source.averageRating),
     hiddenReviews: asNumber(source.hiddenReviews),
     reportedReviews: asNumber(source.reportedReviews),
-    providerWiseRatings,
+    partnerWiseRatings,
     serviceWiseRatings,
   };
 }
+
+

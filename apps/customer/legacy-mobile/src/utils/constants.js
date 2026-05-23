@@ -43,12 +43,12 @@ function getApiHost() {
   return DEFAULT_DEVICE_LOCAL_IP;
 }
 
-export const API_BASE_URL = `http://${getApiHost()}:${API_PORT}`;
+export const API_BASE_URL = "http://192.168.31.38:8082";
 export const AUTH_TOKEN_STORAGE_KEY = "@customer/auth-token";
 export const USER_STORAGE_KEY = "@customer/user";
 export const THEME_MODE_STORAGE_KEY = "@customer/theme-mode";
 export const CART_STORAGE_KEY = "@customer/cart";
-export const ENABLE_FIREBASE_PUSH = false;
+export const ENABLE_FIREBASE_PUSH = true;
 export const OTP_LENGTH = 6;
 
 export const STORAGE_KEYS = {

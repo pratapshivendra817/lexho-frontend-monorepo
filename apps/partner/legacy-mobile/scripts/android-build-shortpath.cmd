@@ -5,6 +5,7 @@ set "DRIVE_LETTER=Y:"
 set "PROJECT_DIR=%~dp0.."
 for %%I in ("%PROJECT_DIR%") do set "PROJECT_DIR=%%~fI"
 set "TARGET_ANDROID_DIR=%PROJECT_DIR%\android"
+set "GRADLE_USER_HOME=%USERPROFILE%\.gradle"
 
 subst %DRIVE_LETTER% /D >nul 2>nul
 subst %DRIVE_LETTER% "%PROJECT_DIR%" >nul 2>nul

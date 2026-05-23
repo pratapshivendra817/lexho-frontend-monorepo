@@ -4,11 +4,11 @@ export const sendNotificationSchema = z.object({
   title: z.string().min(2, "Title is required"),
   message: z.string().min(5, "Message is required"),
   notificationType: z.string().min(1, "Notification type is required"),
-  channelType: z.string().min(1, "Channel is required"),
-  userType: z.string().min(1, "User type is required"),
+  priority: z.string().min(1, "Priority is required"),
+  channels: z.array(z.string().min(1)).min(1, "At least one channel is required"),
+  targetUserType: z.string().min(1, "Target user type is required"),
   city: z.string().optional(),
-  service: z.string().optional(),
-  scheduleTime: z.string().optional(),
+  scheduledTime: z.string().optional(),
 });
 
 export type SendNotificationFormValues = z.infer<typeof sendNotificationSchema>;

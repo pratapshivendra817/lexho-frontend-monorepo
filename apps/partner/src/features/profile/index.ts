@@ -1,1 +1,0 @@
-export { PartnerProfile } from './PartnerProfile'

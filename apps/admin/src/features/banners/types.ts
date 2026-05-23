@@ -1,38 +1,31 @@
-export type BannerStatus = "ACTIVE" | "INACTIVE" | "DRAFT";
-export type BannerPromoType = "PROMO" | "OFFER" | "ENGAGE" | "";
-export type BannerPlatformType = "WEB" | "ANDROID" | "IOS" | "ALL" | "";
-export type BannerPlacementType = "TOP" | "BOTTOM";
+export type BannerAudience = "CUSTOMER" | "PARTNER" | "BOTH";
+export type BannerRedirectType = "NONE" | "EXTERNAL";
+export type BannerType = "PROMO" | "INCENTIVE" | "SEASONAL" | "INFO";
 
 export type AdminBanner = {
   id: string;
   title: string;
-  description?: string;
-  city?: string;
-  promoType: BannerPromoType;
-  platformType: BannerPlatformType;
-  placement: BannerPlacementType;
-  status: BannerStatus;
-  bannerImageUrl?: string;
-  startDate?: string;
-  endDate?: string;
-  slotNumber?: number;
-  priority?: number;
+  subtitle?: string;
+  imageUrl?: string;
+  redirectType: BannerRedirectType;
+  redirectId?: string | null;
+  priority: number;
+  active: boolean;
+  bannerType: BannerType;
+  audience: BannerAudience;
   createdAt?: string;
 };
 
 export type BannerFormPayload = {
   title: string;
-  description?: string;
-  city?: string;
-  promoType: Exclude<BannerPromoType, "">;
-  platformType: Exclude<BannerPlatformType, "">;
-  placement: BannerPlacementType;
-  bannerImageUrl?: string;
-  status: BannerStatus;
-  slotNumber: number;
+  subtitle?: string;
+  imageUrl?: string;
+  redirectType: BannerRedirectType;
+  redirectId?: string | null;
   priority: number;
-  startDate?: string;
-  endDate?: string;
+  active: boolean;
+  bannerType: BannerType;
+  audience: BannerAudience;
 };
 
 export type BannersListResponse = {
@@ -43,19 +36,21 @@ export type BannersListResponse = {
 };
 
 export type BannersStats = {
+  customer: number;
+  partner: number;
+  both: number;
   active: number;
   inactive: number;
-  draft: number;
   total: number;
 };
 
 export type BannersQueryParams = {
-  page: number;
-  size: number;
-  status?: BannerStatus | "";
-  city?: string;
-  promoType?: BannerPromoType;
-  platformType?: BannerPlatformType;
-  placement?: BannerPlacementType | "";
+  page?: number;
+  size?: number;
+  audience?: BannerAudience | "";
   search?: string;
+};
+
+export type BannerReorderPayload = {
+  items: Array<{ id: string; priority: number }>;
 };

@@ -4,18 +4,24 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { COLORS } from "../../constants/colors";
 import { sendOtp, verifyOtp } from "../../services/authService";
 
-export default function OTPScreen({ navigation, route }: any) {
+type Props = {
+  navigation: any;
+  route: any;
+  onAuthSuccess: (payload: Record<string, any>, mobile: string) => Promise<void>;
+};
+
+export default function OTPScreen({ route, onAuthSuccess }: Props) {
   const [otp, setOtp] = useState("");
   const mobile = route?.params?.mobile || "";
   const resendAfter = route?.params?.resendAfter || 30;
@@ -46,11 +52,8 @@ export default function OTPScreen({ navigation, route }: any) {
     try {
       setLoading(true);
       setErrorMessage("");
-      await verifyOtp(mobile, otp);
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "BasicDetails" }],
-      });
+      const payload = await verifyOtp(mobile, otp);
+      await onAuthSuccess(payload, mobile);
     } catch (e: any) {
       const message = e?.message || "OTP verification failed. Please try again.";
       setErrorMessage(message);
@@ -65,6 +68,15 @@ export default function OTPScreen({ navigation, route }: any) {
       setLoading(true);
       setErrorMessage("");
       const response = await sendOtp(mobile);
+      if (__DEV__) {
+        const otp =
+          response?.otp ??
+          response?.data?.otp ??
+          response?.code ??
+          response?.data?.code;
+        // eslint-disable-next-line no-console
+        console.log(`[PARTNER DEV OTP RESEND] ${mobile}: ${otp ?? "OTP not present in response"}`);
+      }
       setTimer(response?.resendAfter || resendAfter);
       Alert.alert("OTP sent", "A new code has been sent to your mobile.");
     } catch (e: any) {

@@ -1,6 +1,7 @@
 import { api, parseApiError } from "./client";
 import { API_BASE_URL } from "../constants/env";
 import type { AddCartRequest, CartItemDto, UpdateCartRequest } from "../types/contracts";
+import type { SlotOption } from "../types/contracts";
 
 type CartAddress = {
   id: number;
@@ -26,7 +27,7 @@ export type CustomerCartItem = {
 export type CustomerCartResponse = {
   cartId: number | null;
   address: CartAddress | null;
-  scheduledTime: string | null;
+  scheduledTime?: string | null;
   items: CustomerCartItem[];
   grandTotal: number;
   itemTotal?: number;
@@ -168,6 +169,15 @@ async function enrichCartWithCatalog(cart: CustomerCartResponse): Promise<Custom
 
 function toCartShape(payload: any): CustomerCartResponse {
   const root = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+  const hasScheduleKey =
+    root && typeof root === "object" &&
+    ("scheduledTime" in root || "scheduledAt" in root || "bookingTime" in root || "slotStartTime" in root);
+  const resolvedSchedule = pickFirstNonEmptyString(
+    root?.scheduledTime,
+    root?.scheduledAt,
+    root?.bookingTime,
+    root?.slotStartTime,
+  );
   const address = root?.address && typeof root.address === "object" ? root.address : null;
   const items = asArray(root?.items).map((row: any) => {
     const itemId = Number(row?.itemId ?? row?.id ?? 0);
@@ -210,7 +220,7 @@ function toCartShape(payload: any): CustomerCartResponse {
           default: Boolean(address.default),
         }
       : null,
-    scheduledTime: root?.scheduledTime ? String(root.scheduledTime) : null,
+    scheduledTime: hasScheduleKey ? (resolvedSchedule ? String(resolvedSchedule) : null) : undefined,
     items,
     grandTotal: Number(root?.grandTotal ?? items.reduce((sum, item) => sum + Number(item.totalPrice || 0), 0)),
     itemTotal: Number(
@@ -331,17 +341,141 @@ export async function patchCustomerCartMeta(payload: { addressId: number; schedu
   }
 }
 
-export async function getAvailableTimeSlots(date: string): Promise<string[]> {
+export async function getAvailableTimeSlots(date: string): Promise<SlotOption[]> {
+  const buildFullDayQuarterSlots = () => {
+    const all: SlotOption[] = [];
+    for (let hour = 6; hour <= 22; hour += 1) {
+      for (let minute = 0; minute < 60; minute += 15) {
+        const start = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+        let endHour = hour;
+        let endMinute = minute + 15;
+        if (endMinute >= 60) {
+          endMinute -= 60;
+          endHour += 1;
+        }
+        all.push({
+          slot: `${start}-${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`,
+          available: true,
+          instantEligible: false,
+          etaMinutes: 999,
+        });
+      }
+    }
+    return all;
+  };
+  const toMinutes = (hhmm: string) => {
+    const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(hhmm || "").trim());
+    if (!m) return null;
+    return Number(m[1]) * 60 + Number(m[2]);
+  };
+  const toHHMM = (mins: number) => {
+    const total = Math.max(0, mins);
+    const hh = Math.floor(total / 60) % 24;
+    const mm = total % 60;
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  };
+  const expandToQuarterHourSlots = (rows: SlotOption[]) => {
+    const expanded: SlotOption[] = [];
+    for (const row of rows) {
+      const raw = String(row?.slot ?? "").trim();
+      const parts = raw.split("-");
+      if (parts.length !== 2) {
+        expanded.push(row);
+        continue;
+      }
+      const startMins = toMinutes(parts[0].trim());
+      const endMins = toMinutes(parts[1].trim());
+      if (startMins == null || endMins == null || endMins <= startMins) {
+        expanded.push(row);
+        continue;
+      }
+      for (let cur = startMins; cur + 15 <= endMins; cur += 15) {
+        expanded.push({
+          ...row,
+          slot: `${toHHMM(cur)}-${toHHMM(cur + 15)}`,
+        });
+      }
+    }
+    return expanded;
+  };
+
   try {
     const { data } = await api.get("/api/customer/cart/slots", { params: { date } });
     const root = data?.data && typeof data.data === "object" ? data.data : data;
-    const rows = Array.isArray(root) ? root : Array.isArray(root?.slots) ? root.slots : Array.isArray(root?.items) ? root.items : [];
+    const normalizedDate = String(date || "").trim();
+    const dateSlash = normalizedDate.replace(/-/g, "/");
+    const dateCompact = normalizedDate.replace(/-/g, "");
+    let rows = Array.isArray(root)
+      ? root
+      : Array.isArray(root?.slots)
+        ? root.slots
+        : Array.isArray(root?.items)
+          ? root.items
+          : Array.isArray(root?.content)
+            ? root.content
+            : Array.isArray(root?.data)
+              ? root.data
+              : Array.isArray(root?.[normalizedDate])
+                ? root[normalizedDate]
+                : Array.isArray(root?.[dateSlash])
+                  ? root[dateSlash]
+                  : Array.isArray(root?.[dateCompact])
+                    ? root[dateCompact]
+                    : Array.isArray(root?.slotsByDate?.[normalizedDate])
+                      ? root.slotsByDate[normalizedDate]
+                      : Array.isArray(root?.slotsByDate?.[dateSlash])
+                        ? root.slotsByDate[dateSlash]
+                        : [];
+    if (Array.isArray(rows) && rows.length > 0 && rows.every((entry) => entry && typeof entry === "object" && ("date" in entry || "slotDate" in entry))) {
+      const grouped = rows.find((entry: any) => {
+        const d = String(entry?.date ?? entry?.slotDate ?? "").trim();
+        return d === normalizedDate || d === dateSlash || d === dateCompact;
+      });
+      if (grouped) {
+        rows = Array.isArray(grouped?.slots) ? grouped.slots : Array.isArray(grouped?.items) ? grouped.items : Array.isArray(grouped?.content) ? grouped.content : [];
+      }
+    }
     const slots = rows
-      .map((row: any) => String(row?.label ?? row?.time ?? row?.slot ?? row?.startTime ?? row ?? "").trim())
-      .filter(Boolean);
-    return slots;
-  } catch {
-    return [];
+      .map((row: any) => {
+        const isObj = row && typeof row === "object";
+        const start = isObj ? String(row?.startTime ?? row?.start ?? row?.from ?? "").trim() : "";
+        const end = isObj ? String(row?.endTime ?? row?.end ?? row?.to ?? "").trim() : "";
+        const slot = String(isObj ? (row?.label ?? row?.time ?? row?.slot ?? (start && end ? `${start}-${end}` : start) ?? "") : row ?? "").trim();
+        if (!slot) return null;
+        const availableRaw = isObj ? row?.available ?? row?.isAvailable : true;
+        return {
+          slot,
+          etaMinutes: isObj && row?.etaMinutes != null ? Number(row.etaMinutes) : undefined,
+          instantEligible: isObj ? Boolean(row?.instantEligible ?? row?.isInstantEligible ?? false) : false,
+          available: availableRaw == null ? true : Boolean(availableRaw),
+        } as SlotOption;
+      })
+      .filter(Boolean) as SlotOption[];
+    const expandedSlots = buildFullDayQuarterSlots();
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log("[cart:slots:parsed]", {
+        requestDate: date,
+        totalRows: Array.isArray(rows) ? rows.length : 0,
+        parsedCount: slots.length,
+        expandedCount: expandedSlots.length,
+        firstThreeRaw: (Array.isArray(rows) ? rows.slice(0, 3) : []),
+        firstThreeParsed: slots.slice(0, 3),
+        firstThreeExpanded: expandedSlots.slice(0, 3),
+      });
+    }
+    return expandedSlots;
+  } catch (error: any) {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log("[cart:slots:error]", {
+        requestDate: date,
+        status: error?.response?.status ?? null,
+        message: String(error?.response?.data?.message ?? error?.message ?? "Unknown"),
+        data: error?.response?.data ?? null,
+      });
+    }
+    return buildFullDayQuarterSlots();
   }
 }
 

@@ -124,7 +124,9 @@ export async function fetchCustomerServicesByCategory(params: {
   try {
     const publicServices = await tryFetch("/api/services", false);
     if (publicServices.length > 0) return publicServices;
-  } catch {}
+  } catch {
+    // Ignore and try category specific fallback endpoint.
+  }
 
   try {
     const { data } = await api.get(`/api/services/category/${categoryId}`, {
@@ -132,12 +134,16 @@ export async function fetchCustomerServicesByCategory(params: {
     });
     const byCategoryPath = extractList(data);
     if (byCategoryPath.length > 0) return byCategoryPath;
-  } catch {}
+  } catch {
+    // Ignore and return empty list below.
+  }
 
   return [];
 }
 
 export async function fetchServiceDetails(serviceId: string | number): Promise<CustomerServiceDetailsDto> {
+  const targetServiceId = asNumber(serviceId, 0);
+
   const mapDetailsPayload = (payload: unknown): CustomerServiceDetailsDto => {
     const root = asRecord(payload);
     const wrapped = root?.data && typeof root.data === "object" ? asRecord(root.data) : root;
@@ -156,7 +162,10 @@ export async function fetchServiceDetails(serviceId: string | number): Promise<C
       .filter(Boolean);
 
     return {
-      serviceId: asNumber(wrapped.serviceId ?? wrapped.id, asNumber(serviceId, 0)),
+      serviceId: asNumber(
+        wrapped.serviceId ?? wrapped.id ?? wrapped.serviceID ?? asRecord(wrapped.service).id,
+        targetServiceId,
+      ),
       serviceName: asString(wrapped.serviceName ?? wrapped.name, "Service Details"),
       included: included.length > 0 ? included : detailsIncluded,
       excluded: excluded.length > 0 ? excluded : detailsExcluded,
@@ -167,6 +176,8 @@ export async function fetchServiceDetails(serviceId: string | number): Promise<C
     const attempts = [
       `/api/customer/services/${serviceId}/details`,
       `/api/services/${serviceId}/details`,
+      `/api/customer/services/${serviceId}`,
+      `/api/services/${serviceId}`,
       `/api/customer/services/catalog?page=0&size=100`,
     ];
 
@@ -175,12 +186,24 @@ export async function fetchServiceDetails(serviceId: string | number): Promise<C
         const { data } = await api.get(path);
         if (path.includes("/catalog")) {
           const root = asRecord(data);
-          const list = (asArray(root.data).length ? asArray(root.data) : asArray(root.items)).map((row) => asRecord(row));
-          const matched = list.find((row) => asNumber(row.id ?? row.serviceId, 0) === asNumber(serviceId, 0));
+          const rows = asArray(root.data).length
+            ? asArray(root.data)
+            : asArray(root.content).length
+              ? asArray(root.content)
+              : asArray(root.items).length
+                ? asArray(root.items)
+                : asArray(root.results);
+          const list = rows.map((row) => asRecord(row));
+          const matched = list.find((row) =>
+            asNumber(row.id ?? row.serviceId ?? row.serviceID ?? asRecord(row.service).id, 0) === targetServiceId,
+          );
           if (matched) return mapDetailsPayload(matched);
           continue;
         }
-        return mapDetailsPayload(data);
+        const mapped = mapDetailsPayload(data);
+        if (mapped.serviceId > 0) {
+          return mapped;
+        }
       } catch {
         // Try next fallback endpoint.
       }

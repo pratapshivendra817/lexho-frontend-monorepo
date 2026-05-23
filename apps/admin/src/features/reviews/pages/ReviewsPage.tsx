@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -31,7 +31,7 @@ export default function ReviewsPage() {
   const [searchInput, setSearchInput] = useState("");
   const [status, setStatus] = useState<AdminReviewStatus | "">("");
   const [rating, setRating] = useState<number | "">("");
-  const [provider, setProvider] = useState("");
+  const [partner, setPartner] = useState("");
   const [service, setService] = useState("");
   const [actionState, setActionState] = useState<ActionState>({ type: "none" });
   const [detailReviewId, setDetailReviewId] = useState<string | null>(null);
@@ -43,7 +43,7 @@ export default function ReviewsPage() {
     size: 10,
     status,
     rating: rating === "" ? undefined : rating,
-    provider: provider || undefined,
+    partner: partner || undefined,
     service: service || undefined,
     search: debouncedSearch || undefined,
   });
@@ -55,7 +55,7 @@ export default function ReviewsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, provider, rating, service, status]);
+  }, [debouncedSearch, partner, rating, service, status]);
 
   const rows = reviewsQuery.data?.content ?? [];
   const total = reviewsQuery.data?.totalElements ?? 0;
@@ -66,15 +66,15 @@ export default function ReviewsPage() {
     averageRating: 0,
     hiddenReviews: 0,
     reportedReviews: 0,
-    providerWiseRatings: [],
+    partnerWiseRatings: [],
     serviceWiseRatings: [],
   };
 
   const activeAction = actionState.type !== "none" ? actionState : null;
 
-  const providerChartData = useMemo(
-    () => stats.providerWiseRatings.map((item) => ({ name: item.name || "N/A", rating: item.value })),
-    [stats.providerWiseRatings],
+  const partnerChartData = useMemo(
+    () => stats.partnerWiseRatings.map((item) => ({ name: item.name || "N/A", rating: item.value })),
+    [stats.partnerWiseRatings],
   );
   const serviceChartData = useMemo(
     () => stats.serviceWiseRatings.map((item) => ({ name: item.name || "N/A", rating: item.value })),
@@ -126,10 +126,10 @@ export default function ReviewsPage() {
 
       <div className="grid gap-3 xl:grid-cols-2">
         <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Provider Wise Ratings</h3>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Partner Wise Ratings</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height={220} minWidth={0}>
-              <BarChart data={providerChartData}>
+              <BarChart data={partnerChartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis dataKey="name" stroke="#94a3b8" />
                 <YAxis stroke="#94a3b8" domain={[0, 5]} />
@@ -179,18 +179,18 @@ export default function ReviewsPage() {
             search={searchInput}
             status={status}
             rating={rating}
-            provider={provider}
+            partner={partner}
             service={service}
             onSearchChange={setSearchInput}
             onStatusChange={setStatus}
             onRatingChange={setRating}
-            onProviderChange={setProvider}
+            onPartnerChange={setPartner}
             onServiceChange={setService}
             onReset={() => {
               setSearchInput("");
               setStatus("");
               setRating("");
-              setProvider("");
+              setPartner("");
               setService("");
             }}
           />
@@ -216,7 +216,7 @@ export default function ReviewsPage() {
               rowKey={(row) => row.id}
               columns={[
                 { key: "customer", header: "Customer", render: (row) => row.customerName || "-" },
-                { key: "provider", header: "Provider", render: (row) => row.providerName || "-" },
+                { key: "partner", header: "Partner", render: (row) => row.partnerName || "-" },
                 { key: "service", header: "Service", render: (row) => row.serviceName || "-" },
                 { key: "rating", header: "Rating", render: (row) => <RatingStars rating={row.rating} /> },
                 {
@@ -272,7 +272,7 @@ export default function ReviewsPage() {
             rowKey={(row) => row.id}
             columns={[
               { key: "customer", header: "Customer", render: (row) => row.customerName || "-" },
-              { key: "provider", header: "Provider", render: (row) => row.providerName || "-" },
+              { key: "partner", header: "Partner", render: (row) => row.partnerName || "-" },
               { key: "comment", header: "Comment", render: (row) => row.comment || "-" },
               { key: "reportReason", header: "Report Reason", render: (row) => row.reportReason || "-" },
               { key: "reportCount", header: "Report Count", render: (row) => String(row.reportCount) },
@@ -317,7 +317,7 @@ export default function ReviewsPage() {
             <div className="grid gap-3">
               <div className="grid gap-1 text-sm">
                 <p><strong>Customer:</strong> {detailQuery.data.customerName || "-"}</p>
-                <p><strong>Provider:</strong> {detailQuery.data.providerName || "-"}</p>
+                <p><strong>Partner:</strong> {detailQuery.data.partnerName || "-"}</p>
                 <p><strong>Service:</strong> {detailQuery.data.serviceName || "-"}</p>
                 <p><strong>Status:</strong> <ReviewStatusBadge status={detailQuery.data.status} /></p>
                 <div className="flex items-center gap-2"><strong>Rating:</strong> <RatingStars rating={detailQuery.data.rating} /></div>
@@ -349,3 +349,5 @@ export default function ReviewsPage() {
     </div>
   );
 }
+
+

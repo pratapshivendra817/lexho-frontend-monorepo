@@ -1,6 +1,6 @@
-export type VerificationStatus = "PENDING" | "APPROVED" | "REJECTED";
+﻿export type VerificationStatus = "PENDING" | "APPROVED" | "REJECTED";
 
-export interface Provider {
+export interface Partner {
   id: string;
   name: string;
   phone: string;
@@ -16,3 +16,4 @@ export interface Provider {
 
   status: VerificationStatus;
 }
+

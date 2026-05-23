@@ -60,7 +60,7 @@ describe("bookingsApi", () => {
             customerName: "Rahul",
             serviceName: "Home Cook",
             serviceType: "COOK",
-            providerName: "Sanjay",
+            partnerName: "Sanjay",
             bookingDate: "2026-04-28",
             amount: "799",
             status: "PENDING",
@@ -105,7 +105,7 @@ describe("bookingsApi", () => {
           customerName: "Rahul",
           service: "Home Cook",
           serviceType: "COOK",
-          providerName: "Sanjay",
+          partnerName: "Sanjay",
           bookingDate: "2026-04-28",
           amount: 799,
           status: "PENDING",
@@ -130,7 +130,7 @@ describe("bookingsApi", () => {
           bookingTime: "10:30:00",
           amount: 999,
           customer: { name: "Aman" },
-          provider: { id: 12, name: "Ravi" },
+          partner: { id: 12, name: "Ravi" },
           payment: { amount: 999, method: "UPI" },
           timeline: [{ label: "Created", at: "2026-04-27" }],
         },
@@ -143,7 +143,7 @@ describe("bookingsApi", () => {
     await updateBooking("bk-77", {
       bookingDate: "2026-04-30",
       bookingTime: "11:00:00",
-      providerId: 14,
+      partnerId: 14,
       amount: 1099,
       notes: "Rescheduled",
     });
@@ -152,11 +152,11 @@ describe("bookingsApi", () => {
 
     expect(mocks.getMock).toHaveBeenCalledWith("/api/admin/bookings/bk-77");
     expect(details?.id).toBe("bk-77");
-    expect(details?.provider.id).toBe("12");
+    expect(details?.partner.id).toBe("12");
     expect(mocks.putMock).toHaveBeenCalledWith("/api/admin/bookings/bk-77", {
       bookingDate: "2026-04-30",
       bookingTime: "11:00:00",
-      providerId: 14,
+      partnerId: 14,
       amount: 1099,
       notes: "Rescheduled",
     });
@@ -164,3 +164,5 @@ describe("bookingsApi", () => {
     expect(mocks.deleteMock).toHaveBeenCalledWith("/api/admin/bookings/bk-77");
   });
 });
+
+
