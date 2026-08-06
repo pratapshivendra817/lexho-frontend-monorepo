@@ -60,7 +60,7 @@ export default function BannerListPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-[var(--color-text)]">Banner Management (New)</h2>
+          <h2 className="text-lg font-semibold text-[var(--color-text)]">Category Banner Management</h2>
           <p className="text-sm text-[var(--color-muted)]">{countLabel}</p>
         </div>
         <button

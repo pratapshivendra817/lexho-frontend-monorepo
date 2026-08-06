@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { FlatList, StyleSheet, View } from "react-native";
 import { Button, Text, TextInput } from "react-native-paper";
 import { ServiceCard } from "../../components/ServiceCard";
+import { COLORS } from '../../theme/colors';
 
 export function BookingServiceScreen({ navigation }: any) {
   const [serviceIdInput, setServiceIdInput] = useState("");
@@ -35,7 +36,12 @@ export function BookingServiceScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#fff", padding: 16, gap: 12 },
-  title: { fontSize: 22, fontWeight: "700", color: "#0f172a" },
-  helper: { color: "#64748b", marginTop: 8 },
+  root: { flex: 1, backgroundColor: COLORS.white, padding: 16, gap: 12 },
+  title: { fontSize: 22, fontWeight: "700", color: COLORS.slate900 },
+  helper: { color: COLORS.slate500, marginTop: 8 },
 });
+
+
+
+
+

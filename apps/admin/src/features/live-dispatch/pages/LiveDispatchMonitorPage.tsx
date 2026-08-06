@@ -1,14 +1,21 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 
 import { DataState, Pagination } from "@/components/admin";
-import { fetchBookingLiveTracking, updateBookingPartnerLocation } from "@/api/admin";
+import {
+  fetchBookingLiveTracking,
+  fetchBookingNavigation,
+  updateBookingPartnerLocation,
+} from "@/api/admin";
 import { extractApiError } from "@/utils/apiError";
 
 import { useBookingMutations, useBookingsQuery } from "@/features/bookings/hooks/useBookings";
 import type { DispatchLifecycleStatus } from "@/features/bookings/types";
+import { BookingRouteMap } from "../components";
+import { useAdminBookingEtaSocket } from "../hooks/useAdminBookingEtaSocket";
+import { formatDistanceMeters, formatEtaMinutes } from "../utils";
 
 const LIFECYCLE_VALUES: DispatchLifecycleStatus[] = [
   "BOOKING_CREATED",
@@ -44,10 +51,25 @@ export default function LiveDispatchMonitorPage() {
 
   const rows = listQuery.data?.content ?? [];
   const total = listQuery.data?.totalElements ?? 0;
-  const activeRows = useMemo(() => rows.filter((row) => row.status !== "COMPLETED" && row.status !== "CANCELLED"), [rows]);
+  const activeRows = useMemo(
+    () => rows.filter((row) => row.status !== "COMPLETED" && row.status !== "CANCELLED"),
+    [rows],
+  );
+
+  useEffect(() => {
+    if (!trackingBookingId && activeRows[0]?.id) {
+      setTrackingBookingId(activeRows[0].id);
+    }
+  }, [activeRows, trackingBookingId]);
   const trackingQuery = useQuery({
     queryKey: ["admin-booking-live-tracking", trackingBookingId],
     queryFn: () => fetchBookingLiveTracking(trackingBookingId),
+    enabled: trackingBookingId.trim().length > 0,
+    retry: false,
+  });
+  const navigationQuery = useQuery({
+    queryKey: ["admin-booking-navigation", trackingBookingId],
+    queryFn: () => fetchBookingNavigation(trackingBookingId),
     enabled: trackingBookingId.trim().length > 0,
     retry: false,
   });
@@ -60,36 +82,68 @@ export default function LiveDispatchMonitorPage() {
       }),
     onSuccess: async () => {
       toast.success("Partner location overridden");
-      await trackingQuery.refetch();
+      await Promise.all([trackingQuery.refetch(), navigationQuery.refetch()]);
     },
     onError: (error) => toast.error(extractApiError(error, "Location override failed")),
   });
+
+  useAdminBookingEtaSocket({
+    bookingId: trackingBookingId,
+    enabled: trackingBookingId.trim().length > 0,
+    onEtaUpdate: () => {
+      void Promise.all([trackingQuery.refetch(), navigationQuery.refetch()]);
+    },
+  });
+
+  const trackingSnapshot = trackingQuery.data;
+  const navigationSnapshot = navigationQuery.data;
+
+  const refreshTracking = () =>
+    void Promise.all([trackingQuery.refetch(), navigationQuery.refetch()]).then((responses) => {
+      if (!responses[0].error && !responses[1].error) {
+        toast.success("Tracking refreshed");
+      }
+    });
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-[var(--color-text)]">Live Dispatch Monitor</h2>
-          <p className="text-sm text-[var(--color-muted)]">Track active bookings and trigger dispatch lifecycle actions.</p>
+          <p className="text-sm text-[var(--color-muted)]">
+            Track active bookings, draw backend route polyline, and override partner location.
+          </p>
         </div>
       </div>
 
       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
         <div className="mb-4 grid gap-3 rounded-lg border border-[var(--color-border)] p-3 lg:grid-cols-4">
-          <input value={trackingBookingId} onChange={(event) => setTrackingBookingId(event.target.value)} placeholder="Booking ID for live tracking" className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" />
-          <input value={overrideLatitude} onChange={(event) => setOverrideLatitude(event.target.value)} placeholder="Override latitude" className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" />
-          <input value={overrideLongitude} onChange={(event) => setOverrideLongitude(event.target.value)} placeholder="Override longitude" className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" />
-          <input value={overridePincode} onChange={(event) => setOverridePincode(event.target.value)} placeholder="Pincode (optional)" className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" />
-          <button
-            type="button"
-            className="rounded bg-blue-600 px-3 py-2 text-sm text-white"
-            onClick={() =>
-              void trackingQuery.refetch().then((res) => {
-                if (!res.error) toast.success("Tracking refreshed");
-              })
-            }
-          >
-            Fetch Live Snapshot
+          <input
+            value={trackingBookingId}
+            onChange={(event) => setTrackingBookingId(event.target.value)}
+            placeholder="Booking ID for live tracking"
+            className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
+          />
+          <input
+            value={overrideLatitude}
+            onChange={(event) => setOverrideLatitude(event.target.value)}
+            placeholder="Override latitude"
+            className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
+          />
+          <input
+            value={overrideLongitude}
+            onChange={(event) => setOverrideLongitude(event.target.value)}
+            placeholder="Override longitude"
+            className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
+          />
+          <input
+            value={overridePincode}
+            onChange={(event) => setOverridePincode(event.target.value)}
+            placeholder="Pincode (optional)"
+            className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
+          />
+          <button type="button" className="rounded bg-blue-600 px-3 py-2 text-sm text-white" onClick={refreshTracking}>
+            Refresh Tracking
           </button>
           <button
             type="button"
@@ -101,15 +155,104 @@ export default function LiveDispatchMonitorPage() {
                 toast.error("Booking ID, latitude and longitude are required");
                 return;
               }
-              overrideMutation.mutate({ bookingId: trackingBookingId, latitude: lat, longitude: lng, pincode: overridePincode || undefined });
+              overrideMutation.mutate({
+                bookingId: trackingBookingId,
+                latitude: lat,
+                longitude: lng,
+                pincode: overridePincode || undefined,
+              });
             }}
           >
             Override Partner Location
           </button>
           <div className="text-xs text-[var(--color-muted)] lg:col-span-2">
-            {trackingQuery.data ? `Status: ${trackingQuery.data.status} | Payment: ${trackingQuery.data.paymentStatus} | Partner: ${trackingQuery.data.partnerId ?? "N/A"}` : "Enter booking id and fetch live snapshot."}
+            {trackingSnapshot
+              ? `Status: ${trackingSnapshot.status} | Payment: ${trackingSnapshot.paymentStatus ?? "N/A"} | Partner: ${trackingSnapshot.partnerId ?? "N/A"}`
+              : "Enter booking id and refresh tracking."}
           </div>
         </div>
+
+        {trackingBookingId.trim() ? (
+          <div className="mb-4 grid gap-4 xl:grid-cols-[1.2fr,0.8fr]">
+            <section className="space-y-3 rounded-lg border border-[var(--color-border)] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--color-text)]">Route & Tracking</h3>
+                  <p className="text-xs text-[var(--color-muted)]">
+                    Backend polyline rendered with partner and customer markers.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded border border-[var(--color-border)] px-2 py-1 text-xs"
+                  onClick={refreshTracking}
+                >
+                  Refresh
+                </button>
+              </div>
+
+              <BookingRouteMap
+                routeCoordinates={navigationSnapshot?.routeCoordinates ?? []}
+                partnerLocation={trackingSnapshot?.partnerLocation ?? navigationSnapshot?.partnerLocation}
+                customerLocation={navigationSnapshot?.customerLocation}
+              />
+            </section>
+
+            <section className="space-y-3 rounded-lg border border-[var(--color-border)] p-3">
+              <h3 className="text-sm font-semibold text-[var(--color-text)]">Navigation Panel</h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded border border-[var(--color-border)] p-3">
+                  <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Status</p>
+                  <p className="mt-1 text-sm font-semibold text-[var(--color-text)]">
+                    {navigationSnapshot?.status ?? trackingSnapshot?.status ?? "N/A"}
+                  </p>
+                </div>
+                <div className="rounded border border-[var(--color-border)] p-3">
+                  <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">ETA</p>
+                  <p className="mt-1 text-sm font-semibold text-[var(--color-text)]">
+                    {formatEtaMinutes(navigationSnapshot?.etaMinutes)}
+                  </p>
+                </div>
+                <div className="rounded border border-[var(--color-border)] p-3">
+                  <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Distance</p>
+                  <p className="mt-1 text-sm font-semibold text-[var(--color-text)]">
+                    {formatDistanceMeters(navigationSnapshot?.distanceMeters, navigationSnapshot?.distanceText)}
+                  </p>
+                </div>
+                <div className="rounded border border-[var(--color-border)] p-3">
+                  <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Partner location</p>
+                  <p className="mt-1 text-sm font-semibold text-[var(--color-text)]">
+                    {trackingSnapshot?.partnerLocation
+                      ? `${trackingSnapshot.partnerLocation.latitude.toFixed(5)}, ${trackingSnapshot.partnerLocation.longitude.toFixed(5)}`
+                      : "N/A"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded border border-[var(--color-border)] p-3">
+                <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Tracking events</p>
+                {trackingSnapshot?.events?.length ? (
+                  <ul className="mt-2 space-y-2 text-sm">
+                    {trackingSnapshot.events.slice(0, 6).map((event) => (
+                      <li
+                        key={`${event.id}-${event.createdAt ?? "event"}`}
+                        className="rounded border border-[var(--color-border)] p-2"
+                      >
+                        <p className="font-medium text-[var(--color-text)]">{event.eventType}</p>
+                        <p className="text-xs text-[var(--color-muted)]">{event.createdAt ?? "Time unavailable"}</p>
+                        {event.eventPayload ? (
+                          <p className="mt-1 break-words text-xs text-[var(--color-muted)]">{event.eventPayload}</p>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-[var(--color-muted)]">No tracking events available yet.</p>
+                )}
+              </div>
+            </section>
+          </div>
+        ) : null}
 
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <input
@@ -157,6 +300,15 @@ export default function LiveDispatchMonitorPage() {
                           className="rounded border border-[var(--color-border)] px-2 py-1 text-xs"
                         >
                           Open
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTrackingBookingId(row.id);
+                          }}
+                          className="rounded border border-[var(--color-border)] px-2 py-1 text-xs"
+                        >
+                          Track
                         </button>
                         <button
                           type="button"

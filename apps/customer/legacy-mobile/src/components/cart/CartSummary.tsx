@@ -1,5 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+
+import { COLORS } from '../../theme/colors';
+
 type CartSummaryProps = {
   grandTotal: number;
   canCheckout: boolean;
@@ -25,21 +28,27 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#DCE7F3",
-    backgroundColor: "#FFFFFF",
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.white,
     padding: 12,
     gap: 8,
   },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  label: { color: "#334155", fontWeight: "700" },
-  amount: { color: "#0F766E", fontSize: 18, fontWeight: "900" },
+  label: { color: COLORS.slate700, fontWeight: "700" },
+  amount: { color: COLORS.teal700, fontSize: 18, fontWeight: "900" },
   btn: {
     borderRadius: 12,
-    backgroundColor: "#0EA5E9",
+    backgroundColor: COLORS.primary,
     paddingVertical: 11,
     alignItems: "center",
   },
-  btnDisabled: { backgroundColor: "#94A3B8" },
-  btnText: { color: "#FFFFFF", fontWeight: "800", fontSize: 14 },
-  helper: { fontSize: 11, color: "#64748B" },
+  btnDisabled: { backgroundColor: COLORS.slate400 },
+  btnText: { color: COLORS.white, fontWeight: "800", fontSize: 14 },
+  helper: { fontSize: 11, color: COLORS.slate500 },
 });
+
+
+
+
+
+

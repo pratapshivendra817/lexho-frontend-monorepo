@@ -9,6 +9,9 @@ import { EmptyStateCard } from "../../components/common/EmptyStateCard";
 import { SkeletonList } from "../../components/common/SkeletonList";
 
 const schema = z.object({ code: z.string().min(3, "Enter valid coupon code") });
+
+import { COLORS } from '../../theme/colors';
+
 type Form = z.infer<typeof schema>;
 
 export function CouponScreen() {
@@ -40,4 +43,9 @@ export function CouponScreen() {
   );
 }
 
-const styles = StyleSheet.create({ root: { flex: 1, padding: 16, gap: 10 }, card: { borderRadius: 16 }, form: { gap: 8 }, item: { borderRadius: 12 }, code: { fontWeight: "800" }, err: { color: "#DC2626" } });
+const styles = StyleSheet.create({ root: { flex: 1, padding: 16, gap: 10 }, card: { borderRadius: 16 }, form: { gap: 8 }, item: { borderRadius: 12 }, code: { fontWeight: "800" }, err: { color: COLORS.danger } });
+
+
+
+
+

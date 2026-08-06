@@ -20,6 +20,8 @@
     "mobile:partner": "powershell -ExecutionPolicy Bypass -File scripts/run-rn-android.ps1 -App partner",
     "android:customer": "npm run android:run:shortpath --prefix apps/customer/legacy-mobile",
     "android:partner": "npm run android:run:shortpath --prefix apps/partner/legacy-mobile",
+    "migrate:image-paths:dry": "node scripts/fix-admin-image-paths.mjs",
+    "migrate:image-paths:apply": "node scripts/fix-admin-image-paths.mjs --apply",
     "build:admin": "npm run build --workspace=@lexho/admin",
     "build": "npm run build:admin",
     "lint:admin": "npm run lint --workspace=@lexho/admin",

@@ -5,12 +5,18 @@ type ReviewsFiltersBarProps = {
   status: AdminReviewStatus | "";
   rating: number | "";
   partner: string;
+  customer: string;
   service: string;
+  startDate: string;
+  endDate: string;
   onSearchChange: (value: string) => void;
   onStatusChange: (value: AdminReviewStatus | "") => void;
   onRatingChange: (value: number | "") => void;
   onPartnerChange: (value: string) => void;
+  onCustomerChange: (value: string) => void;
   onServiceChange: (value: string) => void;
+  onStartDateChange: (value: string) => void;
+  onEndDateChange: (value: string) => void;
   onReset: () => void;
 };
 
@@ -19,12 +25,18 @@ export function ReviewsFiltersBar({
   status,
   rating,
   partner,
+  customer,
   service,
+  startDate,
+  endDate,
   onSearchChange,
   onStatusChange,
   onRatingChange,
   onPartnerChange,
+  onCustomerChange,
   onServiceChange,
+  onStartDateChange,
+  onEndDateChange,
   onReset,
 }: ReviewsFiltersBarProps) {
   return (
@@ -68,11 +80,32 @@ export function ReviewsFiltersBar({
         className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
       />
 
-      <div className="flex gap-2">
+      <input
+        value={customer}
+        onChange={(event) => onCustomerChange(event.target.value)}
+        placeholder="Customer"
+        className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
+      />
+
+      <input
+        value={service}
+        onChange={(event) => onServiceChange(event.target.value)}
+        placeholder="Service"
+        className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
+      />
+
+      <input
+        type="date"
+        value={startDate}
+        onChange={(event) => onStartDateChange(event.target.value)}
+        className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
+      />
+
+      <div className="flex gap-2 md:col-span-2">
         <input
-          value={service}
-          onChange={(event) => onServiceChange(event.target.value)}
-          placeholder="Service"
+          type="date"
+          value={endDate}
+          onChange={(event) => onEndDateChange(event.target.value)}
           className="w-full rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
         />
         <button type="button" onClick={onReset} className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm">

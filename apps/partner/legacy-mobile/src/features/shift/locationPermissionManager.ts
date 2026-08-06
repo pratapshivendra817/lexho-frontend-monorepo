@@ -1,15 +1,13 @@
 import { PermissionsAndroid, Platform } from "react-native";
 import Geolocation from "react-native-geolocation-service";
+import { requestBackgroundLocationStep, requestForegroundLocationStep } from "./backgroundLocationCompliance";
 
 export async function requestForegroundLocationPermission(): Promise<boolean> {
   if (Platform.OS === "ios") {
     const status = await Geolocation.requestAuthorization("whenInUse");
     return status === "granted";
   }
-
-  const fine = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
-  const coarse = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION);
-  return fine === PermissionsAndroid.RESULTS.GRANTED && coarse === PermissionsAndroid.RESULTS.GRANTED;
+  return (await requestForegroundLocationStep()) === "granted";
 }
 
 export async function requestBackgroundLocationPermission(): Promise<boolean> {
@@ -17,9 +15,7 @@ export async function requestBackgroundLocationPermission(): Promise<boolean> {
     const status = await Geolocation.requestAuthorization("always");
     return status === "granted";
   }
-
-  const bg = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION);
-  return bg === PermissionsAndroid.RESULTS.GRANTED;
+  return (await requestBackgroundLocationStep()) === "granted";
 }
 
 export async function ensureLocationPermissions(): Promise<boolean> {

@@ -33,6 +33,7 @@ export default function ShiftScreen() {
     loading,
     error,
     lastLocationSentAt,
+    dispatchConfig,
     startShift,
     endShift,
     refetchHistory,
@@ -137,6 +138,7 @@ export default function ShiftScreen() {
         <View style={styles.scheduleRow}>
           <Text style={styles.scheduleLabel}>Date</Text>
           <TouchableOpacity
+            testID="shift-date-button"
             style={styles.scheduleBtn}
             onPress={() => {
               setPickerTarget("shiftDate");
@@ -149,6 +151,7 @@ export default function ShiftScreen() {
         <View style={styles.scheduleRow}>
           <Text style={styles.scheduleLabel}>Start Time</Text>
           <TouchableOpacity
+            testID="shift-start-time-button"
             style={styles.scheduleBtn}
             onPress={() => {
               setPickerTarget("startTime");
@@ -161,6 +164,7 @@ export default function ShiftScreen() {
         <View style={styles.scheduleRow}>
           <Text style={styles.scheduleLabel}>End Time</Text>
           <TouchableOpacity
+            testID="shift-end-time-button"
             style={styles.scheduleBtn}
             onPress={() => {
               setPickerTarget("endTime");
@@ -189,12 +193,18 @@ export default function ShiftScreen() {
       {lastLocationSentAt ? (
         <Text style={styles.hintText}>Last location updated: {new Date(lastLocationSentAt).toLocaleTimeString()}</Text>
       ) : null}
+      {dispatchConfig ? (
+        <Text style={styles.hintText}>
+          Tracking interval: {dispatchConfig.foregroundTrackingIntervalSeconds}s foreground, {dispatchConfig.backgroundTrackingIntervalSeconds}s background
+        </Text>
+      ) : null}
       {!isScheduleValid ? (
         <Text style={styles.errorText}>Invalid schedule: End Time must be greater than Start Time.</Text>
       ) : null}
 
       {!state.shiftStarted ? (
         <TouchableOpacity
+          testID="shift-primary-action"
           style={styles.startBtn}
           disabled={loading}
           onPress={() => {
@@ -212,7 +222,7 @@ export default function ShiftScreen() {
           <Text style={styles.btnText}>Start Shift</Text>
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity style={styles.endBtn} disabled={loading} onPress={() => endShift().catch(() => null)}>
+        <TouchableOpacity testID="shift-primary-action" style={styles.endBtn} disabled={loading} onPress={() => endShift().catch(() => null)}>
           <Text style={styles.btnText}>End Shift</Text>
         </TouchableOpacity>
       )}
@@ -220,8 +230,18 @@ export default function ShiftScreen() {
       {error ? (
         <View style={styles.errorCard}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={() => refetchHistory()}>
-            <Text style={styles.retryText}>Retry</Text>
+          <TouchableOpacity
+            testID="shift-error-action"
+            style={styles.retryBtn}
+            onPress={() => {
+              if (error.toLowerCase().includes("gps") || error.toLowerCase().includes("location")) {
+                openGpsSettings().catch(() => null);
+                return;
+              }
+              refetchHistory();
+            }}
+          >
+            <Text style={styles.retryText}>{error.toLowerCase().includes("gps") || error.toLowerCase().includes("location") ? "Open Settings" : "Retry"}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -266,10 +286,11 @@ export default function ShiftScreen() {
             <Text style={styles.modalDescription}>You can change this at any time in Settings.</Text>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalGhostBtn} onPress={() => setShowLocationAssistModal(false)}>
+              <TouchableOpacity testID="shift-modal-dismiss-button" style={styles.modalGhostBtn} onPress={() => setShowLocationAssistModal(false)}>
                 <Text style={styles.modalGhostText}>No, thanks</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                testID="shift-modal-open-settings-button"
                 style={styles.modalPrimaryBtn}
                 onPress={async () => {
                   setShowLocationAssistModal(false);
@@ -320,6 +341,7 @@ const styles = StyleSheet.create({
   title: { color: COLORS.textPrimary, fontSize: 24, fontWeight: "800" },
   subtitle: { color: COLORS.textSecondary, marginBottom: 4 },
   stepperCard: {
+    marginHorizontal: -16,
     backgroundColor: COLORS.surface,
     borderColor: COLORS.border,
     borderWidth: 1,
@@ -342,6 +364,7 @@ const styles = StyleSheet.create({
   stepChipTextPending: { color: COLORS.textSecondary },
   stepArrow: { color: COLORS.textSecondary, fontWeight: "800" },
   statusCard: {
+    marginHorizontal: -16,
     backgroundColor: COLORS.surface,
     borderColor: COLORS.border,
     borderWidth: 1,
@@ -364,6 +387,7 @@ const styles = StyleSheet.create({
   timer: { color: COLORS.textPrimary, fontSize: 26, fontWeight: "800", letterSpacing: 1 },
   startBtn: {
     marginTop: 8,
+    marginHorizontal: -16,
     borderRadius: 12,
     backgroundColor: COLORS.success,
     paddingVertical: 13,
@@ -371,6 +395,7 @@ const styles = StyleSheet.create({
   },
   endBtn: {
     marginTop: 8,
+    marginHorizontal: -16,
     borderRadius: 12,
     backgroundColor: COLORS.danger,
     paddingVertical: 13,
@@ -379,6 +404,7 @@ const styles = StyleSheet.create({
   btnText: { color: COLORS.white, fontWeight: "800" },
   errorCard: {
     marginTop: 4,
+    marginHorizontal: -16,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.danger,
@@ -389,8 +415,8 @@ const styles = StyleSheet.create({
   errorText: { color: COLORS.danger },
   retryBtn: { alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.surfaceElevated },
   retryText: { color: COLORS.textPrimary, fontWeight: "700" },
-  historySection: { marginTop: 8, gap: 8 },
-  historyTitle: { color: COLORS.textPrimary, fontSize: 18, fontWeight: "800" },
+  historySection: { marginTop: 8, marginHorizontal: -16, gap: 8 },
+  historyTitle: { color: COLORS.textPrimary, fontSize: 18, fontWeight: "800", marginHorizontal: 16 },
   historyCard: {
     backgroundColor: COLORS.surface,
     borderColor: COLORS.border,
@@ -400,7 +426,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   historyText: { color: COLORS.textSecondary, fontSize: 12 },
-  metaText: { color: COLORS.textSecondary },
+  metaText: { color: COLORS.textSecondary, marginHorizontal: 16 },
   skeleton: { height: 80, borderRadius: 12, backgroundColor: COLORS.surfaceSoft },
   hintText: { color: COLORS.textSecondary, fontSize: 12 },
   modalBackdrop: {
@@ -414,32 +440,32 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 360,
     borderRadius: 24,
-    backgroundColor: "#1C2533",
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: "#2B3A52",
+    borderColor: COLORS.border,
     padding: 20,
     gap: 10,
   },
-  modalTitle: { color: "#EAF2FF", fontSize: 17, fontWeight: "800", lineHeight: 24 },
-  modalSubTitle: { color: "#D3E2FF", fontSize: 15, fontWeight: "700", marginTop: 2 },
-  modalBullet: { color: "#D3E2FF", fontSize: 14, fontWeight: "600", lineHeight: 20 },
-  modalDescription: { color: "#BFD0EA", fontSize: 13, lineHeight: 18, marginTop: 2 },
+  modalTitle: { color: COLORS.textPrimary, fontSize: 17, fontWeight: "800", lineHeight: 24 },
+  modalSubTitle: { color: COLORS.accent, fontSize: 15, fontWeight: "700", marginTop: 2 },
+  modalBullet: { color: COLORS.textSecondary, fontSize: 14, fontWeight: "600", lineHeight: 20 },
+  modalDescription: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18, marginTop: 2 },
   modalActions: { flexDirection: "row", gap: 10, marginTop: 8 },
   modalGhostBtn: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#6F819D",
+    borderColor: COLORS.border,
     borderRadius: 999,
     paddingVertical: 12,
     alignItems: "center",
   },
-  modalGhostText: { color: "#8BC7FF", fontWeight: "700", fontSize: 16 },
+  modalGhostText: { color: COLORS.accent, fontWeight: "700", fontSize: 16 },
   modalPrimaryBtn: {
     flex: 1,
-    backgroundColor: "#68C8FF",
+    backgroundColor: COLORS.secondary,
     borderRadius: 999,
     paddingVertical: 12,
     alignItems: "center",
   },
-  modalPrimaryText: { color: "#102235", fontWeight: "800", fontSize: 16 },
+  modalPrimaryText: { color: COLORS.background, fontWeight: "800", fontSize: 16 },
 });

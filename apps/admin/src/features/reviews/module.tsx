@@ -15,7 +15,7 @@ export const reviewsRoutes: AdminRouteConfig[] = [
 export const reviewsNavItems: AdminNavItem[] = [
   {
     path: "/reviews",
-    label: "Reviews",
+    label: "Ratings & Reviews",
   },
 ];
 

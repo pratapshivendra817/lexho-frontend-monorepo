@@ -4,6 +4,9 @@ import { Button, Text } from "react-native-paper";
 
 const SHEET_HEIGHT = 280;
 
+
+import { COLORS } from '../../theme/colors';
+
 type QuickAction = { label: string; onPress: () => void };
 
 export function QuickBookingSheet({
@@ -122,7 +125,7 @@ const styles = StyleSheet.create({
     minHeight: SHEET_HEIGHT,
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.white,
     padding: 18,
     gap: 10,
   },
@@ -130,11 +133,16 @@ const styles = StyleSheet.create({
     width: 44,
     height: 5,
     borderRadius: 10,
-    backgroundColor: "#CBD5E1",
+    backgroundColor: COLORS.slate300,
     alignSelf: "center",
     marginBottom: 6,
   },
-  title: { fontSize: 20, fontWeight: "800", color: "#0F172A" },
-  subtitle: { color: "#64748B" },
+  title: { fontSize: 20, fontWeight: "800", color: COLORS.slate900 },
+  subtitle: { color: COLORS.slate500 },
   actionWrap: { gap: 8, marginTop: 6 },
 });
+
+
+
+
+

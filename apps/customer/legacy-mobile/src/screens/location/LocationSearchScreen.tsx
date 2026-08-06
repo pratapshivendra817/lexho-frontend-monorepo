@@ -8,7 +8,11 @@ import { setSelectedAddressId } from "../../redux/cartSlice";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { deleteAddressThunk, fetchAllAddressesThunk, setCurrentAddressLocal, setDefaultAddressThunk, setServiceAvailable, updateLocationAndSyncThunk } from "../../redux/locationSlice";
 import { checkServiceability, searchLocations } from "../../services/locationService";
+import { formatAddressLine } from "../../utils/addressFormatter";
 import { resolveUserIdFromAuth } from "../../utils/authUser";
+
+
+import { COLORS } from '../../theme/colors';
 
 function toReadableError(error: any, fallback: string) {
   const text = String(error?.message ?? fallback);
@@ -18,24 +22,26 @@ function toReadableError(error: any, fallback: string) {
   return text;
 }
 
-function formatAddressLine(row: any) {
-  const pieces = [
-    row?.flatNo,
-    row?.floor ? `Floor ${row.floor}` : "",
-    row?.buildingName,
-    row?.landmark ? `Near ${row.landmark}` : "",
-    row?.addressLine,
-    row?.area,
-    row?.sector,
-    row?.city,
-    row?.state,
-    row?.country,
-    row?.pincode,
-  ]
-    .map((x) => String(x ?? "").trim())
-    .filter((x) => x.length > 0);
-  if (pieces.length === 0) return "Address not available";
-  return pieces.join(", ");
+function pickBackendPincode(source: any): string {
+  const root = source?.data ?? source ?? {};
+  return String(
+    root?.matchedPincode ??
+      root?.pincode ??
+      root?.postalCode ??
+      root?.serviceArea?.pincode ??
+      root?.serviceableArea?.pincode ??
+      root?.area?.pincode ??
+      root?.location?.pincode ??
+      root?.currentLocation?.pincode ??
+      "",
+  ).trim();
+}
+
+function replaceAddressPincode(addressLine: string, pincode: string): string {
+  const line = String(addressLine ?? "").trim();
+  if (!line || !pincode) return line;
+  if (/\b\d{6}\b/.test(line)) return line.replace(/\b\d{6}\b/g, pincode);
+  return line;
 }
 
 function getSearchScore(row: any, queryText: string) {
@@ -75,6 +81,7 @@ export function LocationSearchScreen({ navigation }: any) {
   const [apiSearching, setApiSearching] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [snack, setSnack] = useState<string | null>(null);
+  const [currentServiceabilityError, setCurrentServiceabilityError] = useState<string | null>(null);
   const locationUserId = useMemo(() => resolveUserIdFromAuth(authUserId, String(authToken).trim()), [authToken, authUserId]);
 
   useEffect(() => {
@@ -175,6 +182,45 @@ export function LocationSearchScreen({ navigation }: any) {
       void dispatch(fetchAllAddressesThunk({ userId: locationUserId }));
     }
   }, [dispatch, locationUserId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const lat = Number(currentAddress?.latitude ?? 0);
+      const lng = Number(currentAddress?.longitude ?? 0);
+      const pincode = String(currentAddress?.pincode ?? currentAddress?.postalCode ?? "").trim();
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) {
+        return;
+      }
+      try {
+        const serviceability = await checkServiceability({ latitude: lat, longitude: lng, pincode });
+        const available = isServiceable(serviceability?.data ?? serviceability);
+        if (!cancelled) {
+          setCurrentServiceabilityError(null);
+          dispatch(setServiceAvailable(available));
+          const backendPincode = pickBackendPincode(serviceability);
+          if (backendPincode && backendPincode !== pincode) {
+            dispatch(
+              setCurrentAddressLocal({
+                ...currentAddress,
+                pincode: backendPincode,
+                addressLine: replaceAddressPincode(String(currentAddress?.addressLine ?? ""), backendPincode),
+              }),
+            );
+          }
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          dispatch(setServiceAvailable(null));
+          setCurrentServiceabilityError(toReadableError(e, "Serviceability check failed"));
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentAddress, dispatch]);
 
   const retryAddressFetch = async () => {
     if (!Number.isFinite(locationUserId) || locationUserId <= 0) {
@@ -357,8 +403,8 @@ export function LocationSearchScreen({ navigation }: any) {
       <View style={styles.searchWrap}>
         <Searchbar
           placeholder="Search locality or area"
-          placeholderTextColor="#94A3B8"
-          iconColor="#0F766E"
+          placeholderTextColor={COLORS.neutral100}
+          iconColor={COLORS.goldSoft}
           inputStyle={styles.searchInput}
           value={query}
           onChangeText={setQuery}
@@ -378,7 +424,7 @@ export function LocationSearchScreen({ navigation }: any) {
                 activeOpacity={0.85}
                 onPress={() => void onSelectSearchLocation(row)}
               >
-                <MaterialCommunityIcon name="map-marker-radius-outline" size={18} color="#0F766E" />
+                <MaterialCommunityIcon name="map-marker-radius-outline" size={18} color={COLORS.gold} />
                 <Text style={styles.suggestionText} numberOfLines={1}>
                   {formatAddressLine(row)}
                 </Text>
@@ -389,7 +435,7 @@ export function LocationSearchScreen({ navigation }: any) {
       ) : null}
 
       <TouchableOpacity style={styles.currentLocationCard} onPress={() => navigation.navigate("DetectingLocation")} activeOpacity={0.9}>
-        <MaterialCommunityIcon name="crosshairs-gps" size={24} color="#15803D" />
+        <MaterialCommunityIcon name="crosshairs-gps" size={24} color={COLORS.green700} />
         <View style={styles.currentLocationText}>
           <Text style={styles.currentLocationTitle}>Use current location</Text>
           <Text style={styles.currentLocationSubtitle}>
@@ -412,19 +458,19 @@ export function LocationSearchScreen({ navigation }: any) {
                   ? "Not serviceable"
                   : "Serviceability pending"}
             </Text>
-            {__DEV__ ? (
-              <Text style={styles.devChip}>
-                {`ID: ${String(currentAddress?.id ?? "-")}`}
-              </Text>
-            ) : null}
           </View>
+          {serviceAvailable === null && currentServiceabilityError ? (
+            <Text style={styles.serviceabilityErrorText} numberOfLines={2}>
+              {currentServiceabilityError}
+            </Text>
+          ) : null}
         </View>
       </TouchableOpacity>
 
       <View style={styles.sectionHead}>
-        <Text style={styles.sectionTitle}>Saved addresses</Text>
+        <Text style={styles.sectionTitle}>Saved address</Text>
         <TouchableOpacity style={styles.addNewBtn} activeOpacity={0.9} onPress={() => navigation.navigate("AddAddressDetails")}>
-          <MaterialCommunityIcon name="plus-circle-outline" size={16} color="#FFFFFF" />
+          <MaterialCommunityIcon name="plus-circle-outline" size={16} color={COLORS.white} />
           <Text style={styles.addNewText}>Add New</Text>
         </TouchableOpacity>
       </View>
@@ -440,7 +486,13 @@ export function LocationSearchScreen({ navigation }: any) {
       {error ? (
         <View style={styles.errorWrap}>
           <Text style={styles.error}>{String(error)}</Text>
-          <Button mode="outlined" compact onPress={() => void retryAddressFetch()}>
+          <Button
+            mode="outlined"
+            compact
+            onPress={() => void retryAddressFetch()}
+            textColor={COLORS.goldSoft}
+            style={styles.outlinedThemeBtn}
+          >
             Retry API
           </Button>
         </View>
@@ -469,7 +521,13 @@ export function LocationSearchScreen({ navigation }: any) {
                       ? "Not serviceable"
                       : "Checking..."}
                 </Text>
-                <Button compact mode="contained-tonal" onPress={() => void onSelectSearchLocation(row)}>
+                <Button
+                  compact
+                  mode="contained-tonal"
+                  onPress={() => void onSelectSearchLocation(row)}
+                  buttonColor={COLORS.goldSoft}
+                  textColor={COLORS.navyDark}
+                >
                   Select
                 </Button>
               </View>
@@ -488,6 +546,7 @@ export function LocationSearchScreen({ navigation }: any) {
               label={item?.label}
               addressLine={formatAddressLine(item)}
               selected={String(item?.id ?? "") === String(currentAddress?.id ?? "")}
+              darkTheme
               onPress={() => {
                 void onSetDefault(String(item?.id ?? ""), item);
               }}
@@ -496,10 +555,21 @@ export function LocationSearchScreen({ navigation }: any) {
               }}
             />
             <View style={styles.cardActions}>
-              <Button compact mode="text" onPress={() => navigation.navigate("AddAddressDetails", { address: item })}>
+              <Button
+                compact
+                mode="text"
+                onPress={() => navigation.navigate("AddAddressDetails", { address: item })}
+                textColor={COLORS.goldSoft}
+              >
                 Edit address
               </Button>
-              <Button compact mode="contained-tonal" onPress={() => void onSetDefault(String(item?.id ?? ""), item)}>
+              <Button
+                compact
+                mode="contained-tonal"
+                onPress={() => void onSetDefault(String(item?.id ?? ""), item)}
+                buttonColor={COLORS.goldSoft}
+                textColor={COLORS.navyDark}
+              >
                 Select
               </Button>
             </View>
@@ -515,13 +585,13 @@ export function LocationSearchScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F8FFFA", padding: 14 },
+  root: { flex: 1, backgroundColor: COLORS.navyDark, paddingVertical: 14 },
   searchWrap: {
     borderRadius: 20,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.navyDark,
     borderWidth: 1.5,
-    borderColor: "#A7F3D0",
-    shadowColor: "#0B3B2E",
+    borderColor: COLORS.goldSoft,
+    shadowColor: COLORS.slate700,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
     shadowRadius: 12,
@@ -535,8 +605,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#D1FAE5",
-    backgroundColor: "#FFFFFF",
+    borderColor: COLORS.goldSoft,
+    backgroundColor: COLORS.navyDark,
     overflow: "hidden",
   },
   suggestionItem: {
@@ -546,23 +616,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#ECFDF5",
+    borderBottomColor: COLORS.goldSoft,
   },
   suggestionText: {
     flex: 1,
-    color: "#334155",
+    color: COLORS.white,
     fontWeight: "600",
     fontSize: 13,
   },
   suggestionHint: {
-    color: "#64748B",
+    color: COLORS.neutral100,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 12,
     fontWeight: "600",
   },
   searchInput: {
-    color: "#064E3B",
+    color: COLORS.white,
     fontSize: 18,
     fontWeight: "700",
   },
@@ -570,16 +640,16 @@ const styles = StyleSheet.create({
     marginTop: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#BBF7D0",
-    backgroundColor: "#ECFDF5",
+    borderColor: COLORS.goldSoft,
+    backgroundColor: COLORS.navyDark,
     padding: 12,
     flexDirection: "row",
     gap: 10,
     alignItems: "center",
   },
   currentLocationText: { flex: 1, gap: 2 },
-  currentLocationTitle: { fontWeight: "800", color: "#14532D" },
-  currentLocationSubtitle: { color: "#4D7C0F", fontSize: 12 },
+  currentLocationTitle: { fontWeight: "800", color: COLORS.white },
+  currentLocationSubtitle: { color: COLORS.neutral100, fontSize: 12 },
   metaRow: { marginTop: 6, flexDirection: "row", gap: 8, flexWrap: "wrap" },
   serviceabilityChip: {
     fontSize: 11,
@@ -589,39 +659,30 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: "hidden",
   },
-  serviceabilityYes: { backgroundColor: "#DCFCE7", color: "#166534" },
-  serviceabilityNo: { backgroundColor: "#FEE2E2", color: "#991B1B" },
-  serviceabilityUnknown: { backgroundColor: "#E2E8F0", color: "#334155" },
-  devChip: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#0F766E",
-    backgroundColor: "#CCFBF1",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
+  serviceabilityYes: { backgroundColor: COLORS.goldSoft, color: COLORS.navy },
+  serviceabilityNo: { backgroundColor: COLORS.navyDark, color: COLORS.red700 },
+  serviceabilityUnknown: { backgroundColor: COLORS.gray, color: COLORS.charcoal },
+  serviceabilityErrorText: { color: COLORS.red700, fontSize: 11, fontWeight: "700", marginTop: 4 },
   sectionHead: { marginTop: 12, marginBottom: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  sectionTitle: { fontSize: 16, fontWeight: "800", color: "#14532D" },
+  sectionTitle: { fontSize: 16, fontWeight: "800", color: COLORS.white },
   addNewBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     borderRadius: 999,
-    backgroundColor: "#0F766E",
+    backgroundColor: COLORS.navyDark,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: "#14B8A6",
-    shadowColor: "#0F766E",
+    borderColor: COLORS.goldSoft,
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.22,
     shadowRadius: 8,
     elevation: 4,
   },
   addNewText: {
-    color: "#FFFFFF",
+    color: COLORS.white,
     fontWeight: "800",
     fontSize: 13,
     letterSpacing: 0.3,
@@ -636,21 +697,17 @@ const styles = StyleSheet.create({
     marginTop: 8,
     gap: 8,
   },
-  searchResultsTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#14532D",
-  },
+  searchResultsTitle: { fontSize: 14, fontWeight: "800", color: COLORS.white },
   searchResultItem: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#D1FAE5",
-    backgroundColor: "#FFFFFF",
+    borderColor: COLORS.goldSoft,
+    backgroundColor: COLORS.navyDark,
     padding: 10,
     gap: 8,
   },
   searchResultLine: {
-    color: "#334155",
+    color: COLORS.white,
     fontWeight: "600",
   },
   searchResultActionRow: {
@@ -663,19 +720,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
-  tagChecking: {
-    color: "#64748B",
-  },
+  tagChecking: { color: COLORS.neutral100 },
   tagServiceable: {
-    color: "#15803D",
+    color: COLORS.green700,
   },
   tagNotServiceable: {
-    color: "#DC2626",
+    color: COLORS.danger,
   },
-  empty: { color: "#6B7280", marginTop: 16 },
-  error: { color: "#DC2626", marginTop: 8 },
+  empty: { color: COLORS.neutral100, marginTop: 16 },
+  error: { color: COLORS.danger, marginTop: 8 },
   errorWrap: { marginTop: 8, gap: 8, alignItems: "flex-start" },
   cardWrap: { marginTop: 8 },
+  outlinedThemeBtn: { borderColor: COLORS.goldSoft, backgroundColor: COLORS.navyDark },
 });
 const isServiceable = (data: any): boolean => {
   const value =
@@ -711,10 +767,18 @@ const isServiceable = (data: any): boolean => {
   ) {
     return false;
   }
-  if (status.includes("serviceable") || status.includes("available") || status.includes("active")) {
+  if (status.includes("inactive")) return false;
+  if (status.includes("serviceable") || status.includes("available") || status === "active") {
     return true;
   }
 
   // Unknown payload should not silently look serviceable.
   return false;
 };
+
+
+
+
+
+
+

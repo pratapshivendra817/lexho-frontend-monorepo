@@ -567,11 +567,14 @@ $androidScript = "android"
 if ($env:RN_FORCE_ANDROID_SHORTPATH -eq "1") {
   $androidScript = "android:run:shortpath"
   Write-Step "Using forced shortpath android runner (RN_FORCE_ANDROID_SHORTPATH=1)."
+} elseif ($useShortPath) {
+  Write-Step "Using direct android runner from selected short project path."
 } else {
   Write-Step "Using direct android runner to avoid nested drive remap conflicts."
 }
 
-$androidExit = Invoke-Step -FilePath "npm" -Arguments @("run", $androidScript, "--", "--no-packager", "--device", $targetDevice) -WorkingDirectory $targetProjectDir
+$androidWorkingDirectory = if ($androidScript -eq "android:run:shortpath") { $projectDir } else { $targetProjectDir }
+$androidExit = Invoke-Step -FilePath "npm" -Arguments @("run", $androidScript, "--", "--no-packager", "--device", $targetDevice) -WorkingDirectory $androidWorkingDirectory
 if ($androidExit -ne 0) {
   throw "Android run failed with exit code $androidExit"
 }

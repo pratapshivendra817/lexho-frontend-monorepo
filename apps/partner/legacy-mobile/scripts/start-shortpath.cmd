@@ -1,20 +1,31 @@
 @echo off
 setlocal
 
-set "DRIVE_LETTER=Y:"
 set "PROJECT_DIR=%~dp0.."
 for %%I in ("%PROJECT_DIR%") do set "PROJECT_DIR=%%~fI"
 set "TARGET_DIR=%PROJECT_DIR%"
+set "SHORT_DRIVE=X:"
+set "USED_SUBST=0"
 
-subst %DRIVE_LETTER% /D >nul 2>nul
-subst %DRIVE_LETTER% "%PROJECT_DIR%" >nul 2>nul
-if exist %DRIVE_LETTER%\ (
-  set "TARGET_DIR=%DRIVE_LETTER%\"
+subst %SHORT_DRIVE% "%PROJECT_DIR%" >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+  set "USED_SUBST=1"
+  set "TARGET_DIR=%SHORT_DRIVE%\"
+) else (
+  if exist "C:\lxp\" (
+    set "TARGET_DIR=C:\lxp\"
+  )
 )
+
 cd /d "%TARGET_DIR%"
+set "REACT_EDITOR="
+set "LAUNCH_EDITOR="
+set "EDITOR="
 call npx react-native start %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
-cd /d "%PROJECT_DIR%"
-subst %DRIVE_LETTER% /D >nul 2>nul
+if "%USED_SUBST%"=="1" (
+  subst %SHORT_DRIVE% /d >nul 2>&1
+)
+
 exit /b %EXIT_CODE%

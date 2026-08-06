@@ -38,7 +38,7 @@ export function useGeoZones(cityId?: number) {
   return useQuery({
     queryKey: ["geo-zones", cityId],
     queryFn: () => getGeoZones(cityId),
-    enabled: Number.isFinite(cityId) && Number(cityId) > 0,
+    enabled: true,
     retry: false,
   });
 }

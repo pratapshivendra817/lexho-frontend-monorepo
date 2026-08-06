@@ -4,9 +4,12 @@ export const partnerTheme = {
   ...MD3LightTheme,
   colors: {
     ...MD3LightTheme.colors,
-    primary: "#0F766E",
-    secondary: "#0EA5E9",
-    background: "#F6F8FC",
-    surface: "#FFFFFF",
+    primary: "#D4AF37",
+    secondary: "#F5D76E",
+    background: "#020A1E",
+    surface: "#061434",
+    outline: "#D4AF37",
+    onSurface: "#F8FAFC",
+    onBackground: "#F8FAFC",
   },
 };

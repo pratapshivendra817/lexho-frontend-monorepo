@@ -1,6 +1,9 @@
 import { useEffect, useRef } from "react";
 import { Animated, StyleSheet, type ViewStyle } from "react-native";
 
+
+import { COLORS } from '../theme/colors';
+
 type Props = {
   height?: number;
   width?: number | `${number}%` | "auto";
@@ -27,6 +30,9 @@ export function ShimmerBlock({ height = 16, width = "100%", style }: Props) {
 const styles = StyleSheet.create({
   base: {
     borderRadius: 8,
-    backgroundColor: "#DADADA",
+    backgroundColor: COLORS.gray,
   },
 });
+
+
+

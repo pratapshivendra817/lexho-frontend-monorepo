@@ -1,5 +1,6 @@
 import { ImageBackground, StyleSheet, View } from "react-native";
 import { ActivityIndicator, Text } from "react-native-paper";
+import { COLORS } from '../../theme/colors';
 
 export function SplashScreen() {
   return (
@@ -8,7 +9,7 @@ export function SplashScreen() {
         <Text style={styles.brand}>Lexho</Text>
         <Text style={styles.tagline}>CokAtHome</Text>
         <Text style={styles.subtitle}>Cleaning Service</Text>
-        <ActivityIndicator style={styles.loader} color="#fff" />
+        <ActivityIndicator style={styles.loader} color={COLORS.white} />
       </View>
     </ImageBackground>
   );
@@ -17,8 +18,14 @@ export function SplashScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   overlay: { flex: 1, justifyContent: "flex-end", alignItems: "center", paddingBottom: 56, backgroundColor: "rgba(2,6,23,0.45)" },
-  brand: { color: "#fff", fontSize: 54, fontWeight: "900" },
-  tagline: { color: "#E2E8F0", fontSize: 24, fontWeight: "700" },
-  subtitle: { color: "#F8FAFC", fontSize: 16, marginTop: 4 },
+  brand: { color: COLORS.white, fontSize: 54, fontWeight: "900" },
+  tagline: { color: COLORS.borderSoft, fontSize: 24, fontWeight: "700" },
+  subtitle: { color: COLORS.offWhite, fontSize: 16, marginTop: 4 },
   loader: { marginTop: 14 },
 });
+
+
+
+
+
+

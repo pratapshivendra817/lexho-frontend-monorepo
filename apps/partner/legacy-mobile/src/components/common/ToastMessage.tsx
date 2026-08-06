@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { COLORS } from "../../constants/colors";
 
 export function ToastMessage({
   visible,
@@ -30,14 +31,14 @@ const styles = StyleSheet.create({
   },
   toast: {
     borderRadius: 10,
-    backgroundColor: "#0f172a",
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: "#1e293b",
+    borderColor: COLORS.border,
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
   text: {
-    color: "#e2e8f0",
+    color: COLORS.textPrimary,
     fontWeight: "600",
     textAlign: "center",
   },

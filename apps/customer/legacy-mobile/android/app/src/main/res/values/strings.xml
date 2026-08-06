@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">LexhoCustomer</string>
+    <string name="default_notification_channel_id">lexho_customer_default</string>
+    <string name="default_notification_channel_name">Lexho Updates</string>
+    <string name="default_notification_channel_description">Booking, payment, support and account notifications.</string>
+    <string name="booking_notification_channel_id">lexho_customer_bookings</string>
+    <string name="booking_notification_channel_name">Booking Updates</string>
+    <string name="booking_notification_channel_description">Booking status, tracking and payment alerts.</string>
 </resources>

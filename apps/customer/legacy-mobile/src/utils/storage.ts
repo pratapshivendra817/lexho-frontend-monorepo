@@ -3,19 +3,8 @@ import { DEVICE_ID_KEY, REFRESH_TOKEN_KEY, TOKEN_KEY, USER_KEY } from "../consta
 
 const LEGACY_TOKEN_KEY = "@customer/auth-token";
 const LEGACY_USER_KEY = "@customer/user";
-
-function mask(value?: string | null) {
-  const text = String(value ?? "").trim();
-  if (!text) return "<empty>";
-  if (text.length <= 12) return `${text.slice(0, 3)}...${text.slice(-2)}`;
-  return `${text.slice(0, 6)}...${text.slice(-6)}`;
-}
-
-function debugLog(event: string, payload: Record<string, unknown>) {
-  if (!__DEV__) return;
-  // eslint-disable-next-line no-console
-  console.log(`[auth:storage:${event}]`, payload);
-}
+const PENDING_PAYMENT_BOOKING_KEY = "@lexho/customer/pending-payment-booking-id";
+let fallbackDeviceIdSequence = 0;
 
 export type SessionUser = {
   id: string;
@@ -27,38 +16,26 @@ export type SessionUser = {
 
 export async function saveSession(token: string, refreshToken?: string, user?: SessionUser | null) {
   if (typeof AsyncStorage?.setItem !== "function") {
-    debugLog("save:skip", { reason: "AsyncStorage.setItem unavailable" });
     return;
   }
-  debugLog("save:start", {
-    token: mask(token),
-    refreshToken: mask(refreshToken ?? null),
-    hasUser: !!user,
-  });
   await AsyncStorage.setItem(TOKEN_KEY, token);
   // Backward compatibility for modules still checking legacy key names.
   await AsyncStorage.setItem(LEGACY_TOKEN_KEY, token);
-  if (refreshToken) await AsyncStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  if (refreshToken) {
+    await AsyncStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  } else if (typeof AsyncStorage?.removeItem === "function") {
+    await AsyncStorage.removeItem(REFRESH_TOKEN_KEY);
+  }
   if (user) {
     const userJson = JSON.stringify(user);
     await AsyncStorage.setItem(USER_KEY, userJson);
     await AsyncStorage.setItem(LEGACY_USER_KEY, userJson);
   }
-  const check = await AsyncStorage.multiGet([TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY]);
-  debugLog("save:done", {
-    storedToken: mask(check?.[0]?.[1] ?? null),
-    storedRefreshToken: mask(check?.[1]?.[1] ?? null),
-    hasStoredUser: !!check?.[2]?.[1],
-  });
 }
 
 export async function clearSession() {
-  debugLog("clear:start", {
-    keys: [TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY, LEGACY_TOKEN_KEY, LEGACY_USER_KEY],
-  });
   if (typeof AsyncStorage?.multiRemove === "function") {
     await AsyncStorage.multiRemove([TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY, LEGACY_TOKEN_KEY, LEGACY_USER_KEY]);
-    debugLog("clear:done", { mode: "multiRemove" });
     return;
   }
   if (typeof AsyncStorage?.removeItem === "function") {
@@ -67,18 +44,14 @@ export async function clearSession() {
     await AsyncStorage.removeItem(USER_KEY);
     await AsyncStorage.removeItem(LEGACY_TOKEN_KEY);
     await AsyncStorage.removeItem(LEGACY_USER_KEY);
-    debugLog("clear:done", { mode: "removeItem" });
   }
 }
 
 export async function getRefreshToken() {
   if (typeof AsyncStorage?.getItem !== "function") {
-    debugLog("getRefreshToken:skip", { reason: "AsyncStorage.getItem unavailable" });
     return null;
   }
-  const value = await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
-  debugLog("getRefreshToken:done", { refreshToken: mask(value) });
-  return value;
+  return await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
 export async function getOrCreateDeviceId() {
@@ -91,7 +64,21 @@ export async function getOrCreateDeviceId() {
     return existing;
   }
 
-  const created = `customer-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const cryptoApi = globalThis.crypto as
+    | { randomUUID?: () => string; getRandomValues?: (values: Uint8Array) => Uint8Array }
+    | undefined;
+  let suffix: string;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    suffix = cryptoApi.randomUUID();
+  } else if (typeof cryptoApi?.getRandomValues === "function") {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(8));
+    suffix = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  } else {
+    fallbackDeviceIdSequence += 1;
+    suffix = `${Date.now()}-${fallbackDeviceIdSequence}`;
+  }
+
+  const created = `customer-${suffix}`;
   await AsyncStorage.setItem(DEVICE_ID_KEY, created);
   return created;
 }
@@ -99,7 +86,6 @@ export async function getOrCreateDeviceId() {
 export async function loadSession() {
   try {
     if (!AsyncStorage) {
-      debugLog("load:skip", { reason: "AsyncStorage unavailable" });
       return { token: null, refreshToken: null, user: null };
     }
 
@@ -136,25 +122,36 @@ export async function loadSession() {
       }
     }
 
-    const result = { token: tokenValue, refreshToken: refreshValue, user };
-    debugLog("load:done", {
-      token: mask(result.token),
-      refreshToken: mask(result.refreshToken),
-      hasUser: !!result.user,
-    });
-    return result;
+    return { token: tokenValue, refreshToken: refreshValue, user };
   } catch {
-    debugLog("load:error", { message: "loadSession failed" });
     return { token: null, refreshToken: null, user: null };
   }
 }
 
 export async function getToken() {
   if (typeof AsyncStorage?.getItem !== "function") {
-    debugLog("getToken:skip", { reason: "AsyncStorage.getItem unavailable" });
     return null;
   }
   const token = await AsyncStorage.getItem(TOKEN_KEY);
-  debugLog("getToken:done", { token: mask(token) });
-  return token;
+  if (token) {
+    return token;
+  }
+  return await AsyncStorage.getItem(LEGACY_TOKEN_KEY);
+}
+
+export async function savePendingPaymentBookingId(bookingId?: string | number | null) {
+  const normalized = String(bookingId ?? "").trim();
+  if (!normalized || typeof AsyncStorage?.setItem !== "function") return;
+  await AsyncStorage.setItem(PENDING_PAYMENT_BOOKING_KEY, normalized);
+}
+
+export async function getPendingPaymentBookingId() {
+  if (typeof AsyncStorage?.getItem !== "function") return null;
+  const value = await AsyncStorage.getItem(PENDING_PAYMENT_BOOKING_KEY);
+  return String(value ?? "").trim() || null;
+}
+
+export async function clearPendingPaymentBookingId() {
+  if (typeof AsyncStorage?.removeItem !== "function") return;
+  await AsyncStorage.removeItem(PENDING_PAYMENT_BOOKING_KEY);
 }

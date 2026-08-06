@@ -4,6 +4,7 @@ const ADMIN_TOKEN_KEY = "admin_access_token";
 const ACCESS_TOKEN_KEY = "access_token";
 const ADMIN_REFRESH_TOKEN_KEY = "admin_refresh_token";
 const ADMIN_DEVICE_ID_KEY = "admin_device_id";
+let fallbackAdminDeviceIdSequence = 0;
 
 export function getAccessToken() {
   return localStorage.getItem(ADMIN_TOKEN_KEY) ?? localStorage.getItem(ACCESS_TOKEN_KEY);
@@ -31,7 +32,18 @@ export function getOrCreateAdminDeviceId() {
     return existing;
   }
 
-  const created = `admin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  let suffix: string;
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    suffix = globalThis.crypto.randomUUID();
+  } else if (typeof globalThis.crypto?.getRandomValues === "function") {
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(8));
+    suffix = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  } else {
+    fallbackAdminDeviceIdSequence += 1;
+    suffix = `${Date.now()}-${fallbackAdminDeviceIdSequence}`;
+  }
+
+  const created = `admin-${suffix}`;
   localStorage.setItem(ADMIN_DEVICE_ID_KEY, created);
   return created;
 }

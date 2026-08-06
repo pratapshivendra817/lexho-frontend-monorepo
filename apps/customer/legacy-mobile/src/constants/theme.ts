@@ -1,34 +1,48 @@
+import { SPACING } from '../theme/spacing';
+import { COLORS } from '../theme/colors';
+import { SHADOWS } from '../theme/shadows';
+
 export const palette = {
-  primary: "#0EA5E9",
-  primaryDark: "#0369A1",
-  bg: "#F6F8FC",
-  card: "#FFFFFF",
-  surfaceAlt: "#F3F6FB",
-  text: "#0F172A",
-  muted: "#64748B",
-  mutedSoft: "#94A3B8",
-  icon: "#6B7280",
-  iconSoft: "#9CA3AF",
-  white: "#FFFFFF",
-  shadow: "#000000",
-  overlayDark40: "rgba(17, 24, 39, 0.4)",
-  border: "#E2E8F0",
-  borderSoft: "#E8EEF6",
-  accentBlue: "#2563EB",
-  accentCook: "#FF7A00",
-  accentCleaning: "#2D9CDB",
-  success: "#12B76A",
-  successAlt: "#14B87A",
-  successSoft: "#ECFDF5",
-  successTint: "#E8F7F2",
-  successText: "#047857",
-  danger: "#DC2626",
+  primary: COLORS.primary,
+  primaryDark: COLORS.navy,
+  bg: COLORS.bgPrimary,
+  card: COLORS.bgCard,
+  surfaceAlt: COLORS.offWhite,
+  text: COLORS.charcoal,
+  muted: COLORS.gray,
+  mutedSoft: COLORS.gray,
+  icon: COLORS.gray,
+  iconSoft: COLORS.gray,
+  white: COLORS.white,
+  shadow: COLORS.black,
+  overlayDark40: COLORS.overlayDark40,
+  border: COLORS.border,
+  borderSoft: COLORS.gray,
+  accentBlue: COLORS.primary,
+  accentCook: COLORS.gold,
+  accentCleaning: COLORS.primary,
+  success: COLORS.green600,
+  successAlt: COLORS.teal700,
+  successSoft: COLORS.offWhite,
+  successTint: COLORS.offWhite,
+  successText: COLORS.navy,
+  danger: COLORS.danger,
 };
 
 export const spacing = {
-  xs: 6,
+  xs: SPACING.xs,
+  sm: SPACING.sm,
+  md: SPACING.md,
+  lg: SPACING.lg,
+  xl: SPACING.xl,
+};
+
+export const radii = {
   sm: 10,
   md: 14,
   lg: 18,
   xl: 24,
+  pill: 999,
 };
+
+export const shadows = SHADOWS;

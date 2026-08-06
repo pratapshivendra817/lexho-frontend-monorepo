@@ -26,12 +26,13 @@ export default function DashboardScreen({ onLogout: _onLogout }: Props) {
 
   return (
     <FlatList
+      testID="dashboard-list"
       data={orders}
       keyExtractor={(item) => String(item.id)}
       style={{ flex: 1, backgroundColor: COLORS.background }}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load()} />}
+      refreshControl={<RefreshControl testID="dashboard-refresh-control" refreshing={loading} onRefresh={() => load()} />}
       contentContainerStyle={{ padding: 16, gap: 10 }}
-      ListEmptyComponent={loading ? <ActivityIndicator color={COLORS.secondary} /> : <Text style={styles.empty}>No pending requests</Text>}
+      ListEmptyComponent={loading ? <ActivityIndicator testID="dashboard-loading-indicator" color={COLORS.secondary} /> : <Text style={styles.empty}>No pending requests</Text>}
       renderItem={({ item }) => (
         <View style={styles.card}>
           <Text style={styles.name}>{item.customerName ?? "Customer"}</Text>

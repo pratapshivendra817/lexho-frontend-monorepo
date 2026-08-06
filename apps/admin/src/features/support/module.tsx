@@ -20,11 +20,7 @@ export const supportRoutes: AdminRouteConfig[] = [
 export const supportNavItems: AdminNavItem[] = [
   {
     path: "/support",
-    label: "Support",
-  },
-  {
-    path: "/support/faqs",
-    label: "Support FAQs",
+    label: "Support & Complaints",
   },
 ];
 

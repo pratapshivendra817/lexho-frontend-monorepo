@@ -1,0 +1,35 @@
+<svg width="390" height="844" viewBox="0 0 390 844" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="390" height="844" fill="#001A4D"/>
+  <rect x="0" y="0" width="390" height="844" fill="#001A4D"/>
+  <circle cx="34" cy="56" r="18" fill="#0B2A68" stroke="#D9A441"/>
+  <path d="M38 48L30 56L38 64" stroke="#F8D79D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="24" y="118" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="28" font-weight="800">Booking Confirmed</text>
+  <text x="24" y="146" fill="#D8DEE9" font-family="Arial, sans-serif" font-size="14" font-weight="600">Payment received successfully.</text>
+  <text x="24" y="166" fill="#D8DEE9" font-family="Arial, sans-serif" font-size="14" font-weight="600">Your booking is now confirmed.</text>
+
+  <rect x="20" y="202" width="350" height="352" rx="18" fill="#FFFFFF" stroke="#D9A441"/>
+  <circle cx="54" cy="242" r="24" fill="#ECFDF3"/>
+  <circle cx="54" cy="242" r="13" fill="#22C55E"/>
+  <path d="M48 242L52 246L61 236" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="90" y="239" fill="#0F172A" font-family="Arial, sans-serif" font-size="18" font-weight="800">Payment Successful</text>
+  <text x="90" y="260" fill="#64748B" font-family="Arial, sans-serif" font-size="12" font-weight="700">Booking ID: LXH-20481</text>
+  <line x1="38" y1="284" x2="352" y2="284" stroke="#E2E8F0"/>
+
+  <text x="38" y="318" fill="#64748B" font-family="Arial, sans-serif" font-size="11" font-weight="800">SERVICE</text>
+  <text x="38" y="340" fill="#0F172A" font-family="Arial, sans-serif" font-size="15" font-weight="700">Home Cleaning</text>
+  <text x="38" y="374" fill="#64748B" font-family="Arial, sans-serif" font-size="11" font-weight="800">BOOKING TYPE</text>
+  <text x="38" y="396" fill="#0F172A" font-family="Arial, sans-serif" font-size="15" font-weight="700">INSTANT</text>
+  <text x="38" y="430" fill="#64748B" font-family="Arial, sans-serif" font-size="11" font-weight="800">SCHEDULED AT</text>
+  <text x="38" y="452" fill="#0F172A" font-family="Arial, sans-serif" font-size="15" font-weight="700">08 Jun 2026, 06:30 PM</text>
+  <text x="38" y="486" fill="#64748B" font-family="Arial, sans-serif" font-size="11" font-weight="800">ADDRESS</text>
+  <text x="38" y="508" fill="#0F172A" font-family="Arial, sans-serif" font-size="15" font-weight="700">Sector 45, Gurugram</text>
+  <text x="38" y="542" fill="#64748B" font-family="Arial, sans-serif" font-size="11" font-weight="800">AMOUNT PAID</text>
+  <text x="180" y="542" fill="#0F172A" font-family="Arial, sans-serif" font-size="15" font-weight="800">Rs 499</text>
+
+  <rect x="20" y="586" width="350" height="52" rx="12" fill="#D9A441"/>
+  <text x="145" y="619" fill="#001A4D" font-family="Arial, sans-serif" font-size="15" font-weight="900">Track Booking</text>
+  <rect x="20" y="654" width="350" height="52" rx="12" fill="#F8FAFC" stroke="#60A5FA"/>
+  <text x="153" y="687" fill="#2563EB" font-family="Arial, sans-serif" font-size="14" font-weight="800">Call Support</text>
+  <rect x="20" y="722" width="350" height="52" rx="12" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="126" y="755" fill="#334155" font-family="Arial, sans-serif" font-size="14" font-weight="800">Open Support Tickets</text>
+</svg>

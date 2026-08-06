@@ -1,10 +1,68 @@
 import { api, parseApiError } from "../api/client";
-import { LOCATION_API_BASE_URL } from "../constants/env";
 import { withRetry } from "../utils/retry";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const LOCATION_API_PATH = "/api/v1/customer/location";
+const REVERSE_GEOCODE_CACHE_KEY = "@lexho/customer/reverse-geocode-cache-v2";
+const SERVICEABILITY_CACHE_KEY = "@lexho/customer/serviceability-cache-v2";
+const REVERSE_GEOCODE_TTL_MS = 24 * 60 * 60 * 1000;
+const SERVICEABILITY_TTL_MS = 10 * 60 * 1000;
+const inMemoryReverseCache = new Map();
+const inMemoryServiceabilityCache = new Map();
+let reverseCacheLoaded = false;
+let serviceabilityCacheLoaded = false;
+
+function roundedGeoKey(latitude, longitude) {
+  const lat = Number(latitude ?? 0);
+  const lng = Number(longitude ?? 0);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "";
+  return `${lat.toFixed(3)}:${lng.toFixed(3)}`;
+}
+
+function nowMs() {
+  return Date.now();
+}
+
+async function hydrateCacheFromStorage(cacheKey, memoryCache, loadedFlagName) {
+  if (loadedFlagName === "reverse" && reverseCacheLoaded) return;
+  if (loadedFlagName === "serviceability" && serviceabilityCacheLoaded) return;
+  try {
+    const raw = await AsyncStorage.getItem(cacheKey);
+    if (!raw) {
+      if (loadedFlagName === "reverse") reverseCacheLoaded = true;
+      if (loadedFlagName === "serviceability") serviceabilityCacheLoaded = true;
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      Object.entries(parsed).forEach(([key, value]) => {
+        memoryCache.set(key, value);
+      });
+    }
+  } catch {
+    // ignore cache hydration failures
+  } finally {
+    if (loadedFlagName === "reverse") reverseCacheLoaded = true;
+    if (loadedFlagName === "serviceability") serviceabilityCacheLoaded = true;
+  }
+}
+
+async function persistCacheToStorage(cacheKey, memoryCache) {
+  try {
+    const asObject = Object.fromEntries(memoryCache.entries());
+    await AsyncStorage.setItem(cacheKey, JSON.stringify(asObject));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export async function updateCurrentLocation(payload) {
   try {
-    const { data } = await withRetry(() => api.post(`${LOCATION_API_BASE_URL}/update`, payload));
+    const requestBody = {
+      ...(payload ?? {}),
+      eventTimestampMs: Number(payload?.eventTimestampMs ?? Date.now()),
+    };
+    const { data } = await withRetry(() => api.post(`${LOCATION_API_PATH}/update`, requestBody));
     return data;
   } catch (error) {
     throw new Error(parseApiError(error, "Failed to update location"));
@@ -31,7 +89,7 @@ export async function saveAddress(payload) {
       pincode: payload?.pincode ?? "",
       mobile: payload?.mobile ?? "",
     };
-    const { data } = await withRetry(() => api.post(`${LOCATION_API_BASE_URL}/save-address`, requestBody));
+    const { data } = await withRetry(() => api.post(`${LOCATION_API_PATH}/save-address`, requestBody));
     return data;
   } catch (error) {
     throw new Error(parseApiError(error, "Failed to save address"));
@@ -61,7 +119,7 @@ export async function updateAddress(payload) {
     };
 
     const { data } = await withRetry(() =>
-      api.put(`${LOCATION_API_BASE_URL}/address/${encodeURIComponent(normalized.id)}`, normalized),
+      api.put(`${LOCATION_API_PATH}/address/${encodeURIComponent(normalized.id)}`, normalized),
     );
     return data;
   } catch (error) {
@@ -71,7 +129,7 @@ export async function updateAddress(payload) {
 
 export async function getCurrentAddress(_userId) {
   try {
-    const { data } = await withRetry(() => api.get(`${LOCATION_API_BASE_URL}/current`));
+    const { data } = await withRetry(() => api.get(`${LOCATION_API_PATH}/current`));
     return data;
   } catch (error) {
     throw new Error(parseApiError(error, "Failed to fetch current address"));
@@ -85,7 +143,7 @@ export async function getAllAddresses(_userId, options = {}) {
       size: Number.isFinite(Number(options?.size)) ? Number(options.size) : 50,
       ...(String(options?.search ?? "").trim() ? { search: String(options.search).trim() } : {}),
     };
-    const { data } = await withRetry(() => api.get(`${LOCATION_API_BASE_URL}/all`, { params }));
+    const { data } = await withRetry(() => api.get(`${LOCATION_API_PATH}/all`, { params }));
     return data;
   } catch (error) {
     throw new Error(parseApiError(error, "Failed to fetch addresses"));
@@ -94,7 +152,7 @@ export async function getAllAddresses(_userId, options = {}) {
 
 export async function setDefaultAddress(addressId) {
   try {
-    const { data } = await withRetry(() => api.patch(`${LOCATION_API_BASE_URL}/default/${addressId}`));
+    const { data } = await withRetry(() => api.patch(`${LOCATION_API_PATH}/default/${addressId}`));
     return data;
   } catch (error) {
     throw new Error(parseApiError(error, "Failed to set default address"));
@@ -103,7 +161,7 @@ export async function setDefaultAddress(addressId) {
 
 export async function deleteAddress(addressId) {
   try {
-    const { data } = await withRetry(() => api.delete(`${LOCATION_API_BASE_URL}/${addressId}`));
+    const { data } = await withRetry(() => api.delete(`${LOCATION_API_PATH}/${addressId}`));
     return data;
   } catch (error) {
     throw new Error(parseApiError(error, "Failed to delete address"));
@@ -111,8 +169,29 @@ export async function deleteAddress(addressId) {
 }
 
 export async function reverseGeocode(payload) {
+  const latitude = Number(payload?.latitude ?? payload?.lat ?? 0);
+  const longitude = Number(payload?.longitude ?? payload?.lng ?? 0);
+  const geoKey = roundedGeoKey(latitude, longitude);
+
+  await hydrateCacheFromStorage(REVERSE_GEOCODE_CACHE_KEY, inMemoryReverseCache, "reverse");
+  const cached = geoKey ? inMemoryReverseCache.get(geoKey) : null;
+  if (cached?.expiresAt && cached.expiresAt > nowMs()) {
+    return cached.value;
+  }
+
   try {
-    const { data } = await withRetry(() => api.post(`${LOCATION_API_BASE_URL}/reverse-geocode`, payload ?? {}));
+    const requestBody = {
+      ...(payload ?? {}),
+      eventTimestampMs: Number(payload?.eventTimestampMs ?? Date.now()),
+    };
+    const { data } = await withRetry(() => api.post(`${LOCATION_API_PATH}/reverse-geocode`, requestBody));
+    if (geoKey) {
+      inMemoryReverseCache.set(geoKey, {
+        value: data,
+        expiresAt: nowMs() + REVERSE_GEOCODE_TTL_MS,
+      });
+      void persistCacheToStorage(REVERSE_GEOCODE_CACHE_KEY, inMemoryReverseCache);
+    }
     return data;
   } catch (error) {
     throw new Error(parseApiError(error, "Failed to reverse geocode location"));
@@ -120,8 +199,36 @@ export async function reverseGeocode(payload) {
 }
 
 export async function checkServiceability(payload) {
+  const latitude = Number(payload?.latitude ?? payload?.lat ?? 0);
+  const longitude = Number(payload?.longitude ?? payload?.lng ?? 0);
+  const pincode = String(payload?.pincode ?? payload?.postalCode ?? "").trim();
+  const geoKey = roundedGeoKey(latitude, longitude);
+  const cacheKey = `${geoKey}:${pincode}`;
+
+  await hydrateCacheFromStorage(SERVICEABILITY_CACHE_KEY, inMemoryServiceabilityCache, "serviceability");
+  const cached = cacheKey ? inMemoryServiceabilityCache.get(cacheKey) : null;
+  if (cached?.expiresAt && cached.expiresAt > nowMs()) {
+    return cached.value;
+  }
+
   try {
-    const { data } = await withRetry(() => api.post(`${LOCATION_API_BASE_URL}/serviceability/check`, payload ?? {}));
+    const requestBody = {
+      ...payload,
+      latitude,
+      longitude,
+      lat: latitude,
+      lng: longitude,
+      pincode,
+      eventTimestampMs: Number(payload?.eventTimestampMs ?? Date.now()),
+    };
+    const { data } = await withRetry(() => api.post(`${LOCATION_API_PATH}/serviceability/check`, requestBody));
+    if (cacheKey) {
+      inMemoryServiceabilityCache.set(cacheKey, {
+        value: data,
+        expiresAt: nowMs() + SERVICEABILITY_TTL_MS,
+      });
+      void persistCacheToStorage(SERVICEABILITY_CACHE_KEY, inMemoryServiceabilityCache);
+    }
     return data;
   } catch (error) {
     throw new Error(parseApiError(error, "Failed to check serviceability"));
@@ -156,10 +263,10 @@ export async function searchLocations(query) {
 
   const candidates = [
     `/api/v1/maps/geocode?q=${encodeURIComponent(text)}&limit=12`,
-    `${LOCATION_API_BASE_URL}/all?search=${encodeURIComponent(text)}`,
-    `${LOCATION_API_BASE_URL}/all?query=${encodeURIComponent(text)}`,
-    `${LOCATION_API_BASE_URL}/search?query=${encodeURIComponent(text)}`,
-    `${LOCATION_API_BASE_URL}/search?search=${encodeURIComponent(text)}`,
+    `${LOCATION_API_PATH}/all?search=${encodeURIComponent(text)}`,
+    `${LOCATION_API_PATH}/all?query=${encodeURIComponent(text)}`,
+    `${LOCATION_API_PATH}/search?query=${encodeURIComponent(text)}`,
+    `${LOCATION_API_PATH}/search?search=${encodeURIComponent(text)}`,
   ];
 
   for (const url of candidates) {

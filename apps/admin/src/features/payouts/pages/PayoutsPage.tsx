@@ -8,6 +8,7 @@ import { PayoutTable, StatCard } from "../components";
 export default function PayoutsPage() {
   const [bookingId, setBookingId] = useState("");
   const [paymentStatusValue, setPaymentStatusValue] = useState("PENDING");
+  const [paymentStatusReason, setPaymentStatusReason] = useState("");
   const [providerId, setProviderId] = useState("");
   const [payoutAmount, setPayoutAmount] = useState("");
   const [payoutStatus, setPayoutStatus] = useState("PENDING");
@@ -23,7 +24,8 @@ export default function PayoutsPage() {
     retry: false,
   });
   const paymentStatusMutation = useMutation({
-    mutationFn: (payload: { bookingId: string; status: string }) => updatePaymentStatus(payload.bookingId, payload.status),
+    mutationFn: (payload: { bookingId: string; status: string; reason: string }) =>
+      updatePaymentStatus(payload.bookingId, payload.status, payload.reason),
     onSuccess: async () => {
       await reconciliationQuery.refetch();
     },
@@ -88,12 +90,15 @@ export default function PayoutsPage() {
         <input value={bookingId} onChange={(event) => setBookingId(event.target.value)} placeholder="Booking ID" className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2" />
         <select value={paymentStatusValue} onChange={(event) => setPaymentStatusValue(event.target.value)} className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2">
           <option value="PENDING">PENDING</option>
-          <option value="PAID">PAID</option>
           <option value="FAILED">FAILED</option>
-          <option value="REFUNDED">REFUNDED</option>
         </select>
+        <input value={paymentStatusReason} onChange={(event) => setPaymentStatusReason(event.target.value)} placeholder="Reason required" className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2" />
         <button type="button" onClick={() => void reconciliationQuery.refetch()} className="rounded bg-blue-600 px-3 py-2 text-white">Fetch Reconciliation</button>
-        <button type="button" onClick={() => bookingId && paymentStatusMutation.mutate({ bookingId, status: paymentStatusValue })} className="rounded bg-amber-600 px-3 py-2 text-white">
+        <button
+          type="button"
+          onClick={() => bookingId && paymentStatusReason.trim() && paymentStatusMutation.mutate({ bookingId, status: paymentStatusValue, reason: paymentStatusReason.trim() })}
+          className="rounded bg-amber-600 px-3 py-2 text-white"
+        >
           Update Payment Status
         </button>
         <input value={providerId} onChange={(event) => setProviderId(event.target.value)} placeholder="Provider ID" className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2" />

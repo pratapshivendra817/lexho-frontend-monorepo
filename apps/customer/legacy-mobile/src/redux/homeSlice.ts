@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { getBanners, getCategories, getQuickServices, getRecommendedServices } from "../api/homeApi";
+import { getBanners, getCategories } from "../api/homeApi";
+import { getPopularServicesByCategory } from "../api/popularServicesApi";
 import { Platform } from "react-native";
 import type { BannerDto, CategoryDto } from "../types/contracts";
 
@@ -24,23 +25,22 @@ const initialState: HomeState = {
 };
 
 export const fetchHomeData = createAsyncThunk("home/fetch", async () => {
-  const [bannersRes, categoriesRes, recommendedRes, quickRes] = await Promise.allSettled([
+  const [bannersRes, categoriesRes] = await Promise.allSettled([
     getBanners(),
     getCategories(),
-    getRecommendedServices(),
-    getQuickServices(),
   ]);
 
   const bannersRaw = bannersRes.status === "fulfilled" ? bannersRes.value : [];
   const categoriesRaw = categoriesRes.status === "fulfilled" ? categoriesRes.value : [];
-  const popular: any[] = [];
-  const recommended = recommendedRes.status === "fulfilled" ? recommendedRes.value : [];
-  const quick = quickRes.status === "fulfilled" ? quickRes.value : [];
+  let popular: any[] = [];
+  const recommended: any[] = [];
+  const quick: any[] = [];
 
   const now = new Date();
   const currentPlatform = Platform.OS.toUpperCase();
-  const currentCity = "BHOPAL";
-  const banners = (Array.isArray(bannersRaw) ? bannersRaw : []).filter((item: BannerDto) => {
+  const currentCity: string = "";
+  const allBanners = Array.isArray(bannersRaw) ? bannersRaw : [];
+  const filteredBanners = allBanners.filter((item: BannerDto) => {
     const status = String(item?.status ?? "").toUpperCase();
     const statusOk = !status || status === "ACTIVE" || status === "TRUE" || status === "1";
 
@@ -51,17 +51,28 @@ export const fetchHomeData = createAsyncThunk("home/fetch", async () => {
     const startOk = !startDate || Number.isNaN(startDate.getTime()) || now >= startDate;
     const endOk = !endDate || Number.isNaN(endDate.getTime()) || now <= endDate;
 
-    const cityRaw = String((item as any)?.city ?? "").toUpperCase().trim();
-    const cityOk = !cityRaw || cityRaw === "ALL" || currentCity.includes(cityRaw) || cityRaw.includes(currentCity);
+    const cityRaw = String((item as any)?.city ?? (item as any)?.targetCity ?? "").toUpperCase().trim();
+    const cityOk =
+      !cityRaw ||
+      cityRaw === "ALL" ||
+      !currentCity ||
+      currentCity.includes(cityRaw) ||
+      cityRaw.includes(currentCity);
 
     const platformRaw = String((item as any)?.platformType ?? "").toUpperCase().trim();
-    const platformOk = !platformRaw || platformRaw === "ALL" || platformRaw === currentPlatform;
-
-    const slot = Number((item as any)?.slotNumber ?? (item as any)?.slot ?? 1);
-    const topSlotOk = !Number.isFinite(slot) || slot <= 1;
-
-    return statusOk && startOk && endOk && cityOk && platformOk && topSlotOk;
+    const audienceRaw = String((item as any)?.audience ?? "").toUpperCase().trim();
+    const platformOk =
+      !platformRaw ||
+      platformRaw === "ALL" ||
+      platformRaw === currentPlatform ||
+      platformRaw === "ANDROID_IOS" ||
+      platformRaw === "MOBILE" ||
+      platformRaw === "CUSTOMER" ||
+      platformRaw === "BOTH";
+    const audienceOk = !audienceRaw || audienceRaw === "CUSTOMER" || audienceRaw === "BOTH" || audienceRaw === "ALL";
+    return statusOk && startOk && endOk && cityOk && platformOk && audienceOk;
   });
+  const banners = filteredBanners.length > 0 ? filteredBanners : allBanners;
 
   const categories = (Array.isArray(categoriesRaw) ? categoriesRaw : [])
     .filter((item: CategoryDto) => {
@@ -73,6 +84,42 @@ export const fetchHomeData = createAsyncThunk("home/fetch", async () => {
       return true;
     })
     .sort((a: CategoryDto, b: CategoryDto) => Number(a?.displayOrder ?? 9999) - Number(b?.displayOrder ?? 9999));
+
+  if (!Array.isArray(popular) || popular.length === 0) {
+    const categoryIds = categories
+      .map((item: CategoryDto) => String(item?.categoryId ?? (item as any)?.id ?? "").trim())
+      .filter(Boolean)
+      .slice(0, 12);
+    if (categoryIds.length > 0) {
+      const merged: any[] = [];
+      for (const categoryId of categoryIds) {
+        const rows = await getPopularServicesByCategory(categoryId);
+        rows.forEach((row: any) => {
+          merged.push({
+            ...row,
+            categoryId: row?.categoryId ?? categoryId,
+          });
+        });
+      }
+      const dedup = new Map<string, any>();
+      merged.forEach((row: any, idx: number) => {
+        const key = String(row?.id ?? row?.serviceId ?? `popular-${idx}`);
+        if (!dedup.has(key)) dedup.set(key, row);
+      });
+      popular = Array.from(dedup.values());
+    }
+  }
+
+  const hasAnyHomeData =
+    banners.length > 0 ||
+    categories.length > 0 ||
+    (Array.isArray(popular) && popular.length > 0) ||
+    recommended.length > 0 ||
+    quick.length > 0;
+
+  if (!hasAnyHomeData) {
+    throw new Error("Home data is empty. Please check backend connection, auth token, or serviceable area data.");
+  }
 
   return { banners, categories, popular, recommended, quick };
 });

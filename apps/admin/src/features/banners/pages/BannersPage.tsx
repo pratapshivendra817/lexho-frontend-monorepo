@@ -39,22 +39,30 @@ export default function BannersPage() {
   const debouncedSearch = useDebounce(searchInput, 350);
 
   useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
+
+  useEffect(() => {
     if (debouncedSearch === search) return;
-    const next = new URLSearchParams(searchParams);
-    if (debouncedSearch) next.set("search", debouncedSearch);
-    else next.delete("search");
-    next.set("page", "0");
-    setSearchParams(next);
-  }, [debouncedSearch, search, searchParams, setSearchParams]);
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      if (debouncedSearch) next.set("search", debouncedSearch);
+      else next.delete("search");
+      next.set("page", "0");
+      return next;
+    });
+  }, [debouncedSearch, search, setSearchParams]);
 
   const updateParams = (updates: Record<string, string | undefined>, resetPage = true) => {
-    const next = new URLSearchParams(searchParams);
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value && value.length > 0) next.set(key, value);
-      else next.delete(key);
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value && value.length > 0) next.set(key, value);
+        else next.delete(key);
+      });
+      if (resetPage) next.set("page", "0");
+      return next;
     });
-    if (resetPage) next.set("page", "0");
-    setSearchParams(next);
   };
 
   const bannersQuery = useBannersQuery({

@@ -1,10 +1,17 @@
 import { useEffect, useRef } from "react";
+import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
+import "mapbox-gl/dist/mapbox-gl.css";
 import mapboxgl from "mapbox-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 
 type MapboxPolygonEditorProps = {
   value?: string;
   onChange?: (nextPolygonJson: string) => void;
+  onSave?: (nextPolygonJson: string) => void;
+  autoSaveOnChange?: boolean;
+  autoSaveDelayMs?: number;
+  isSaving?: boolean;
+  saveLabel?: string;
   height?: number;
   readOnly?: boolean;
 };
@@ -58,13 +65,46 @@ function extractPolygonJson(draw: MapboxDraw) {
   });
 }
 
-export function MapboxPolygonEditor({ value, onChange, height = 280, readOnly = false }: MapboxPolygonEditorProps) {
+export function MapboxPolygonEditor({
+  value,
+  onChange,
+  onSave,
+  autoSaveOnChange = false,
+  autoSaveDelayMs = 800,
+  isSaving = false,
+  saveLabel = "Save Polygon",
+  height = 280,
+  readOnly = false,
+}: MapboxPolygonEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
+  const onChangeRef = useRef(onChange);
+  const onSaveRef = useRef(onSave);
+  const latestPolygonJsonRef = useRef(value ?? "");
+  const saveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const initialValueRef = useRef(value);
   const hasAppliedInitialRef = useRef(false);
 
   const token = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    onSaveRef.current = onSave;
+  }, [onSave]);
+
+  useEffect(() => {
+    latestPolygonJsonRef.current = value ?? "";
+  }, [value]);
+
+  useEffect(() => () => {
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current || !token) return;
@@ -93,7 +133,7 @@ export function MapboxPolygonEditor({ value, onChange, height = 280, readOnly = 
     map.on("load", () => {
       map.addControl(draw, "top-left");
 
-      const initial = toFeatureCollection(value);
+      const initial = toFeatureCollection(initialValueRef.current);
       if (initial && initial.features.length > 0) {
         draw.set(initial);
         const firstRing = initial.features[0].geometry.coordinates[0];
@@ -110,7 +150,17 @@ export function MapboxPolygonEditor({ value, onChange, height = 280, readOnly = 
 
     const handleDrawChange = () => {
       if (readOnly) return;
-      onChange?.(extractPolygonJson(draw));
+      const nextPolygonJson = extractPolygonJson(draw);
+      latestPolygonJsonRef.current = nextPolygonJson;
+      onChangeRef.current?.(nextPolygonJson);
+      if (autoSaveOnChange && nextPolygonJson) {
+        if (saveTimerRef.current) {
+          window.clearTimeout(saveTimerRef.current);
+        }
+        saveTimerRef.current = window.setTimeout(() => {
+          onSaveRef.current?.(latestPolygonJsonRef.current);
+        }, autoSaveDelayMs);
+      }
     };
 
     map.on("draw.create", handleDrawChange);
@@ -123,7 +173,7 @@ export function MapboxPolygonEditor({ value, onChange, height = 280, readOnly = 
       drawRef.current = null;
       hasAppliedInitialRef.current = false;
     };
-  }, [onChange, readOnly, token, value]);
+  }, [autoSaveDelayMs, autoSaveOnChange, readOnly, token]);
 
   useEffect(() => {
     const draw = drawRef.current;
@@ -155,6 +205,21 @@ export function MapboxPolygonEditor({ value, onChange, height = 280, readOnly = 
         </p>
       ) : null}
       <div ref={containerRef} style={{ height }} className="w-full overflow-hidden rounded-lg border border-[var(--color-border)]" />
+      {!readOnly && onSave ? (
+        <button
+          type="button"
+          onClick={() => {
+            const nextPolygonJson = drawRef.current ? extractPolygonJson(drawRef.current) : latestPolygonJsonRef.current;
+            latestPolygonJsonRef.current = nextPolygonJson;
+            onChangeRef.current?.(nextPolygonJson);
+            onSaveRef.current?.(nextPolygonJson);
+          }}
+          disabled={isSaving || !(value ?? "")}
+          className="rounded bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isSaving ? "Saving..." : saveLabel}
+        </button>
+      ) : null}
     </div>
   );
 }

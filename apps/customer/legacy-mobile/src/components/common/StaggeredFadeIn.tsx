@@ -14,3 +14,5 @@ export function StaggeredFadeIn({ children, delay = 0, style }: { children: Reac
 
   return <Animated.View style={[style, { opacity, transform: [{ translateY }] }]}>{children}</Animated.View>;
 }
+
+

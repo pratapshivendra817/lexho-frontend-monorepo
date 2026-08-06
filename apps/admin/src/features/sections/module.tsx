@@ -12,12 +12,7 @@ export const sectionsRoutes: AdminRouteConfig[] = [
   },
 ];
 
-export const sectionsNavItems: AdminNavItem[] = [
-  {
-    path: "/sections",
-    label: "Sections",
-  },
-];
+export const sectionsNavItems: AdminNavItem[] = [];
 
 export const sectionsRouteMeta: AdminRouteMeta[] = [
   {

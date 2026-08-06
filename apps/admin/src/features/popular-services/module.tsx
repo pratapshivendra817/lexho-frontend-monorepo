@@ -17,12 +17,7 @@ export const popularServicesRoutes: AdminRouteConfig[] = [
   },
 ];
 
-export const popularServicesNavItems: AdminNavItem[] = [
-  {
-    path: "/popular-services",
-    label: "Popular Services",
-  },
-];
+export const popularServicesNavItems: AdminNavItem[] = [];
 
 export const popularServicesRouteMeta: AdminRouteMeta[] = [
   {

@@ -2,7 +2,9 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 apply plugin: "com.google.gms.google-services"
+apply plugin: "com.google.firebase.crashlytics"
 apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
+apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -86,7 +88,9 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
-        manifestPlaceholders = [usesCleartextTraffic: "true"]
+        manifestPlaceholders = [
+            usesCleartextTraffic: "false",
+        ]
     }
     signingConfigs {
         debug {
@@ -99,13 +103,23 @@ android {
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            manifestPlaceholders = [
+                usesCleartextTraffic: "true",
+            ]
         }
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.debug
+            manifestPlaceholders = [
+                usesCleartextTraffic: "false",
+            ]
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            firebaseCrashlytics {
+                mappingFileUploadEnabled true
+                nativeSymbolUploadEnabled false
+            }
         }
     }
 }
@@ -118,5 +132,21 @@ dependencies {
         implementation("com.facebook.react:hermes-android")
     } else {
         implementation jscFlavor
+    }
+}
+
+tasks.register("verifyReleaseSslPinningAssets") {
+    group = "verification"
+    description = "Checks whether the Android SSL pinning certificate is present for release hardening."
+
+    doLast {
+        def certName = System.getenv("SSL_PINNING_CERT_NAME") ?: "lexho_api"
+        def certFile = file("${projectDir}/src/main/assets/certs/${certName}.cer")
+        if (certFile.exists()) {
+            println("SSL pinning certificate found: ${certFile}")
+        } else {
+            println("SSL pinning certificate missing: ${certFile}")
+            println("Add the certificate before enabling SSL_PINNING_ENABLED=true for release builds.")
+        }
     }
 }

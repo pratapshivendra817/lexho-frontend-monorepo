@@ -40,3 +40,5 @@ const bookingSlice = createSlice({
 });
 
 export default bookingSlice.reducer;
+
+

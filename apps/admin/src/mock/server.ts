@@ -12,7 +12,7 @@ axios.interceptors.request.use(async (config) => {
       phone: "98XXXXXXX",
       location: "Noida",
       role: i % 2 ? "CUSTOMER" : "PARTNER",
-      bookings: Math.floor(Math.random() * 50),
+      bookings: (i * 7) % 50,
       status: i % 3 ? "ACTIVE" : "BLOCKED",
     }));
 

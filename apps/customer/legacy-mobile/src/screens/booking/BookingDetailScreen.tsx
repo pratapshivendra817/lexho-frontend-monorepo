@@ -1,10 +1,15 @@
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { ActivityIndicator, Chip, Text } from "react-native-paper";
+import { ActivityIndicator, Button, Chip, Text } from "react-native-paper";
 
 import { getBookingDetails } from "../../api/bookingExtrasApi";
 import { getPaymentStatus } from "../../api/paymentExtrasApi";
+import { CustomerReviewCard } from "../../components/booking/CustomerReviewCard";
+import { BookingTimeline } from "../../components/booking/BookingTimeline";
+
+
+import { COLORS } from '../../theme/colors';
+import { radii, shadows, spacing } from "../../constants/theme";
 
 function formatDate(value?: string) {
   if (!value) return "N/A";
@@ -13,7 +18,7 @@ function formatDate(value?: string) {
   return date.toLocaleString();
 }
 
-export function BookingDetailScreen({ route }: any) {
+export function BookingDetailScreen({ route, navigation }: any) {
   const bookingId = String(route?.params?.bookingId ?? "");
   const detailsQuery = useQuery({
     queryKey: ["booking-details", bookingId],
@@ -27,16 +32,6 @@ export function BookingDetailScreen({ route }: any) {
   });
 
   const booking = detailsQuery.data ?? null;
-  const timeline = useMemo(() => {
-    if (!booking) return [];
-    return [
-      { label: "Booking Created", value: formatDate(booking.createdAt) },
-      { label: "Scheduled At", value: formatDate(booking.scheduledAt) },
-      { label: "Service Completed", value: formatDate(booking.completedAt) },
-      { label: "Current Status", value: String(booking.status ?? "PENDING") },
-      { label: "Assignment Status", value: String(booking.assignmentStatus ?? "N/A") },
-    ].filter((item) => item.value && item.value !== "N/A");
-  }, [booking]);
   const payment = paymentQuery.data?.data ?? paymentQuery.data ?? {};
 
   if (detailsQuery.isLoading) {
@@ -68,6 +63,16 @@ export function BookingDetailScreen({ route }: any) {
         <Text style={styles.row}>ETA: {booking.etaMinutes != null ? `${booking.etaMinutes} min` : "N/A"}</Text>
         <Text style={styles.row}>Assignment: {booking.assignmentStatus || "N/A"}</Text>
         <Text style={styles.row}>Message: {booking.message || "N/A"}</Text>
+        {booking.partnerName ? (
+          <Button
+            icon="phone"
+            mode="contained"
+            onPress={() => navigation.navigate("OutgoingCall", { bookingId: Number(booking.id ?? bookingId), partnerName: booking.partnerName })}
+            style={styles.callButton}
+          >
+            Call Partner
+          </Button>
+        ) : null}
       </View>
 
       <View style={styles.card}>
@@ -81,39 +86,40 @@ export function BookingDetailScreen({ route }: any) {
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Status Timeline</Text>
-        {timeline.map((item) => (
-          <View key={item.label} style={styles.timelineRow}>
-            <View style={styles.dot} />
-            <View style={styles.timelineContent}>
-              <Text style={styles.timelineLabel}>{item.label}</Text>
-              <Text style={styles.timelineValue}>{item.value}</Text>
-            </View>
-          </View>
-        ))}
+        <BookingTimeline history={booking.statusHistory} />
       </View>
+
+      <CustomerReviewCard
+        booking={booking}
+        onSubmitted={() => {
+          void detailsQuery.refetch();
+        }}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F1F5F9" },
-  content: { padding: 14 },
+  root: { flex: 1, backgroundColor: COLORS.offWhite },
+  content: { padding: spacing.md + 2, gap: spacing.md },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
+    backgroundColor: COLORS.white,
+    borderRadius: radii.md,
+    padding: spacing.md + 2,
     gap: 8,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: COLORS.borderSoft,
+    ...shadows.sm,
   },
-  title: { fontSize: 18, fontWeight: "800", color: "#0F172A" },
-  chip: { alignSelf: "flex-start", marginBottom: 4 },
-  row: { fontSize: 14, color: "#334155" },
-  sectionTitle: { fontSize: 16, fontWeight: "800", color: "#0F172A", marginBottom: 4 },
-  timelineRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  dot: { width: 10, height: 10, borderRadius: 999, marginTop: 5, backgroundColor: "#2563EB" },
+  title: { fontSize: 18, fontWeight: "800", color: COLORS.slate900 },
+  chip: { alignSelf: "flex-start", marginBottom: spacing.xs },
+  row: { fontSize: 14, color: COLORS.slate700 },
+  sectionTitle: { fontSize: 16, fontWeight: "800", color: COLORS.slate900, marginBottom: spacing.xs },
+  callButton: { marginTop: spacing.sm },
+  timelineRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm + 2 },
+  dot: { width: 10, height: 10, borderRadius: radii.pill, marginTop: 5, backgroundColor: COLORS.blue600 },
   timelineContent: { flex: 1, gap: 1 },
-  timelineLabel: { fontSize: 13, fontWeight: "700", color: "#1E293B" },
-  timelineValue: { fontSize: 13, color: "#475569" },
+  timelineLabel: { fontSize: 13, fontWeight: "700", color: COLORS.slate800 },
+  timelineValue: { fontSize: 13, color: COLORS.slate600 },
 });

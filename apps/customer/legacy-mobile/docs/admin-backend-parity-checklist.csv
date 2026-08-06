@@ -28,8 +28,11 @@ Booking,/api/bookings/details/{id},GET,id path,booking details,Needs UI Context,
 Booking,/api/bookings/cancel/{id},PUT,id path,booking details,Needs UI Context,
 Booking,/api/bookings/reschedule/{id},PUT,"id path|date(ISO)",booking details,Needs Backend Confirm,"confirm date field name"
 Tracking,/api/partner/live-location/{bookingId},GET,bookingId path,"lat|lng|eta",Needs UI Context,
-Payment,/api/payments/initiate,POST,"mode(UPI/CARD/WALLET/COD)|bookingId?|amount?",payment init response,Needs Backend Confirm,
-Payment,/api/payments/status/{bookingId},GET,bookingId path,payment status,Needs UI Context,"confirm status enum"
+Payment,/api/payments/create-order,POST,"bookingId|Idempotency-Key header","keyId|razorpayOrderId|amountInPaise|currency",Aligned,"frontend must use backend amountInPaise"
+Payment,/api/payments/verify,POST,"razorpayOrderId|razorpayPaymentId|razorpaySignature",verify result,Aligned,"success page only after verify success"
+Payment,/api/payments/{bookingId},GET,bookingId path,payment status,Needs UI Context,"confirm status enum"
+Payment,/api/payments/options,GET/POST,"bookingId?|cartId?",payment methods,Needs Backend Confirm,
+Payment,/api/payment/options,GET,"bookingId?|cartId?",payment methods fallback,Needs Backend Confirm,
 Payment,/api/payments/refund,POST,"bookingId|amount",refund response,Needs Backend Confirm,
 Coupon,/api/coupon/apply,POST,code,coupon apply response,Needs Backend Confirm,
 Coupon,/api/coupon/list,GET,,coupon list,Aligned,
@@ -43,8 +46,6 @@ Notifications,/api/notifications/read,PUT,id,status/message,Needs Backend Confir
 Notifications,/api/customer/notifications/unread-count,GET,,count,Needs Backend Confirm,"count or data.count"
 Referral,/api/referral/generate,POST,,generated code,Needs Backend Confirm,
 Referral,/api/referral/apply,POST,code,apply response,Needs Backend Confirm,
-Subscription,/api/subscription/create,POST,planId,subscription object,Needs Backend Confirm,
-Subscription,/api/subscription/list,GET,,subscription list,Aligned,
 Support,/api/support/create,POST,"subject|message",ticket object,Needs Backend Confirm,
 Support,/api/support/history,GET,,ticket list,Aligned,
 

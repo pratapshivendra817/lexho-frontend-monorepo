@@ -37,6 +37,7 @@ export type AdminNotification = {
   scheduledAt?: string;
   readCount?: number;
   clickCount?: number;
+  failureReason?: string;
 };
 
 export type AdminNotificationListResponse = {
@@ -73,8 +74,18 @@ export type SendAdminNotificationPayload = {
   priority: "LOW" | "MEDIUM" | "HIGH" | string;
   channels: string[];
   targetUserType: string;
+  userIds?: number[];
+  referenceType?: string;
+  referenceId?: number | string;
+  redirectType?: string;
+  redirectValue?: string;
   city?: string;
   scheduledTime?: string;
+  warningType?: string;
+  reason?: string;
+  guidance?: string;
+  notificationTitle?: string;
+  notificationMessage?: string;
 };
 
 

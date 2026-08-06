@@ -1,14 +1,16 @@
 import { StyleSheet } from "react-native";
+import { COLORS } from '../theme/colors';
 
 export function createEditProfileStyles(isDark = false) {
   const colors = {
-    overlay: "rgba(0,0,0,0.4)",
-    card: isDark ? "#171717" : "#FFFFFF",
-    border: "#E5E5E5",
-    text: isDark ? "#F5F5F5" : "#1A1A1A",
-    muted: isDark ? "#A3A3A3" : "#666666",
-    inputBg: isDark ? "#262626" : "#FFFFFF",
-    pink: "#FF0A7A",
+    overlay: "rgba(2, 27, 74, 0.55)",
+    card: COLORS.navyDark,
+    border: COLORS.goldSoft,
+    text: COLORS.offWhite,
+    muted: COLORS.slate300,
+    inputBg: "rgba(255,255,255,0.08)",
+    accent: COLORS.navy,
+    accentWarm: COLORS.gold,
   };
 
   return StyleSheet.create({
@@ -29,7 +31,7 @@ export function createEditProfileStyles(isDark = false) {
       padding: 18,
       borderWidth: 1,
       borderColor: colors.border,
-      shadowColor: "#000",
+      shadowColor: COLORS.black,
       shadowOpacity: 0.12,
       shadowRadius: 16,
       shadowOffset: { width: 0, height: 8 },
@@ -44,19 +46,19 @@ export function createEditProfileStyles(isDark = false) {
       borderColor: colors.border,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: isDark ? "#262626" : "#FFFFFF",
+      backgroundColor: "rgba(217, 164, 65, 0.12)",
     },
     heading: { color: colors.text, fontSize: 24, fontWeight: "800", textAlign: "center", marginTop: 4 },
-    subHeading: { color: colors.muted, textAlign: "center", marginTop: 4, marginBottom: 14 },
+    subHeading: { color: colors.muted, textAlign: "center", marginTop: 4, marginBottom: 12 },
 
-    profileImageWrap: { alignSelf: "center", marginBottom: 18 },
+    profileImageWrap: { alignSelf: "center", marginBottom: 16 },
     profileImageCircle: {
       width: 112,
       height: 112,
       borderRadius: 56,
-      backgroundColor: isDark ? "#262626" : "#F6F6F6",
+      backgroundColor: "rgba(255,255,255,0.08)",
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: COLORS.goldSoft,
       alignItems: "center",
       justifyContent: "center",
       overflow: "hidden",
@@ -70,11 +72,11 @@ export function createEditProfileStyles(isDark = false) {
       width: 34,
       height: 34,
       borderRadius: 17,
-      backgroundColor: colors.pink,
+      backgroundColor: colors.accent,
       alignItems: "center",
       justifyContent: "center",
       borderWidth: 2,
-      borderColor: "#FFF",
+      borderColor: COLORS.white,
     },
     imageLoaderOverlay: {
       ...StyleSheet.absoluteFillObject,
@@ -83,13 +85,13 @@ export function createEditProfileStyles(isDark = false) {
       backgroundColor: "rgba(255,255,255,0.7)",
     },
 
-    formGroup: { marginBottom: 12 },
-    formScroll: { flex: 1, minHeight: 220 },
-    formScrollContent: { paddingBottom: 8 },
+    formGroup: { marginBottom: 10 },
+    formScroll: { flex: 1, minHeight: 200 },
+    formScrollContent: { paddingBottom: 2 },
     label: { color: colors.text, fontWeight: "700", marginBottom: 6 },
     input: {
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: COLORS.goldSoft,
       backgroundColor: colors.inputBg,
       borderRadius: 14,
       paddingHorizontal: 14,
@@ -97,46 +99,50 @@ export function createEditProfileStyles(isDark = false) {
       color: colors.text,
       fontSize: 15,
     },
-    inputError: { borderColor: "#EF4444" },
-    inputReadonly: { backgroundColor: isDark ? "#232323" : "#F7F7F7", color: colors.muted },
-    errorText: { color: "#EF4444", marginTop: 4, fontSize: 12 },
+    inputError: { borderColor: COLORS.error },
+    inputReadonly: { backgroundColor: "rgba(255,255,255,0.12)", color: colors.muted },
+    errorText: { color: COLORS.error, marginTop: 4, fontSize: 12 },
 
     genderRow: { flexDirection: "row", gap: 10, marginTop: 6, marginBottom: 10 },
     genderButton: {
       flex: 1,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: COLORS.goldSoft,
       borderRadius: 999,
       paddingVertical: 10,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: isDark ? "#262626" : "#FFFFFF",
+      backgroundColor: "rgba(255,255,255,0.08)",
     },
-    genderButtonActive: { borderColor: colors.pink, backgroundColor: "#FFE5F2" },
+    genderButtonActive: { borderColor: colors.accentWarm, backgroundColor: "rgba(217, 164, 65, 0.18)" },
     genderButtonDisabled: { opacity: 0.6 },
     genderText: { color: colors.text, fontWeight: "700" },
-    genderTextActive: { color: colors.pink },
+    genderTextActive: { color: colors.accentWarm },
 
     updateButton: {
-      marginTop: 8,
-      backgroundColor: colors.pink,
+      marginTop: -10,
+      alignSelf: "center",
+      width: "100%",
+      backgroundColor: colors.accent,
       borderRadius: 16,
+      borderWidth: 2,
+      borderColor: COLORS.gold,
       minHeight: 52,
       alignItems: "center",
       justifyContent: "center",
-      shadowColor: colors.pink,
+      shadowColor: colors.accent,
       shadowOpacity: 0.35,
       shadowOffset: { width: 0, height: 8 },
       shadowRadius: 16,
       elevation: 8,
     },
     updateButtonDisabled: { opacity: 0.65 },
-    updateButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
+    updateButtonText: { color: COLORS.white, fontSize: 16, fontWeight: "800" },
 
     skeletonBlock: {
       height: 46,
       borderRadius: 14,
-      backgroundColor: isDark ? "#2C2C2C" : "#EFEFEF",
+      backgroundColor: isDark ? COLORS.slate700 : COLORS.offWhite,
       overflow: "hidden",
       marginBottom: 10,
     },
@@ -155,7 +161,7 @@ export function createEditProfileStyles(isDark = false) {
       paddingTop: 14,
       paddingBottom: 24,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: COLORS.goldSoft,
     },
     sheetTitle: { color: colors.text, fontSize: 16, fontWeight: "800", marginBottom: 8 },
     sheetAction: {
@@ -164,11 +170,17 @@ export function createEditProfileStyles(isDark = false) {
       gap: 10,
       paddingVertical: 12,
       borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      borderBottomColor: COLORS.goldSoft,
     },
     sheetActionText: { color: colors.text, fontSize: 15, fontWeight: "600" },
-    sheetDangerText: { color: "#DC2626" },
+    sheetDangerText: { color: COLORS.danger },
     sheetCancel: { marginTop: 12, alignItems: "center" },
     sheetCancelText: { color: colors.muted, fontSize: 15, fontWeight: "700" },
   });
 }
+
+
+
+
+
+

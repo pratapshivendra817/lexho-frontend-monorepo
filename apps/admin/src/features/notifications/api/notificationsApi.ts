@@ -55,6 +55,15 @@ const toNotification = (row: UnknownRecord): AdminNotification => ({
   scheduledAt: asString(row.scheduleTime ?? row.scheduledAt) || undefined,
   readCount: asNumber(row.readCount, 0),
   clickCount: asNumber(row.clickCount, 0),
+  failureReason:
+    asString(
+      row.failureReason ??
+        row.failedReason ??
+        row.errorReason ??
+        row.errorMessage ??
+        row.failureMessage ??
+        row.statusMessage,
+    ) || undefined,
 });
 
 const toLegacyTargetUserType = (value: string): string => {
@@ -126,28 +135,10 @@ export async function sendAdminNotification(payload: SendAdminNotificationPayloa
   let lastError: unknown = null;
   for (const attempt of attempts) {
     try {
-      if (import.meta.env.DEV) {
-        console.log("[admin:notifications:send:attempt]", {
-          endpoint: attempt.endpoint,
-          body: attempt.body,
-        });
-      }
       await api.post(attempt.endpoint, attempt.body);
-      if (import.meta.env.DEV) {
-        console.log("[admin:notifications:send:success]", {
-          endpoint: attempt.endpoint,
-        });
-      }
       return;
     } catch (error) {
       lastError = error;
-      if (import.meta.env.DEV) {
-        console.log("[admin:notifications:send:failed]", {
-          endpoint: attempt.endpoint,
-          status: axios.isAxiosError(error) ? error.response?.status : "UNKNOWN",
-          message: axios.isAxiosError(error) ? error.response?.data?.message : String(error),
-        });
-      }
       if (!axios.isAxiosError(error)) {
         throw error;
       }

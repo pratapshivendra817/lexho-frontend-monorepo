@@ -47,8 +47,13 @@ export async function createGeoZone(payload: GeoZonePayload) {
 }
 
 export async function updateGeoZone(id: string | number, payload: GeoZonePayload) {
-  const { data } = await api.put(`/api/v1/admin/geo/zones/${id}`, payload);
-  return data;
+  try {
+    const { data } = await api.put(`/api/admin/geo/zones/${id}`, payload);
+    return data;
+  } catch {
+    const { data } = await api.put(`/api/v1/admin/geo/zones/${id}`, payload);
+    return data;
+  }
 }
 
 export async function deleteGeoZone(id: string | number) {

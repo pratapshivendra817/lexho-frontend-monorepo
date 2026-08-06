@@ -118,6 +118,101 @@ describe("usersApi", () => {
     });
   });
 
+  it("normalizes alternative list payload shapes and pagination fallbacks", async () => {
+    mocks.getMock.mockResolvedValue({
+      data: {
+        data: {
+          content: [
+            {
+              userId: 77,
+              fullName: "Dana",
+              mobile: 9898989898,
+              profile: {
+                email: "dana@example.com",
+                role: "partner",
+                status: "inactive",
+                city: "Ujjain",
+              },
+              address: { city: "Bhopal" },
+              created_on: 123,
+              updated_on: 456,
+            },
+          ],
+          total: "1",
+          totalPages: "0",
+          page: "3",
+        },
+      },
+    });
+
+    const result = await getUsers({ page: 3, limit: 10, search: "", role: "", status: "", city: "" });
+
+    expect(mocks.getMock).toHaveBeenCalledWith("/api/admin/users", {
+      params: {
+        page: 3,
+        limit: 10,
+        size: 10,
+        search: undefined,
+        role: undefined,
+        status: undefined,
+        city: undefined,
+      },
+    });
+
+    expect(result).toEqual({
+      content: [
+        {
+          id: "77",
+          name: "Dana",
+          email: "dana@example.com",
+          phone: "9898989898",
+          role: "PARTNER",
+          status: "INACTIVE",
+          city: "Bhopal",
+          blocked: false,
+          createdAt: "123",
+          updatedAt: "456",
+        },
+      ],
+      totalElements: 1,
+      totalPages: 1,
+      pageNumber: 3,
+    });
+  });
+
+  it("returns null for empty details and derives blocked/deleted users from root payloads", async () => {
+    mocks.getMock
+      .mockResolvedValueOnce({ data: null })
+      .mockResolvedValueOnce({
+        data: {
+          id: "usr-9",
+          profile: {
+            name: "Esha",
+            email: "esha@example.com",
+            phone: "7878787878",
+            role: "unknown",
+            status: "deleted",
+            city: "Jaipur",
+          },
+          block: true,
+        },
+      });
+
+    await expect(getUserById("missing")).resolves.toBeNull();
+    await expect(getUserById("usr-9")).resolves.toEqual({
+      id: "usr-9",
+      name: "Esha",
+      email: "esha@example.com",
+      phone: "7878787878",
+      role: "CUSTOMER",
+      status: "DELETED",
+      city: "Jaipur",
+      blocked: false,
+      createdAt: "",
+      updatedAt: "",
+    });
+  });
+
   it("hits create/update/block/unblock/delete endpoints", async () => {
     mocks.postMock.mockResolvedValue({});
     mocks.putMock.mockResolvedValue({});
@@ -165,6 +260,54 @@ describe("usersApi", () => {
     expect(mocks.putMock).toHaveBeenCalledWith("/api/admin/users/usr-3/block");
     expect(mocks.putMock).toHaveBeenCalledWith("/api/admin/users/usr-3/unblock");
     expect(mocks.deleteMock).toHaveBeenCalledWith("/api/admin/users/usr-3");
+  });
+
+  it.each([
+    [
+      "blocked users",
+      {
+        name: "Blocked",
+        email: "blocked@example.com",
+        phone: "7000000000",
+        role: "CUSTOMER" as const,
+        city: "Delhi",
+        status: "BLOCKED" as const,
+      },
+      { isBlocked: true, blocked: true, active: false },
+    ],
+    [
+      "inactive users",
+      {
+        name: "Inactive",
+        email: "inactive@example.com",
+        phone: "7111111111",
+        role: "PARTNER" as const,
+        city: "Mumbai",
+        status: "INACTIVE" as const,
+      },
+      { isBlocked: false, blocked: false, active: false },
+    ],
+  ])("maps backend payload flags for %s", async (_label, payload, flags) => {
+    mocks.postMock.mockResolvedValue({});
+    mocks.putMock.mockResolvedValue({});
+
+    await createUser(payload);
+    await updateUser("usr-flags", payload);
+
+    expect(mocks.postMock).toHaveBeenLastCalledWith(
+      "/api/admin/users",
+      expect.objectContaining({
+        status: payload.status,
+        ...flags,
+      }),
+    );
+    expect(mocks.putMock).toHaveBeenLastCalledWith(
+      "/api/admin/users/usr-flags",
+      expect.objectContaining({
+        status: payload.status,
+        ...flags,
+      }),
+    );
   });
 });
 

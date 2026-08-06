@@ -2,15 +2,22 @@
 
 export type AdminReview = {
   id: string;
+  bookingId?: string;
+  customerId?: string;
+  partnerId?: string;
   customerName: string;
   partnerName: string;
   serviceName: string;
   rating: number;
   comment: string;
+  reviewText?: string;
   images: string[];
   status: AdminReviewStatus;
   reportCount: number;
   reportReason?: string;
+  moderationReason?: string;
+  requestId?: string;
+  correlationId?: string;
   createdAt?: string;
 };
 
@@ -20,8 +27,11 @@ export type AdminReviewsQueryParams = {
   rating?: number;
   status?: AdminReviewStatus | "";
   partner?: string;
+  customer?: string;
   service?: string;
   search?: string;
+  startDate?: string;
+  endDate?: string;
 };
 
 export type AdminReviewsListResponse = {

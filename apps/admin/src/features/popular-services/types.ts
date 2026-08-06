@@ -19,6 +19,7 @@ export type PopularServiceItem = {
   serviceName: string;
   categoryId: string;
   priority: number;
+  deletedAt?: string;
 };
 
 export type CreatePopularServicePayload = {

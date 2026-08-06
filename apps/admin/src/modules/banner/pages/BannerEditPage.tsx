@@ -8,7 +8,6 @@ import { BannerForm, defaultBannerFormValues } from "../components/BannerForm";
 import {
   useBannerById,
   useBannerCategories,
-  useBannerServices,
   useUpdateBanner,
 } from "../hooks/useBanners";
 import type { BannerFormValues } from "../types/banner.types";
@@ -18,7 +17,6 @@ export default function BannerEditPage() {
   const { id } = useParams<{ id: string }>();
   const bannerQuery = useBannerById(id);
   const categoriesQuery = useBannerCategories();
-  const servicesQuery = useBannerServices();
   const updateMutation = useUpdateBanner();
 
   const formDefaults = useMemo<BannerFormValues>(() => {
@@ -28,7 +26,7 @@ export default function BannerEditPage() {
       title: banner.title,
       categoryId: banner.categoryId ?? "",
       imageUrl: banner.imageUrl,
-      redirectType: banner.redirectType,
+      redirectType: banner.redirectType === "SERVICE" ? "CATEGORY" : banner.redirectType,
       redirectValue: banner.redirectValue,
       priority: banner.priority,
       active: banner.active,
@@ -62,20 +60,19 @@ export default function BannerEditPage() {
 
       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
         <DataState
-          isLoading={bannerQuery.isLoading || categoriesQuery.isLoading || servicesQuery.isLoading}
-          isError={bannerQuery.isError || categoriesQuery.isError || servicesQuery.isError}
+          isLoading={bannerQuery.isLoading || categoriesQuery.isLoading}
+          isError={bannerQuery.isError || categoriesQuery.isError}
           isEmpty={!bannerQuery.data}
           loadingText="Loading banner..."
           errorText="Unable to load banner form data"
           emptyText="Banner not found"
           onRetry={() => {
-            void Promise.all([bannerQuery.refetch(), categoriesQuery.refetch(), servicesQuery.refetch()]);
+            void Promise.all([bannerQuery.refetch(), categoriesQuery.refetch()]);
           }}
         >
           <BannerForm
             defaultValues={formDefaults}
             categories={categoriesQuery.data ?? []}
-            services={servicesQuery.data ?? []}
             isSubmitting={updateMutation.isPending}
             onSubmit={handleSubmit}
           />

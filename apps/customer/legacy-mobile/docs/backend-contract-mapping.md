@@ -33,8 +33,8 @@ Active runtime path is now locked to:
 ## Profile
 | Endpoint | Method | Client | Current Contract Use | Status |
 |---|---|---|---|---|
-| `/api/user/profile` | GET | `userApi.getProfile` | profile object | Needs Backend Confirm |
-| `/api/user/profile/update` | PUT | `userApi.updateProfile` | currently `{ name }` from input | Needs Backend Confirm |
+| `/api/user/profile` | GET | `customerProfileApi.getProfile` | profile object | Needs Backend Confirm |
+| `/api/user/profile/update` | PUT | `customerProfileApi.updateProfile` | currently `{ name }` from input | Needs Backend Confirm |
 | `/api/user/profile/upload-image` | POST | not implemented yet | pending upload flow | Needs UI Context |
 
 ## Address
@@ -67,8 +67,11 @@ Active runtime path is now locked to:
 ## Payments
 | Endpoint | Method | Client | Current Contract Use | Status |
 |---|---|---|---|---|
-| `/api/payments/initiate` | POST | `paymentApi.initiatePayment` | `{ mode }` | Needs Backend Confirm |
-| `/api/payments/status/{bookingId}` | GET | `paymentExtrasApi.getPaymentStatus` | bookingId input | Needs UI Context |
+| `/api/payments/create-order` | POST | `paymentApi.createPaymentOrder` | `{ bookingId }` with `Idempotency-Key` header | Aligned |
+| `/api/payments/verify` | POST | `paymentApi.verifyPayment` | `{ razorpayOrderId, razorpayPaymentId, razorpaySignature }` | Aligned |
+| `/api/payments/{bookingId}` | GET | `paymentExtrasApi.getPaymentStatus` | bookingId input | Needs UI Context |
+| `/api/payments/options` | GET/POST | `paymentApi.getPaymentOptions` | `{ bookingId?, cartId? }` | Needs Backend Confirm |
+| `/api/payment/options` | GET | `paymentApi.getPaymentOptions` | fallback payment options endpoint | Needs Backend Confirm |
 | `/api/payments/refund` | POST | `paymentExtrasApi.refundPayment` | `{ bookingId, amount }` | Needs Backend Confirm |
 
 ## Coupon
@@ -102,12 +105,6 @@ Active runtime path is now locked to:
 |---|---|---|---|---|
 | `/api/referral/generate` | POST | `referralApi.generateReferral` | no body | Needs Backend Confirm |
 | `/api/referral/apply` | POST | `referralApi.applyReferral` | `{ code }` | Needs Backend Confirm |
-
-## Subscription
-| Endpoint | Method | Client | Current Contract Use | Status |
-|---|---|---|---|---|
-| `/api/subscription/create` | POST | `subscriptionApi.createSubscription` | `{ planId }` from UI action | Needs Backend Confirm |
-| `/api/subscription/list` | GET | `subscriptionApi.getSubscriptions` | list | Aligned |
 
 ## Support
 | Endpoint | Method | Client | Current Contract Use | Status |

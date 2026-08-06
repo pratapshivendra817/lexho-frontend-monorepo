@@ -1,9 +1,10 @@
+import { COLORS } from '../theme/colors';
 export const HOME_SERVICE_CATEGORIES = [
   {
     id: "cook",
     title: "Cook",
     icon: "cook",
-    tintColor: "#22C55E",
+    tintColor: COLORS.success,
     tagline: "Daily meals",
     routeName: "CookCategory",
     serviceType: "cook",
@@ -12,7 +13,7 @@ export const HOME_SERVICE_CATEGORIES = [
     id: "clean",
     title: "Clean",
     icon: "clean",
-    tintColor: "#38BDF8",
+    tintColor: COLORS.blue400,
     tagline: "Home care",
     featured: true,
     routeName: "CleaningCategory",
@@ -22,21 +23,21 @@ export const HOME_SERVICE_CATEGORIES = [
     id: "repair",
     title: "Repair",
     icon: "repair",
-    tintColor: "#F97316",
+    tintColor: COLORS.warning,
     tagline: "Quick fixes",
   },
   {
     id: "beauty",
     title: "Beauty",
     icon: "beauty",
-    tintColor: "#A855F7",
+    tintColor: COLORS.blue500,
     tagline: "Salon care",
   },
   {
     id: "appliance",
     title: "Appliance",
     icon: "appliance",
-    tintColor: "#F59E0B",
+    tintColor: COLORS.warning,
     tagline: "Expert help",
   },
 ];
@@ -64,3 +65,7 @@ export function getHomeServiceCategories() {
     ...category,
   }));
 }
+
+
+
+

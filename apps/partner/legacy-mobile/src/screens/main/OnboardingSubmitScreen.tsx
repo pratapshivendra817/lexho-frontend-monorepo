@@ -1,10 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import type { TextInputProps } from "react-native";
 import { launchCamera, launchImageLibrary } from "react-native-image-picker";
-import { pick, types } from "@react-native-documents/picker";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
-import { submitPartnerOnboarding, uploadPartnerDocuments } from "../../services/partnerService";
+import { getPartnerProfile, submitPartnerOnboarding, uploadPartnerDocuments } from "../../services/partnerService";
 import { COLORS } from "../../constants/colors";
 import { useAppFeedback } from "../../context/AppFeedbackContext";
 
@@ -36,22 +35,34 @@ const initialForm: FormState = {
   ifscCode: "",
 };
 
-type UploadDocKey = "aadhaarFront" | "aadhaarBack" | "pan" | "profilePhoto";
-type UploadDocFile = { uri: string; type?: string; fileName?: string };
+type UploadDocKey = "aadhaar" | "pan" | "selfie" | "certificate";
+type UploadDocFile = { uri: string; type?: string; fileName?: string; fileSize?: number };
 type UploadFormState = Record<UploadDocKey, UploadDocFile | null>;
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 
 const initialDocs: UploadFormState = {
-  aadhaarFront: null,
-  aadhaarBack: null,
+  aadhaar: null,
   pan: null,
-  profilePhoto: null,
+  selfie: null,
+  certificate: null,
 };
 
 const DOC_LABELS: Record<UploadDocKey, string> = {
-  aadhaarFront: "AADHAAR FRONT (PDF)",
-  aadhaarBack: "AADHAAR BACK (PDF)",
-  pan: "PAN (PDF)",
-  profilePhoto: "PROFILE PHOTO (IMAGE)",
+  aadhaar: "AADHAAR",
+  pan: "PAN",
+  selfie: "SELFIE",
+  certificate: "CERTIFICATE (OPTIONAL)",
+};
+
+const firstFilled = (...values: Array<string | undefined>) => values.find((value) => value?.trim())?.trim() ?? "";
+
+const addressWithPincode = (address?: string, pincode?: string) => {
+  const cleanAddress = address?.trim() ?? "";
+  const cleanPincode = pincode?.trim() ?? "";
+  if (!cleanPincode || cleanAddress.includes(cleanPincode)) return cleanAddress;
+  if (!cleanAddress) return cleanPincode;
+  return `${cleanAddress}, ${cleanPincode}`;
 };
 
 export default function OnboardingSubmitScreen() {
@@ -63,6 +74,28 @@ export default function OnboardingSubmitScreen() {
   const [showGenderDropdown, setShowGenderDropdown] = useState(false);
   const [showDobPicker, setShowDobPicker] = useState(false);
   const [showServiceTypeDropdown, setShowServiceTypeDropdown] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    getPartnerProfile()
+      .then((profile) => {
+        if (!mounted) return;
+        setForm((prev) => ({
+          ...prev,
+          fullName: prev.fullName || firstFilled(profile.fullName, profile.name),
+          email: prev.email || firstFilled(profile.email),
+          phoneNumber: prev.phoneNumber || firstFilled(profile.phone, profile.mobile),
+          currentCity: prev.currentCity || firstFilled(profile.city),
+          currentFullAddress: prev.currentFullAddress || addressWithPincode(profile.address, profile.pincode),
+        }));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -125,39 +158,25 @@ export default function OnboardingSubmitScreen() {
     const result = await fn({ mediaType: "photo", quality: 0.8, selectionLimit: 1 });
     const asset = result.assets?.[0];
     if (asset?.uri) {
+      const type = String(asset.type ?? "").toLowerCase();
+      if (type && !ALLOWED_IMAGE_TYPES.includes(type)) {
+        toast("Unsupported image. Upload JPG, PNG, or WEBP.");
+        return;
+      }
+      if (asset.fileSize && asset.fileSize > MAX_UPLOAD_BYTES) {
+        toast("File too large. Maximum allowed size is 5 MB.");
+        return;
+      }
       setDocs((prev) => ({
         ...prev,
-        [key]: { uri: asset.uri, type: asset.type, fileName: asset.fileName },
+        [key]: { uri: asset.uri, type: asset.type, fileName: asset.fileName, fileSize: asset.fileSize },
       }));
     }
   };
 
-  const pickDocument = async (key: UploadDocKey) => {
-    try {
-      const result = await pick({
-        allowMultiSelection: false,
-        type: [types.pdf],
-        mode: "import",
-      });
-      const file = result?.[0];
-      if (file?.uri) {
-        setDocs((prev) => ({
-          ...prev,
-          [key]: {
-            uri: file.uri,
-            type: file.type ?? "application/pdf",
-            fileName: file.name ?? `${key}.pdf`,
-          },
-        }));
-      }
-    } catch {
-      // user cancel or picker error
-    }
-  };
-
   const uploadDocs = async () => {
-    if (!docs.aadhaarFront || !docs.aadhaarBack || !docs.pan || !docs.profilePhoto) {
-      toast("Aadhaar front/back, PAN and profile photo are required");
+    if (!docs.aadhaar || !docs.pan || !docs.selfie) {
+      toast("Aadhaar, PAN and selfie are required");
       return;
     }
     try {
@@ -166,10 +185,12 @@ export default function OnboardingSubmitScreen() {
       showLoader();
       await uploadPartnerDocuments(
         {
-          aadhaarFront: { uri: docs.aadhaarFront.uri, type: docs.aadhaarFront.type, name: docs.aadhaarFront.fileName },
-          aadhaarBack: { uri: docs.aadhaarBack.uri, type: docs.aadhaarBack.type, name: docs.aadhaarBack.fileName },
+          aadhaar: { uri: docs.aadhaar.uri, type: docs.aadhaar.type, name: docs.aadhaar.fileName },
           pan: { uri: docs.pan.uri, type: docs.pan.type, name: docs.pan.fileName },
-          profilePhoto: { uri: docs.profilePhoto.uri, type: docs.profilePhoto.type, name: docs.profilePhoto.fileName },
+          selfie: { uri: docs.selfie.uri, type: docs.selfie.type, name: docs.selfie.fileName },
+          certificate: docs.certificate
+            ? { uri: docs.certificate.uri, type: docs.certificate.type, name: docs.certificate.fileName }
+            : null,
         },
         setUploadProgress,
       );
@@ -261,25 +282,19 @@ export default function OnboardingSubmitScreen() {
 
       <View style={styles.docsSection}>
         <Text style={styles.docsSectionTitle}>Upload Documents</Text>
-        {(["aadhaarFront", "aadhaarBack", "pan", "profilePhoto"] as UploadDocKey[]).map((key) => (
+        {(["aadhaar", "pan", "selfie", "certificate"] as UploadDocKey[]).map((key) => (
           <View key={key} style={styles.docCard}>
-            <Text style={styles.docLabel}>{DOC_LABELS[key]} *</Text>
+            <Text style={styles.docLabel}>{DOC_LABELS[key]} {key === "certificate" ? "" : "*"}</Text>
             <Text style={styles.docMeta}>{docs[key]?.fileName ?? "No file selected"}</Text>
             <View style={styles.docBtnRow}>
-              {key === "profilePhoto" ? (
-                <>
-                  <TouchableOpacity style={styles.docBtn} onPress={() => pickDoc(key, true)}>
-                    <Text style={styles.docBtnText}>Camera</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.docBtn} onPress={() => pickDoc(key, false)}>
-                    <Text style={styles.docBtnText}>Gallery</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <TouchableOpacity style={styles.docBtnWide} onPress={() => pickDocument(key)}>
-                  <Text style={styles.docBtnText}>Select Document</Text>
+              <>
+                <TouchableOpacity style={styles.docBtn} onPress={() => pickDoc(key, true)}>
+                  <Text style={styles.docBtnText}>Camera</Text>
                 </TouchableOpacity>
-              )}
+                <TouchableOpacity style={styles.docBtn} onPress={() => pickDoc(key, false)}>
+                  <Text style={styles.docBtnText}>Gallery</Text>
+                </TouchableOpacity>
+              </>
             </View>
             {docs[key] ? (
               <TouchableOpacity
@@ -322,8 +337,8 @@ const styles = StyleSheet.create({
   container: { padding: 16, gap: 10 },
   title: { color: COLORS.textPrimary, fontSize: 24, fontWeight: "800" },
   subtitle: { color: COLORS.textSecondary, marginBottom: 4 },
-  fieldWrap: { gap: 6 },
-  label: { color: COLORS.textSecondary, fontWeight: "700", fontSize: 12 },
+  fieldWrap: { gap: 6, marginHorizontal: -16 },
+  label: { color: COLORS.textSecondary, fontWeight: "700", fontSize: 12, marginHorizontal: 16 },
   input: {
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -363,14 +378,15 @@ const styles = StyleSheet.create({
   dropdownItemText: { color: COLORS.textPrimary, fontWeight: "600" },
   submitBtn: {
     marginTop: 8,
+    marginHorizontal: -16,
     borderRadius: 10,
     backgroundColor: COLORS.secondary,
     alignItems: "center",
     paddingVertical: 12,
   },
   submitText: { color: COLORS.textPrimary, fontWeight: "800" },
-  docsSection: { marginTop: 4, gap: 8 },
-  docsSectionTitle: { color: COLORS.textPrimary, fontWeight: "800", fontSize: 14 },
+  docsSection: { marginTop: 4, marginHorizontal: -16, gap: 8 },
+  docsSectionTitle: { color: COLORS.textPrimary, fontWeight: "800", fontSize: 14, marginHorizontal: 16 },
   docCard: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
@@ -411,6 +427,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
   },
   removeBtnText: { color: COLORS.error, fontWeight: "700" },
-  uploadBtn: { marginTop: 2 },
-  progress: { color: COLORS.textSecondary, fontSize: 12, textAlign: "right" },
+  uploadBtn: { marginTop: 2, marginHorizontal: 0 },
+  progress: { color: COLORS.textSecondary, fontSize: 12, textAlign: "right", marginHorizontal: 16 },
 });

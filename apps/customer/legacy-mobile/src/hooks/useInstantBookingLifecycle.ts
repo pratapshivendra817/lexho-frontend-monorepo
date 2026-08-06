@@ -4,11 +4,7 @@ import { AppState } from "react-native";
 import { useEffect, useState } from "react";
 import { getBookingDetails } from "../api/bookingExtrasApi";
 import { API_BASE_URL, ENABLE_BOOKING_WS } from "../constants/env";
-
-function isTerminalState(status?: string) {
-  const value = String(status ?? "").toUpperCase();
-  return value === "INSTANT_FAILED" || value === "COMPLETED" || value === "CANCELLED" || value === "EXPIRED" || value === "PAYMENT_FAILED";
-}
+import { getBookingMeta } from "../utils/bookingMeta";
 
 export function useInstantBookingLifecycle(bookingId: string) {
   const [isForeground, setIsForeground] = useState(true);
@@ -31,40 +27,20 @@ export function useInstantBookingLifecycle(bookingId: string) {
 
     const connect = () => {
       if (closed) return;
-      if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.log("[booking:ws:connect]", { bookingId, wsUrl });
-      }
       try {
         socket = new WebSocket(wsUrl);
       } catch {
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log("[booking:ws:connect:failed]", { bookingId, wsUrl });
-        }
         retryTimer = setTimeout(connect, 4000);
         return;
       }
       socket.onopen = () => {
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log("[booking:ws:open]", { bookingId });
-        }
         setWsConnected(true);
       };
       socket.onclose = () => {
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log("[booking:ws:close]", { bookingId });
-        }
         setWsConnected(false);
         if (!closed) retryTimer = setTimeout(connect, 4000);
       };
       socket.onerror = () => {
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log("[booking:ws:error]", { bookingId });
-        }
         setWsConnected(false);
       };
       socket.onmessage = (event) => {
@@ -72,20 +48,7 @@ export function useInstantBookingLifecycle(bookingId: string) {
           const payload = JSON.parse(String(event.data ?? "{}"));
           const root = payload?.data && typeof payload.data === "object" ? payload.data : payload;
           const payloadId = String(root?.id ?? root?.bookingId ?? "");
-          if (__DEV__) {
-            // eslint-disable-next-line no-console
-            console.log("[booking:ws:message]", {
-              bookingId,
-              payloadId,
-              status: String(root?.status ?? ""),
-              assignmentStatus: String(root?.assignmentStatus ?? root?.dispatchStatus ?? ""),
-            });
-          }
           if (payloadId !== bookingId) {
-            if (__DEV__) {
-              // eslint-disable-next-line no-console
-              console.log("[booking:ws:skip:id-mismatch]", { bookingId, payloadId });
-            }
             return;
           }
           queryClient.setQueryData(["instant-booking-status", bookingId], (prev: any) => ({ ...(prev ?? {}), ...root }));
@@ -115,26 +78,16 @@ export function useInstantBookingLifecycle(bookingId: string) {
     refetchInterval: (query) => {
       if (!isForeground) return false;
       if (ENABLE_BOOKING_WS && wsConnected) return false;
-      const assignment = String((query.state.data as any)?.assignmentStatus ?? "SEARCHING_PARTNER").toUpperCase();
-      return isTerminalState(assignment) ? false : 5000;
+      const data = query.state.data as any;
+      const meta = getBookingMeta(data);
+      const seconds = Number(meta.trackingRefreshSeconds);
+      if (Number.isFinite(seconds)) {
+        return seconds > 0 ? seconds * 1000 : false;
+      }
+      return false;
     },
     refetchOnWindowFocus: true,
   });
-
-  useEffect(() => {
-    if (!__DEV__) return;
-    const details = query.data as any;
-    if (!details) return;
-    // eslint-disable-next-line no-console
-    console.log("[booking:lifecycle:data]", {
-      bookingId,
-      id: String(details?.id ?? ""),
-      bookingType: String(details?.bookingType ?? ""),
-      status: String(details?.status ?? ""),
-      assignmentStatus: String(details?.assignmentStatus ?? ""),
-      wsConnected,
-    });
-  }, [bookingId, query.data, wsConnected]);
 
   return { ...query, wsConnected };
 }

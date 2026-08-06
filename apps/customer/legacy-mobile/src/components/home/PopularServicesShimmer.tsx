@@ -1,6 +1,9 @@
 import { memo } from "react";
 import { StyleSheet, View } from "react-native";
 
+
+import { COLORS } from '../../theme/colors';
+
 type PopularServicesShimmerProps = {
   cardWidth: number;
 };
@@ -32,22 +35,22 @@ const styles = StyleSheet.create({
     marginRight: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#FFFFFF",
+    borderColor: COLORS.neutral200,
+    backgroundColor: COLORS.white,
     paddingBottom: 10,
     overflow: "hidden",
   },
   image: {
     width: "100%",
     height: 92,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: COLORS.neutral200,
   },
   lineLg: {
     marginTop: 10,
     marginHorizontal: 10,
     height: 12,
     borderRadius: 6,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: COLORS.neutral200,
   },
   lineSm: {
     marginTop: 8,
@@ -55,7 +58,7 @@ const styles = StyleSheet.create({
     width: "60%",
     height: 10,
     borderRadius: 5,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: COLORS.neutral200,
   },
   lineXs: {
     marginTop: 6,
@@ -63,6 +66,11 @@ const styles = StyleSheet.create({
     width: "46%",
     height: 10,
     borderRadius: 5,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: COLORS.neutral200,
   },
 });
+
+
+
+
+

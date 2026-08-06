@@ -1,4 +1,6 @@
-export const API_BASE_URL = "http://192.168.31.38:8082";
+import { API_BASE_URL as ENV_API_BASE_URL } from "../constants/env";
+
+export const API_BASE_URL = ENV_API_BASE_URL;
 export const AUTH_TOKEN_STORAGE_KEY = "@customer/auth-token";
 export const USER_STORAGE_KEY = "@customer/user";
 export const THEME_MODE_STORAGE_KEY = "@customer/theme-mode";

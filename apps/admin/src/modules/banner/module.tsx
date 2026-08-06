@@ -27,12 +27,7 @@ export const bannerManagementRoutes: AdminRouteConfig[] = [
   },
 ];
 
-export const bannerManagementNavItems: AdminNavItem[] = [
-  {
-    path: "/banner-management",
-    label: "Banner Mgmt",
-  },
-];
+export const bannerManagementNavItems: AdminNavItem[] = [];
 
 export const bannerManagementRouteMeta: AdminRouteMeta[] = [
   {
@@ -47,8 +42,7 @@ export const bannerManagementRouteMeta: AdminRouteMeta[] = [
   },
   {
     pathPrefix: "/banner-management",
-    title: "Banner Management",
-    breadcrumb: "banner management",
+    title: "Category Banner Management",
+    breadcrumb: "category banner management",
   },
 ];
-

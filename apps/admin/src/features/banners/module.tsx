@@ -12,17 +12,12 @@ export const bannersRoutes: AdminRouteConfig[] = [
   },
 ];
 
-export const bannersNavItems: AdminNavItem[] = [
-  {
-    path: "/banners",
-    label: "Banners",
-  },
-];
+export const bannersNavItems: AdminNavItem[] = [];
 
 export const bannersRouteMeta: AdminRouteMeta[] = [
   {
     pathPrefix: "/banners",
-    title: "Banners",
-    breadcrumb: "banners",
+    title: "Home Banners",
+    breadcrumb: "home banners",
   },
 ];

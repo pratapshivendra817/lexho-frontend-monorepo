@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">LexhoPartner</string>
+    <string name="default_notification_channel_id">lexho_partner_default</string>
 </resources>

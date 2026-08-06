@@ -6,8 +6,10 @@ import { BookingStageShell } from "../../components/booking/BookingStageShell";
 import { useInstantBookingLifecycle } from "../../hooks/useInstantBookingLifecycle";
 import { useBookingLifecycleNavigation } from "../../hooks/useBookingLifecycleNavigation";
 import { bookingTheme } from "../../components/booking/bookingTheme";
+import { radii, shadows, spacing } from "../../constants/theme";
 
 type ServiceStartedRoute = { params?: { bookingId?: string } };
+
 
 export function ServiceStartedScreen({ route, navigation }: { route: ServiceStartedRoute; navigation: any }) {
   const bookingId = String(route?.params?.bookingId ?? "").trim();
@@ -33,17 +35,18 @@ export function ServiceStartedScreen({ route, navigation }: { route: ServiceStar
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: bookingTheme.radius.card,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: bookingTheme.colors.cardBorder,
     backgroundColor: bookingTheme.colors.cardBg,
-    padding: 14,
+    padding: spacing.md + 2,
     gap: 8,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    ...shadows.sm,
   },
   row: { color: bookingTheme.colors.textMuted, fontSize: 13, fontWeight: "700" },
 });
+
+
+
+
+

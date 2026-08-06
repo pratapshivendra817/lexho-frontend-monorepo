@@ -33,7 +33,7 @@ export async function addAddress(payload: AddAddressRequest): Promise<AddressDto
     const { data } = await api.post("/api/v1/customer/location/save-address", requestBody);
     const source = data?.data ?? data;
     return toAddressDto(source);
-  } catch (e) {
+  } catch {
     try {
       const { data } = await api.post("/api/address/add", payload);
       return toAddressDto(data?.data ?? data);
@@ -47,7 +47,7 @@ export async function getAddressList(): Promise<AddressDto[]> {
   try {
     const { data } = await api.get("/api/v1/customer/location/all", { params: { page: 0, size: 50 } });
     return pickAddressRows(data).map(toAddressDto).filter((row) => row.id.length > 0);
-  } catch (e) {
+  } catch {
     try {
       const { data } = await api.get("/api/address/list");
       return pickAddressRows(data).map(toAddressDto).filter((row) => row.id.length > 0);
@@ -67,7 +67,7 @@ export async function updateAddress(payload: UpdateAddressRequest): Promise<Addr
   try {
     const { data } = await api.put(`/api/v1/customer/location/address/${encodeURIComponent(payload.id)}`, requestBody);
     return toAddressDto(data?.data ?? data);
-  } catch (e) {
+  } catch {
     try {
       const { data } = await api.put("/api/address/update", payload);
       return toAddressDto(data?.data ?? data);
@@ -81,7 +81,7 @@ export async function deleteAddress(id: string) {
   try {
     const { data } = await api.delete(`/api/v1/customer/location/${encodeURIComponent(id)}`);
     return data;
-  } catch (e) {
+  } catch {
     try {
       const { data } = await api.delete("/api/address/delete", { data: { id } });
       return data;
@@ -95,7 +95,7 @@ export async function setDefaultAddress(id: string) {
   try {
     const { data } = await api.patch(`/api/v1/customer/location/default/${encodeURIComponent(id)}`);
     return data;
-  } catch (e) {
+  } catch {
     try {
       const { data } = await api.put("/api/address/default", { id });
       return data;
@@ -104,3 +104,5 @@ export async function setDefaultAddress(id: string) {
     }
   }
 }
+
+

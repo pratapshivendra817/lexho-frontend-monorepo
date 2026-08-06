@@ -176,14 +176,30 @@ This checklist is for backend + admin owners to confirm customer app contracts a
   - `eta?: string`
 
 ## 8) Payments
-### POST /api/payments/initiate
+### POST /api/payments/create-order
 - Request:
-  - `mode: "UPI" | "CARD" | "WALLET" | "COD"`
-  - `bookingId?: string`
-  - `amount?: number`
+  - Header: `Idempotency-Key: booking-<bookingId>-<unique-attempt-id>`
+  - `bookingId: number`
+- Expected:
+  - `keyId: string`
+  - `razorpayOrderId: string`
+  - `amountInPaise: number`
+  - `currency: string`
 
-### GET /api/payments/status/{bookingId}
+### POST /api/payments/verify
+- Request:
+  - `razorpayOrderId: string`
+  - `razorpayPaymentId: string`
+  - `razorpaySignature: string`
+- Success response gates customer success/confirmation navigation.
+
+### GET /api/payments/{bookingId}
 - Confirm status enum and user-facing message field.
+
+### GET/POST /api/payments/options
+- Runtime uses this for displaying available methods.
+- Fallback endpoint also tried:
+  - `GET /api/payment/options`
 
 ### POST /api/payments/refund
 - Request:
@@ -258,15 +274,7 @@ This checklist is for backend + admin owners to confirm customer app contracts a
 - Request:
   - `code: string`
 
-## 14) Subscription
-### POST /api/subscription/create
-- Request:
-  - `planId: string`
-
-### GET /api/subscription/list
-- List response; item fields to confirm with admin plans table.
-
-## 15) Support
+## 14) Support
 ### POST /api/support/create
 - Request:
   - `subject: string`

@@ -1,5 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+
+import { COLORS } from '../../theme/colors';
+
 type Address = {
   id: number;
   fullAddress: string;
@@ -38,17 +41,23 @@ export function AddressSelector({ addresses, selectedAddressId, onSelect, showEr
 
 const styles = StyleSheet.create({
   wrap: { gap: 8 },
-  title: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
+  title: { fontSize: 16, fontWeight: "800", color: COLORS.slate900 },
   card: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#DCE7F3",
-    backgroundColor: "#FFFFFF",
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.white,
     padding: 10,
   },
-  cardSelected: { borderColor: "#0EA5E9", backgroundColor: "#EEF8FF" },
-  addressLine: { color: "#0F172A", fontWeight: "700", fontSize: 13 },
-  addressLineSelected: { color: "#0B3B79" },
-  meta: { color: "#64748B", fontSize: 12, marginTop: 2 },
-  error: { color: "#B91C1C", fontSize: 11, fontWeight: "600" },
+  cardSelected: { borderColor: COLORS.primary, backgroundColor: COLORS.offWhite },
+  addressLine: { color: COLORS.slate900, fontWeight: "700", fontSize: 13 },
+  addressLineSelected: { color: COLORS.primary },
+  meta: { color: COLORS.slate500, fontSize: 12, marginTop: 2 },
+  error: { color: COLORS.red700, fontSize: 11, fontWeight: "600" },
 });
+
+
+
+
+
+

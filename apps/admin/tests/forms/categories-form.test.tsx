@@ -63,6 +63,7 @@ describe("CategoriesPage form", () => {
       expect(mocks.createCategory.mock.calls[0][0]).toEqual({
         name: "Plumbing",
         iconUrl: "https://example.com/plumbing.png",
+        displayOrder: 1,
         active: true,
       });
     });

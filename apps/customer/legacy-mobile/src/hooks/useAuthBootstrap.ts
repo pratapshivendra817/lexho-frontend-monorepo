@@ -37,16 +37,8 @@ export function useAuthBootstrap() {
     let active = true;
     (async () => {
       try {
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log("[auth:bootstrap:start]");
-        }
         if (DEV_LOGIN_BYPASS && __DEV__ && DEV_BYPASS_SESSION.token) {
           if (!active) return;
-          if (__DEV__) {
-            // eslint-disable-next-line no-console
-            console.log("[auth:bootstrap:dev-bypass]");
-          }
           dispatch(setSession({
             token: DEV_BYPASS_SESSION.token,
             refreshToken: DEV_BYPASS_SESSION.refreshToken,
@@ -55,10 +47,6 @@ export function useAuthBootstrap() {
           return;
         }
 
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log("[auth:bootstrap:loadSession:attempt]");
-        }
         const session = await loadSession();
         if (!active) return;
         const fallbackToken = String((await getToken()) ?? "").trim();
@@ -67,71 +55,33 @@ export function useAuthBootstrap() {
         const refreshToken = String(session.refreshToken ?? fallbackRefreshToken ?? "").trim();
         const tokenExpMs = token ? decodeJwtExpMs(token) : null;
         const isTokenExpired = tokenExpMs !== null && tokenExpMs <= Date.now();
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log("[auth:bootstrap:loaded]", {
-            hasToken: !!token,
-            hasRefreshToken: !!refreshToken,
-            isTokenExpired,
-            sessionTokenPresent: !!session.token,
-            fallbackTokenPresent: !!fallbackToken,
-            sessionRefreshPresent: !!session.refreshToken,
-            fallbackRefreshPresent: !!fallbackRefreshToken,
-          });
-        }
 
         // Keep token in app state even if locally-decoded exp looks stale.
         // Server/interceptor is source of truth and can refresh on live 401.
         if (token && (!isTokenExpired || !refreshToken)) {
-          if (__DEV__) {
-            // eslint-disable-next-line no-console
-            console.log("[auth:bootstrap:restore-token]");
-          }
           dispatch(setSession({ token, refreshToken: refreshToken || null, user: session.user ?? undefined }));
           return;
         }
 
         if (refreshToken) {
           try {
-            if (__DEV__) {
-              // eslint-disable-next-line no-console
-              console.log("[auth:bootstrap:refresh:attempt]");
-            }
             const result = await tryRefreshSessionWithAxios(axios);
             if (result.ok) {
               if (!active) return;
-              if (__DEV__) {
-                // eslint-disable-next-line no-console
-                console.log("[auth:bootstrap:refresh:success]");
-              }
               dispatch(setSession({ token: result.token, refreshToken: result.refreshToken, user: result.user ?? undefined }));
               return;
             }
           } catch {
             // Keep existing persisted session on transient refresh/network failures.
             if (token) {
-              if (__DEV__) {
-                // eslint-disable-next-line no-console
-                console.log("[auth:bootstrap:refresh:failed-fallback-token]");
-              }
               dispatch(setSession({ token, refreshToken: refreshToken || null, user: session.user ?? undefined }));
               return;
             }
           }
         }
-      } catch (error: any) {
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log("[auth:bootstrap:error]", {
-            message: String(error?.message ?? "unknown"),
-          });
-        }
+      } catch {
       } finally {
         if (active) {
-          if (__DEV__) {
-            // eslint-disable-next-line no-console
-            console.log("[auth:bootstrap:hydrated:true]");
-          }
           dispatch(setHydrated(true));
         }
       }

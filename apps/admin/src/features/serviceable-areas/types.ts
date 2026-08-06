@@ -9,9 +9,9 @@ export type ServiceableAreaItem = {
   city: string;
   state: string;
   country: string;
-  cityId?: number;
-  zoneId?: number;
-  polygonJson?: string;
+  cityId?: number | null;
+  zoneId?: number | null;
+  polygonJson?: string | null;
   active: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -38,9 +38,9 @@ export type CreateServiceableAreaPayload = {
   pincode: string;
   city: string;
   state: string;
-  cityId?: number;
-  zoneId?: number;
-  polygonJson?: string;
+  cityId?: number | null;
+  zoneId?: number | null;
+  polygonJson?: string | null;
   active: boolean;
 };
 

@@ -61,11 +61,11 @@ export function useAdminReviewMutations() {
       onSuccess: invalidateAll,
     }),
     rejectMutation: useMutation({
-      mutationFn: (id: string) => rejectAdminReview(id),
+      mutationFn: (payload: { id: string; reason?: string }) => rejectAdminReview(payload.id, payload.reason),
       onSuccess: invalidateAll,
     }),
     hideMutation: useMutation({
-      mutationFn: (id: string) => hideAdminReview(id),
+      mutationFn: (payload: { id: string; reason?: string }) => hideAdminReview(payload.id, payload.reason),
       onSuccess: invalidateAll,
     }),
   };

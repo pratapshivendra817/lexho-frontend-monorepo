@@ -4,6 +4,7 @@ import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIc
 import { Button, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { openLocationSettings, requestLocationPermission } from "../../hooks/useLocationPermission";
+import { COLORS } from '../../theme/colors';
 
 export function LocationPermissionScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
@@ -31,17 +32,17 @@ export function LocationPermissionScreen({ navigation }: any) {
     <SafeAreaView style={styles.root}>
       <View style={styles.illustrationWrap}>
         <View style={styles.illustrationCircle}>
-          <MaterialCommunityIcon name="crosshairs-gps" size={72} color="#16A34A" />
+          <MaterialCommunityIcon name="crosshairs-gps" size={72} color={COLORS.green600} />
         </View>
       </View>
       <Text style={styles.title}>What&apos;s your location?</Text>
       <Text style={styles.subtitle}>We need your location to show serviceable hubs.</Text>
 
       <View style={styles.actions}>
-        <Button mode="contained" buttonColor="#16A34A" loading={loading} onPress={() => void onUseCurrentLocation()}>
+        <Button mode="contained" buttonColor={COLORS.green600} loading={loading} onPress={() => void onUseCurrentLocation()}>
           Use Current Location
         </Button>
-        <Button mode="outlined" textColor="#166534" onPress={() => navigation.navigate("LocationSearch")}>
+        <Button mode="outlined" textColor={COLORS.green700} onPress={() => navigation.navigate("LocationSearch")}>
           Enter location manually
         </Button>
       </View>
@@ -55,7 +56,7 @@ export function LocationPermissionScreen({ navigation }: any) {
               <Button mode="outlined" onPress={() => setShowDeniedSheet(false)}>
                 Cancel
               </Button>
-              <Button mode="contained" buttonColor="#16A34A" onPress={() => void onUseCurrentLocation()}>
+              <Button mode="contained" buttonColor={COLORS.green600} onPress={() => void onUseCurrentLocation()}>
                 Retry
               </Button>
             </View>
@@ -67,22 +68,29 @@ export function LocationPermissionScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F0FDF4", padding: 20 },
+  root: { flex: 1, backgroundColor: COLORS.offWhite, padding: 20 },
   illustrationWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   illustrationCircle: {
     width: 180,
     height: 180,
     borderRadius: 90,
-    backgroundColor: "#DCFCE7",
+    backgroundColor: COLORS.offWhite,
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 28, fontWeight: "800", color: "#14532D", textAlign: "center" },
-  subtitle: { marginTop: 10, fontSize: 15, color: "#3F6212", textAlign: "center" },
+  title: { fontSize: 28, fontWeight: "800", color: COLORS.green700, textAlign: "center" },
+  subtitle: { marginTop: 10, fontSize: 15, color: COLORS.green700, textAlign: "center" },
   actions: { marginTop: 28, gap: 12 },
   sheetBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.35)" },
-  sheet: { backgroundColor: "#FFFFFF", padding: 18, borderTopLeftRadius: 20, borderTopRightRadius: 20, gap: 10 },
-  sheetTitle: { fontSize: 18, fontWeight: "800", color: "#14532D" },
-  sheetSubtitle: { color: "#4D7C0F" },
+  sheet: { backgroundColor: COLORS.white, padding: 18, borderTopLeftRadius: 20, borderTopRightRadius: 20, gap: 10 },
+  sheetTitle: { fontSize: 18, fontWeight: "800", color: COLORS.green700 },
+  sheetSubtitle: { color: COLORS.green700 },
   sheetActions: { marginTop: 8, flexDirection: "row", justifyContent: "flex-end", gap: 8 },
 });
+
+
+
+
+
+
+

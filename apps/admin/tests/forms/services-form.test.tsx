@@ -16,6 +16,12 @@ const mocks = vi.hoisted(() => ({
   uploadAdminImage: vi.fn(),
 }));
 
+const popularMocks = vi.hoisted(() => ({
+  getCategoryOptions: vi.fn(),
+  getPopularServicesByCategory: vi.fn(),
+  createPopularService: vi.fn(),
+}));
+
 vi.mock("@/services/lexhoAdminApi", () => ({
   getCategories: mocks.getCategories,
   getServices: mocks.getServices,
@@ -27,13 +33,22 @@ vi.mock("@/services/lexhoAdminApi", () => ({
   uploadAdminImage: mocks.uploadAdminImage,
 }));
 
+vi.mock("@/features/popular-services/api/popularServicesApi", () => ({
+  getCategoryOptions: popularMocks.getCategoryOptions,
+  getPopularServicesByCategory: popularMocks.getPopularServicesByCategory,
+  createPopularService: popularMocks.createPopularService,
+}));
+
 describe("ServicesPage form", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCategories.mockResolvedValue({
-      items: [{ id: "cat-1", name: "Cleaning", iconUrl: "", active: true }],
+      items: [{ id: "1", name: "Cleaning", iconUrl: "", active: true }],
       total: 1,
     });
+    popularMocks.getCategoryOptions.mockResolvedValue([{ id: 1, name: "Cleaning" }]);
+    popularMocks.getPopularServicesByCategory.mockResolvedValue([]);
+    popularMocks.createPopularService.mockResolvedValue(undefined);
     mocks.getServices.mockResolvedValue({
       items: [
         {
@@ -80,6 +95,7 @@ describe("ServicesPage form", () => {
     await user.type(screen.getByLabelText("Description"), "High quality deep cleaning service");
     await user.clear(screen.getByLabelText("Price"));
     await user.type(screen.getByLabelText("Price"), "1200");
+    await user.selectOptions(screen.getByLabelText("Category"), "1");
     await user.type(screen.getByLabelText("Service Type"), "HOME_CLEANING");
 
     await user.click(screen.getByRole("button", { name: "Create" }));
@@ -90,7 +106,11 @@ describe("ServicesPage form", () => {
         name: "Deep Cleaning",
         description: "High quality deep cleaning service",
         price: 1200,
+        rating: 0,
+        categoryId: 1,
+        category_id: 1,
         service_type: "HOME_CLEANING",
+        imageUrl: undefined,
       });
     });
   });

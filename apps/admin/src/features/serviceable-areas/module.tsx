@@ -48,21 +48,17 @@ export const serviceableAreaNavItems: AdminNavItem[] = [
     path: "/serviceable-areas",
     label: "Serviceable Areas",
   },
-  {
-    path: "/serviceable-areas/geo",
-    label: "Geo Cities & Zones",
-  },
 ];
 
 export const serviceableAreaRouteMeta: AdminRouteMeta[] = [
   {
-    pathPrefix: "/serviceable-areas",
-    title: "Serviceable Areas",
-    breadcrumb: "operations / serviceable areas",
-  },
-  {
     pathPrefix: "/serviceable-areas/geo",
     title: "Geo Cities & Zones",
     breadcrumb: "operations / geo cities & zones",
+  },
+  {
+    pathPrefix: "/serviceable-areas",
+    title: "Serviceable Areas",
+    breadcrumb: "operations / serviceable areas",
   },
 ];

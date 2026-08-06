@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
-import { ENABLE_LIVE_TRACKING } from "../constants/env";
 import type { BookingSummaryDto } from "../types/contracts";
+import { getBookingMeta } from "../utils/bookingMeta";
 
 type LifecycleRouteName =
   | "BookingProcessing"
@@ -8,59 +8,77 @@ type LifecycleRouteName =
   | "ScheduledBookingStatus"
   | "LiveTracking"
   | "ServiceStarted"
+  | "ServiceInProgress"
   | "ServiceCompleted"
-  | "PaymentStatus";
+  | "PartnerArrived"
+  | "PaymentStatus"
+  | "SubscriptionPlan"
+  | "BookingDetail"
+  | "BookingStatusFallback";
 
-type LifecycleTarget = { name: LifecycleRouteName; params?: { bookingId?: string } };
+type LifecycleTarget = { name?: LifecycleRouteName; params?: { bookingId?: string } };
 
 function normalized(value?: string) {
   return String(value ?? "").trim().toUpperCase();
 }
 
-const STATE_ALIASES: Record<string, string> = {
-  CREATED: "BOOKING_PROCESSING",
-  PLACED: "BOOKING_PROCESSING",
-  CONFIRMED: "SEARCHING_PARTNER",
-  ACCEPTED: "PARTNER_ASSIGNED",
-  ASSIGNED: "PARTNER_ASSIGNED",
-  DISPATCHED: "PARTNER_ASSIGNED",
-  PARTNER_ON_THE_WAY: "PARTNER_ASSIGNED",
-  ARRIVED: "PARTNER_ARRIVED",
-  STARTED: "IN_PROGRESS",
-  ONGOING: "IN_PROGRESS",
-  DONE: "COMPLETED",
-  SUCCESS: "COMPLETED",
-  FAILED: "PAYMENT_FAILED",
-  REJECTED: "CANCELLED",
-};
-
-function canonicalState(value?: string) {
-  const base = normalized(value);
-  return STATE_ALIASES[base] ?? base;
+function isScheduledBooking(details?: BookingSummaryDto) {
+  return normalized(details?.bookingType) === "SCHEDULED";
 }
 
-function getLifecycleState(details?: BookingSummaryDto) {
-  const assignment = canonicalState(details?.assignmentStatus);
-  const status = canonicalState(details?.status);
-  return assignment || status;
+function isLiveScheduledState(details?: BookingSummaryDto) {
+  const status = normalized(details?.status);
+  const assignmentStatus = normalized(details?.assignmentStatus);
+  const state = assignmentStatus || status;
+
+  return [
+    "PARTNER_ASSIGNED",
+    "PARTNER_ARRIVED",
+    "SERVICE_STARTED",
+    "IN_PROGRESS",
+    "SERVICE_IN_PROGRESS",
+    "COMPLETED",
+  ].includes(state);
 }
 
 export function resolveLifecycleTarget(details?: BookingSummaryDto): LifecycleTarget {
-  const state = getLifecycleState(details);
-  const bookingType = normalized(details?.bookingType);
+  const meta = getBookingMeta(details);
+  const screen = normalized(meta.trackingScreen);
+  const scheduledBooking = isScheduledBooking(details);
 
-  if (state === "PARTNER_ASSIGNED") return { name: ENABLE_LIVE_TRACKING ? "LiveTracking" : "InstantBookingStatus" };
-  if (state === "PARTNER_ARRIVED") return { name: ENABLE_LIVE_TRACKING ? "LiveTracking" : "InstantBookingStatus" };
-  if (state === "IN_PROGRESS" || state === "SERVICE_STARTED") return { name: "ServiceStarted" };
-  if (state === "COMPLETED" || state === "SERVICE_COMPLETED") return { name: "ServiceCompleted" };
-  if (bookingType === "SCHEDULED" && (state === "BOOKING_PROCESSING" || state === "SEARCHING_PARTNER" || state === "PAYMENT_PENDING" || state === "SCHEDULED")) {
-    return { name: "ScheduledBookingStatus" };
+  if (scheduledBooking && !isLiveScheduledState(details)) {
+    if (!screen || screen === "INSTANT_STATUS") {
+      return { name: "ScheduledBookingStatus" };
+    }
   }
-  if (state === "INSTANT_FAILED" || state === "CANCELLED" || state === "EXPIRED" || state === "PAYMENT_FAILED") {
-    return { name: "PaymentStatus" };
+
+  if (!screen) return {};
+  switch (screen) {
+    case "INSTANT_STATUS":
+      return { name: "InstantBookingStatus" };
+    case "LIVE_TRACKING":
+      return { name: "LiveTracking" };
+    case "PARTNER_ARRIVED":
+      return { name: "PartnerArrived" };
+    case "SERVICE_STARTED":
+      return { name: "ServiceStarted" };
+    case "SERVICE_IN_PROGRESS":
+      return { name: "ServiceInProgress" };
+    case "SERVICE_COMPLETED":
+      return { name: "ServiceCompleted" };
+    case "SCHEDULED_STATUS":
+      return { name: "ScheduledBookingStatus" };
+    case "SUBSCRIPTION_DETAILS":
+      return { name: "SubscriptionPlan" };
+    case "PAYMENT_STATUS":
+      return { name: "PaymentStatus" };
+    case "BOOKING_PROCESSING":
+      return { name: "BookingProcessing" };
+    case "BOOKING_DETAIL":
+      return { name: "BookingDetail" };
+    default:
+      return { name: "BookingStatusFallback" };
   }
-  if (state === "SEARCHING_PARTNER") return { name: "InstantBookingStatus" };
-  return { name: "BookingProcessing" };
 }
 
 export function useBookingLifecycleNavigation(args: {
@@ -77,17 +95,6 @@ export function useBookingLifecycleNavigation(args: {
     if (!bookingId) return;
     if (!details) return;
     if (!target?.name) return;
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log("[booking:lifecycle:route-resolution]", {
-        bookingId,
-        currentRouteName,
-        targetRoute: target.name,
-        bookingType: String(details?.bookingType ?? ""),
-        status: String(details?.status ?? ""),
-        assignmentStatus: String(details?.assignmentStatus ?? ""),
-      });
-    }
     if (target.name === currentRouteName) return;
     if (lastRoute.current === target.name) return;
 

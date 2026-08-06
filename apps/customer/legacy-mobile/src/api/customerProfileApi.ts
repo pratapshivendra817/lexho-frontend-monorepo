@@ -28,7 +28,6 @@ function toProfile(input: any): CustomerProfile {
     profileImageUrl: String(input?.profileImageUrl ?? input?.imageUrl ?? "").trim(),
   };
 }
-
 export async function getCustomerProfile() {
   try {
     const { data } = await api.get<ApiEnvelope<any>>(PROFILE_BASE);
@@ -90,18 +89,6 @@ export async function uploadCustomerProfileImage(payload: ImageUploadPayload) {
     name: name || "profile.jpg",
   } as any);
 
-  if (__DEV__) {
-    // eslint-disable-next-line no-console
-    console.log("[profile-image-upload:request]", {
-      url: requestUrl,
-      image: { uri: imageUri, type: normalizedType, name },
-    });
-    // eslint-disable-next-line no-console
-    console.log("UPLOAD URL", absoluteUrl);
-    // eslint-disable-next-line no-console
-    console.log("FORM PARTS", (formData as any)._parts);
-  }
-
   try {
     const headers: Record<string, string> = {
       Accept: "application/json",
@@ -114,11 +101,6 @@ export async function uploadCustomerProfileImage(payload: ImageUploadPayload) {
       body: formData,
     });
     const responseText = await response.text();
-
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log("UPLOAD RESPONSE", response.status, responseText);
-    }
 
     let parsed: any = {};
     try {
@@ -139,14 +121,6 @@ export async function uploadCustomerProfileImage(payload: ImageUploadPayload) {
 
     return toProfile(unwrapPayload<any>(parsed, {}));
   } catch (error: any) {
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log("[profile-image-upload:error]", {
-        message: error?.message ?? "Network request failed",
-        requestUrl,
-        absoluteUrl,
-      });
-    }
     throw new Error(String(error?.message ?? "Network request failed"));
   }
 }
@@ -189,21 +163,40 @@ export async function getCustomerProfileContent(): Promise<CustomerProfileConten
     };
   };
 
+  const hasContent = (content: CustomerProfileContent) =>
+    Boolean(content.aboutUs || content.termsOfService || content.privacyPolicy);
+
   const extractContent = (raw: any): CustomerProfileContent => {
     const unwrapped = unwrapPayload<any>(raw, {});
-    const first = normalizeContent(unwrapped);
-    if (first.aboutUs || first.termsOfService || first.privacyPolicy) return first;
+    const candidates = [
+      unwrapped,
+      unwrapped?.data,
+      unwrapped?.payload,
+      unwrapped?.result,
+      unwrapped?.content,
+      raw?.data,
+      raw?.data?.data,
+      raw?.data?.payload,
+      raw?.data?.result,
+      raw?.data?.content,
+      raw?.payload,
+      raw?.result,
+      raw?.content,
+      raw,
+    ];
 
-    const nested = normalizeContent(unwrapped?.data);
-    if (nested.aboutUs || nested.termsOfService || nested.privacyPolicy) return nested;
+    for (const candidate of candidates) {
+      const content = normalizeContent(candidate);
+      if (hasContent(content)) return content;
+    }
 
-    const root = normalizeContent(raw?.data);
-    return root;
+    return normalizeContent({});
   };
 
   try {
     const { data } = await api.get<ApiEnvelope<CustomerProfileContent>>(
       "/api/admin/profile-content",
+      { headers: { "X-Skip-Authorization": "true" } },
     );
     return extractContent(data);
   } catch (error) {

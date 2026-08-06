@@ -86,12 +86,9 @@ const buildBannerPayload = (payload: BannerFormPayload) => ({
 
 export async function uploadBannerImage(file: File): Promise<string> {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", file, file.name);
   const { data } = await api.post("/api/admin/banners/upload/image", formData, {
-    headers: {
-      "Content-Type": "multipart/form-data",
-      ...withAdminAuthHeader(),
-    },
+    headers: withAdminAuthHeader(),
   });
   const root = asRecord(data);
   const nested = asRecord(root.data);

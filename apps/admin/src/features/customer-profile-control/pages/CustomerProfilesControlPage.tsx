@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 
-import { DataTable, Modal } from "@/components/admin";
+import { DataTable, Modal, SegmentedTabs } from "@/components/admin";
 import {
   getCustomerDeleteRequestsAdmin,
   getCustomerProfilesAdmin,
@@ -14,8 +14,12 @@ import {
 } from "../api/customerProfileControlApi";
 import { customerProfileEditSchema } from "../schema";
 import type { CustomerDeleteRequestItem, CustomerProfileAdmin, CustomerProfileUpdatePayload } from "../types";
+import UsersPage from "../../users/pages/UsersPage";
+
+type CustomerProfileMode = "customer-profiles" | "users";
 
 export default function CustomerProfilesControlPage() {
+  const [mode, setMode] = useState<CustomerProfileMode>("customer-profiles");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<CustomerProfileAdmin | null>(null);
   const queryClient = useQueryClient();
@@ -103,8 +107,19 @@ export default function CustomerProfilesControlPage() {
     resolveDeleteMutation.mutate({ requestId: request.id, approve, reason });
   };
 
+  if (mode === "users") {
+    return (
+      <div className="space-y-4">
+        <SegmentedTabs items={customerProfileModeTabs} value={mode} onChange={setMode} />
+        <UsersPage />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      <SegmentedTabs items={customerProfileModeTabs} value={mode} onChange={setMode} />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold">Customer Profile Governance</h2>
@@ -195,3 +210,8 @@ export default function CustomerProfilesControlPage() {
     </div>
   );
 }
+
+const customerProfileModeTabs: Array<{ label: string; value: CustomerProfileMode }> = [
+  { label: "Customer Profiles", value: "customer-profiles" },
+  { label: "Users", value: "users" },
+];

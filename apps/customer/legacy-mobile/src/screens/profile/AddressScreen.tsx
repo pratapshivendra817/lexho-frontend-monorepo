@@ -1,33 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { FlatList, StyleSheet, TouchableOpacity, View } from "react-native";
-import { Button, Card, Snackbar, Text } from "react-native-paper";
+import { Button, Card, IconButton, Snackbar, Text } from "react-native-paper";
 import { EmptyStateCard } from "../../components/common/EmptyStateCard";
 import { SkeletonList } from "../../components/common/SkeletonList";
 import { deleteAddressThunk, fetchAllAddressesThunk, setCurrentAddressLocal, setDefaultAddressThunk, setSelectedAddressLocal } from "../../redux/locationSlice";
 import { fetchCustomerAddressesThunk, setSelectedAddressId, updateCartMetaThunk } from "../../redux/cartSlice";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
+import { formatAddressLine } from "../../utils/addressFormatter";
 import { resolveUserIdFromAuth } from "../../utils/authUser";
 import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIcons";
-
-function formatAddressLine(row: any) {
-  const parts = [
-    row?.flatNo,
-    row?.floor ? `Floor ${row.floor}` : "",
-    row?.buildingName,
-    row?.landmark ? `Near ${row.landmark}` : "",
-    row?.addressLine,
-    row?.area,
-    row?.sector,
-    row?.city,
-    row?.state,
-    row?.country,
-    row?.pincode,
-  ]
-    .map((item) => String(item ?? "").trim())
-    .filter((item) => item.length > 0);
-  if (parts.length === 0) return "Address not available";
-  return parts.join(", ");
-}
+import { COLORS } from '../../theme/colors';
 
 function toReadableError(error: any, fallback: string) {
   return String(error?.message ?? fallback);
@@ -154,13 +136,17 @@ export function AddressScreen({ navigation }: any) {
       }
     }
     setSnack("Address selected for booking");
-    navigation.goBack();
+    if (typeof navigation?.canGoBack === "function" && navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate("Main");
+    }
   };
 
   return (
     <View style={styles.root}>
       <TouchableOpacity style={styles.addBtn} activeOpacity={0.9} onPress={() => navigation.navigate("AddAddressDetails")}>
-        <MaterialCommunityIcon name="plus-circle-outline" size={18} color="#FFFFFF" />
+        <MaterialCommunityIcon name="plus-circle-outline" size={18} color={COLORS.white} />
         <Text style={styles.addBtnText}>Add New Address</Text>
       </TouchableOpacity>
 
@@ -173,6 +159,7 @@ export function AddressScreen({ navigation }: any) {
       <FlatList
         data={savedAddresses}
         keyExtractor={(item, index) => String(item?.id ?? index)}
+        style={styles.list}
         contentContainerStyle={styles.listContent}
         renderItem={({ item }) => {
           const id = String(item?.id ?? "");
@@ -184,22 +171,61 @@ export function AddressScreen({ navigation }: any) {
               <Card.Content>
                 <View style={styles.itemHead}>
                   <View style={styles.labelChip}>
-                    <MaterialCommunityIcon name="map-marker" size={14} color="#E0F2FE" />
+                    <MaterialCommunityIcon name="map-marker-radius" size={14} color={COLORS.goldSoft} />
                     <Text style={styles.labelChipText}>{String(item?.label ?? "Address").toUpperCase()}</Text>
                   </View>
                   {isCartSelected ? <Text style={styles.selectedPill}>Selected</Text> : null}
                 </View>
                 <Text style={styles.itemLine}>{formatAddressLine(item)}</Text>
                 <View style={styles.actions}>
-                  <Button compact mode="contained-tonal" buttonColor={isCartSelected ? "#0EA5E9" : "#1D4ED8"} textColor="#E0F2FE" onPress={() => void onSelectForCart(id)} disabled={id.length === 0}>
+                  <Button
+                    compact
+                    mode="contained"
+                    style={styles.selectBtn}
+                    contentStyle={styles.selectBtnContent}
+                    labelStyle={styles.selectBtnLabel}
+                    buttonColor={isCartSelected ? COLORS.goldSoft : COLORS.gold}
+                    textColor={COLORS.navyDark}
+                    onPress={() => void onSelectForCart(id)}
+                    disabled={id.length === 0}
+                  >
                     {isCartSelected ? "Selected for Booking" : "Select"}
                   </Button>
-                  <Button compact mode="text" textColor="#93C5FD" onPress={() => void onSetDefault(id)} disabled={isSelected || id.length === 0}>
-                    {isSelected ? "Default" : "Set Default"}
-                  </Button>
-                  <Button compact mode="text" textColor="#FCA5A5" onPress={() => void onDelete(id)} disabled={id.length === 0}>
-                    Delete
-                  </Button>
+                  {isSelected ? (
+                    <Button
+                      compact
+                      mode="contained"
+                      style={styles.selectBtn}
+                      contentStyle={styles.selectBtnContent}
+                      labelStyle={styles.selectBtnLabel}
+                      buttonColor={COLORS.goldSoft}
+                      textColor={COLORS.navyDark}
+                      disabled
+                    >
+                      Default
+                    </Button>
+                  ) : (
+                    <Button
+                      compact
+                      mode="outlined"
+                      style={styles.defaultBtn}
+                      labelStyle={styles.defaultBtnLabel}
+                      textColor={COLORS.goldSoft}
+                      onPress={() => void onSetDefault(id)}
+                      disabled={id.length === 0}
+                    >
+                      Set Default
+                    </Button>
+                  )}
+                  <IconButton
+                    icon="delete-outline"
+                    iconColor={COLORS.goldSoft}
+                    containerColor="rgba(217,164,65,0.12)"
+                    style={styles.deleteIconBtn}
+                    size={19}
+                    onPress={() => void onDelete(id)}
+                    disabled={id.length === 0}
+                  />
                 </View>
               </Card.Content>
             </Card>
@@ -215,59 +241,91 @@ export function AddressScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, padding: 16, gap: 10, backgroundColor: "#ECFDF5" },
+  root: { flex: 1, padding: 16, gap: 10, backgroundColor: COLORS.navy },
   addBtn: {
+    marginHorizontal: -16,
     marginBottom: 6,
     borderRadius: 999,
-    backgroundColor: "#0F766E",
+    backgroundColor: COLORS.navyDark,
+    borderWidth: 1.5,
+    borderColor: COLORS.gold,
     minHeight: 52,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
-    shadowColor: "#0F766E",
+    shadowColor: COLORS.gold,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
     elevation: 6,
   },
-  addBtnText: { color: "#FFFFFF", fontSize: 20, fontWeight: "800", letterSpacing: 0.2 },
-  listContent: { paddingBottom: 18 },
+  addBtnText: { color: COLORS.white, fontSize: 20, fontWeight: "800", letterSpacing: 0.2 },
+  list: { marginHorizontal: -16 },
+  listContent: { paddingBottom: 18, paddingHorizontal: 1 },
   itemCard: {
+    marginHorizontal: 0,
     marginTop: 12,
     borderRadius: 18,
-    backgroundColor: "#0B1220",
-    borderWidth: 1,
-    borderColor: "#1E3A5F",
-    shadowColor: "#020617",
+    backgroundColor: COLORS.navyDark,
+    borderWidth: 2,
+    borderColor: COLORS.gold,
+    shadowColor: COLORS.slate900,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
     shadowRadius: 14,
     elevation: 8,
   },
-  itemCardSelected: { borderColor: "#38BDF8", backgroundColor: "#0B1730" },
+  itemCardSelected: { borderColor: COLORS.goldSoft, backgroundColor: "#062a6a" },
   itemHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   labelChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: "#1E3A8A",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: "rgba(217,164,65,0.12)",
+    borderWidth: 1.2,
+    borderColor: "rgba(217,164,65,0.75)",
   },
-  labelChipText: { color: "#E0F2FE", fontWeight: "800", fontSize: 13, letterSpacing: 0.3 },
+  labelChipText: { color: COLORS.goldSoft, fontWeight: "800", fontSize: 12, letterSpacing: 0.6 },
   selectedPill: {
-    color: "#022C22",
-    backgroundColor: "#86EFAC",
+    color: COLORS.navyDark,
+    backgroundColor: COLORS.goldSoft,
+    borderWidth: 1,
+    borderColor: COLORS.gold,
     borderRadius: 999,
     overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     fontWeight: "800",
     fontSize: 12,
   },
-  itemLine: { color: "#D6E4FF", marginTop: 2, fontSize: 17, fontWeight: "600", lineHeight: 28 },
-  actions: { flexDirection: "row", marginTop: 8, justifyContent: "space-between" },
-  error: { color: "#DC2626" },
+  itemLine: { color: COLORS.offWhite, marginTop: 2, fontSize: 17, fontWeight: "600", lineHeight: 28 },
+  actions: { flexDirection: "row", marginTop: 10, alignItems: "center", gap: 8 },
+  selectBtn: { borderRadius: 999 },
+  selectBtnContent: { minHeight: 30, paddingHorizontal: 4 },
+  selectBtnLabel: { fontSize: 11, fontWeight: "800" },
+  defaultBtn: {
+    borderRadius: 10,
+    borderColor: "rgba(217,164,65,0.65)",
+    backgroundColor: "rgba(217,164,65,0.08)",
+  },
+  defaultBtnLabel: { fontSize: 12, fontWeight: "700" },
+  deleteIconBtn: {
+    margin: 0,
+    marginLeft: "auto",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(217,164,65,0.6)",
+  },
+  error: { color: COLORS.goldSoft },
 });
+
+
+
+
+
+
+

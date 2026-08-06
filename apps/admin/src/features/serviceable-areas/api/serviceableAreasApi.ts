@@ -50,6 +50,11 @@ function asNumber(value: unknown, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function asNullableNumber(value: unknown) {
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
 const VALID_SORT_FIELDS = new Set(["id", "name", "city", "state", "pincode", "country", "createdAt", "updatedAt"]);
 
 function normalizeQueryParams(params: ServiceableAreaQueryParams) {
@@ -78,9 +83,9 @@ function mapArea(input: unknown): ServiceableAreaItem {
     city: asString(source.city),
     state: asString(source.state),
     country: asString(source.country || "India"),
-    cityId: asNumber(source.cityId, 0) || undefined,
-    zoneId: asNumber(source.zoneId, 0) || undefined,
-    polygonJson: asString(source.polygonJson) || undefined,
+    cityId: asNullableNumber(source.cityId),
+    zoneId: asNullableNumber(source.zoneId),
+    polygonJson: asString(source.polygonJson) || null,
     active: asBoolean(source.active ?? source.isActive, true),
     createdAt: asString(source.createdAt) || undefined,
     updatedAt: asString(source.updatedAt) || undefined,
@@ -134,7 +139,7 @@ export async function getServiceableAreas(params: ServiceableAreaQueryParams): P
       },
     });
     return normalizePagedResponse(response.data, normalized.page, normalized.size);
-  } catch (error) {
+  } catch {
     if (normalized.query) {
       try {
         const response = await serviceableAreasApi.get(`${BASE_PATH}/search`, {
@@ -173,19 +178,18 @@ export async function getServiceableAreas(params: ServiceableAreaQueryParams): P
 }
 
 export async function createServiceableArea(payload: CreateServiceableAreaPayload): Promise<ServiceableAreaItem> {
-  console.log("[ServiceableAreas] create payload", payload);
   try {
     const response = await serviceableAreasApi.post(BASE_PATH, payload, {
       headers: { "Content-Type": "application/json" },
     });
-    const data = ((response.data ?? {}) as AnyObj).data as unknown;
+    const data = (((response.data ?? {}) as AnyObj).data ?? response.data) as unknown;
     return mapArea(data);
-  } catch (error) {
+  } catch {
     try {
       const response = await serviceableAreasApi.post(LEGACY_BASE_PATH, payload, {
         headers: { "Content-Type": "application/json" },
       });
-      const data = ((response.data ?? {}) as AnyObj).data as unknown;
+      const data = (((response.data ?? {}) as AnyObj).data ?? response.data) as unknown;
       return mapArea(data);
     } catch (fallbackError) {
       logApiError("createServiceableArea", fallbackError);
@@ -198,19 +202,18 @@ export async function updateServiceableArea(
   id: string,
   payload: UpdateServiceableAreaPayload,
 ): Promise<ServiceableAreaItem> {
-  console.log("[ServiceableAreas] update payload", { id, payload });
   try {
-    const response = await serviceableAreasApi.put(`${BASE_PATH}/${id}`, payload, {
+    const response = await serviceableAreasApi.put(`${LEGACY_BASE_PATH}/${id}`, payload, {
       headers: { "Content-Type": "application/json" },
     });
-    const data = ((response.data ?? {}) as AnyObj).data as unknown;
+    const data = (((response.data ?? {}) as AnyObj).data ?? response.data) as unknown;
     return mapArea(data);
-  } catch (error) {
+  } catch {
     try {
-      const response = await serviceableAreasApi.put(`${LEGACY_BASE_PATH}/${id}`, payload, {
+      const response = await serviceableAreasApi.put(`${BASE_PATH}/${id}`, payload, {
         headers: { "Content-Type": "application/json" },
       });
-      const data = ((response.data ?? {}) as AnyObj).data as unknown;
+      const data = (((response.data ?? {}) as AnyObj).data ?? response.data) as unknown;
       return mapArea(data);
     } catch (fallbackError) {
       logApiError("updateServiceableArea", fallbackError);

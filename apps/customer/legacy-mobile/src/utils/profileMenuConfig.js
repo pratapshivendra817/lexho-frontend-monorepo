@@ -1,10 +1,11 @@
+import { COLORS } from '../theme/colors';
 export const PROFILE_MENU_ITEMS = [
   {
     id: "address",
     title: "Saved Addresses",
     subtitle: "Home, Office, Other locations",
     icon: "map-pin",
-    color: "#06B6D4",
+    color: COLORS.cyan500,
     routeName: "Address",
   },
   {
@@ -12,7 +13,7 @@ export const PROFILE_MENU_ITEMS = [
     title: "Rate & Review",
     subtitle: "Rate partners, build trust",
     icon: "star",
-    color: "#F59E0B",
+    color: COLORS.warning,
     routeName: "Review",
   },
   {
@@ -20,7 +21,7 @@ export const PROFILE_MENU_ITEMS = [
     title: "Refer",
     subtitle: "Refer friends, earn rewards",
     icon: "gift",
-    color: "#F97316",
+    color: COLORS.warning,
     routeName: "Referral",
   },
   {
@@ -28,35 +29,35 @@ export const PROFILE_MENU_ITEMS = [
     title: "About",
     subtitle: "App information",
     icon: "info",
-    color: "#3B82F6",
+    color: COLORS.blue500,
     routeName: "About",
   },
   {
     id: "terms",
     title: "Terms & Conditions",
     icon: "file-text",
-    color: "#9CA3AF",
+    color: COLORS.slate400,
     routeName: "Terms",
   },
   {
     id: "privacy",
     title: "Privacy & Security",
     icon: "shield",
-    color: "#8B5CF6",
+    color: COLORS.blue500,
     routeName: "Privacy",
   },
   {
     id: "support",
     title: "Help & Support",
     icon: "help-circle",
-    color: "#22C55E",
+    color: COLORS.success,
     routeName: "Support",
   },
   {
     id: "logout",
     title: "Logout",
     icon: "log-out",
-    color: "#EF4444",
+    color: COLORS.error,
     isLogout: true,
   },
 ];
@@ -64,4 +65,8 @@ export const PROFILE_MENU_ITEMS = [
 export function getProfileMenuItem(itemId) {
   return PROFILE_MENU_ITEMS.find(item => item.id === itemId) || null;
 }
+
+
+
+
 

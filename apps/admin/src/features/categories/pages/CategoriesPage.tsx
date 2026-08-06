@@ -12,6 +12,7 @@ import {
   ImageUrlInput,
   ModalFormLayout,
   Pagination,
+  SegmentedTabs,
 } from "@/components/admin";
 import {
   createCategory,
@@ -22,23 +23,29 @@ import {
 } from "@/services/lexhoAdminApi";
 import type { CategoryItem } from "@/types/adminCatalog";
 import { extractApiError } from "@/utils/apiError";
+import BannersPage from "../../banners/pages/BannersPage";
+import CategoryBannerListPage from "../../../modules/banner/pages/BannerListPage";
 
 const categorySchema = z.object({
   name: z.string().min(2, "Name should be at least 2 characters"),
   iconUrl: z.string().url("Upload image is required"),
   active: z.boolean(),
+  displayOrder: z.coerce.number().int().min(1, "Display order must be at least 1"),
 });
 
 type CategoryFormValues = z.infer<typeof categorySchema>;
+type ManagementMode = "categories" | "category-banners" | "category-banner-mgmt";
 
 const defaultValues: CategoryFormValues = {
   name: "",
   iconUrl: "",
   active: true,
+  displayOrder: 1,
 };
 
 export default function CategoriesPage() {
   const queryClient = useQueryClient();
+  const [mode, setMode] = useState<ManagementMode>("categories");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -46,7 +53,7 @@ export default function CategoriesPage() {
   const [deleteTarget, setDeleteTarget] = useState<CategoryItem | null>(null);
 
   const form = useForm<CategoryFormValues>({
-    resolver: zodResolver(categorySchema),
+    resolver: zodResolver(categorySchema) as never,
     defaultValues,
   });
 
@@ -99,7 +106,16 @@ export default function CategoriesPage() {
     onError: () => toast.error("Unable to delete category"),
   });
 
-  const items = categoriesQuery.data?.items ?? [];
+  const items = useMemo(
+    () =>
+      [...(categoriesQuery.data?.items ?? [])].sort((first, second) => {
+        const firstOrder = Number(first.displayOrder ?? Number.MAX_SAFE_INTEGER);
+        const secondOrder = Number(second.displayOrder ?? Number.MAX_SAFE_INTEGER);
+        if (firstOrder !== secondOrder) return firstOrder - secondOrder;
+        return String(first.name ?? "").localeCompare(String(second.name ?? ""));
+      }),
+    [categoriesQuery.data?.items],
+  );
   const total = categoriesQuery.data?.total ?? 0;
 
   const headerCount = useMemo(() => `${total} categories`, [total]);
@@ -116,6 +132,7 @@ export default function CategoriesPage() {
       name: item.name,
       iconUrl: item.iconUrl,
       active: item.active,
+      displayOrder: item.displayOrder ?? 1,
     });
     setIsModalOpen(true);
   };
@@ -129,8 +146,28 @@ export default function CategoriesPage() {
     createMutation.mutate(values);
   };
 
+  if (mode === "category-banners") {
+    return (
+      <div className="space-y-4">
+        <SegmentedTabs items={managementModeTabs} value={mode} onChange={setMode} />
+        <BannersPage />
+      </div>
+    );
+  }
+
+  if (mode === "category-banner-mgmt") {
+    return (
+      <div className="space-y-4">
+        <SegmentedTabs items={managementModeTabs} value={mode} onChange={setMode} />
+        <CategoryBannerListPage />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      <SegmentedTabs items={managementModeTabs} value={mode} onChange={setMode} />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-[var(--color-text)]">Category Management</h2>
@@ -205,6 +242,11 @@ export default function CategoriesPage() {
               ),
             },
             {
+              key: "displayOrder",
+              header: "Display Order",
+              render: (item) => item.displayOrder ?? "-",
+            },
+            {
               key: "actions",
               header: "Actions",
               render: (item) => (
@@ -270,6 +312,19 @@ export default function CategoriesPage() {
             <input type="checkbox" {...form.register("active")} />
             Active
           </label>
+
+          <label className="grid gap-1 text-sm text-[var(--color-text)]">
+            <span>Display Order / Priority</span>
+            <input
+              type="number"
+              min={1}
+              {...form.register("displayOrder", { valueAsNumber: true })}
+              className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
+            />
+            {form.formState.errors.displayOrder ? (
+              <span className="text-xs text-red-300">{form.formState.errors.displayOrder.message}</span>
+            ) : null}
+          </label>
         </form>
       </ModalFormLayout>
 
@@ -288,3 +343,9 @@ export default function CategoriesPage() {
     </div>
   );
 }
+
+const managementModeTabs: Array<{ label: string; value: ManagementMode }> = [
+  { label: "Categories", value: "categories" },
+  { label: "Category Banner Management", value: "category-banners" },
+  { label: "Category Banner Mgmt", value: "category-banner-mgmt" },
+];

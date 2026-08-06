@@ -35,7 +35,7 @@ export function BannerCarousel({ banners, onClick, onImpression, onRedeem }: Pro
       ref={listRef}
       horizontal
       data={banners}
-      keyExtractor={(item) => item.id}
+      keyExtractor={(item, index) => `${item.id}-${index}`}
       showsHorizontalScrollIndicator={false}
       pagingEnabled
       onViewableItemsChanged={({ viewableItems }) => {
@@ -86,4 +86,6 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
 });
+
+
 

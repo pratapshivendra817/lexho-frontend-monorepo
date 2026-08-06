@@ -1,11 +1,12 @@
 import React from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { COLORS } from "../../constants/colors";
 
 export function GlobalLoader({ visible }: { visible: boolean }) {
   if (!visible) return null;
   return (
     <View style={styles.overlay}>
-      <ActivityIndicator size="large" color="#14B8A6" />
+      <ActivityIndicator size="large" color={COLORS.secondary} />
     </View>
   );
 }
@@ -19,7 +20,7 @@ const styles = StyleSheet.create({
     left: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(2,6,23,0.35)",
+    backgroundColor: "rgba(2,10,30,0.52)",
     zIndex: 999,
   },
 });

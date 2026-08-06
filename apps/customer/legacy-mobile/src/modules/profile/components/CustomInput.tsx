@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { TextInput } from "react-native-paper";
+import { COLORS } from '../../../theme/colors';
 
 type Props = {
   label: string;
@@ -26,8 +27,8 @@ export const CustomInput = memo(function CustomInput(props: Props) {
         editable={editable}
         keyboardType={keyboardType}
         multiline={multiline}
-        outlineColor="#D1E5D8"
-        activeOutlineColor="#0F9D58"
+        outlineColor={COLORS.borderSoft}
+        activeOutlineColor={COLORS.navy}
         style={styles.input}
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -37,6 +38,12 @@ export const CustomInput = memo(function CustomInput(props: Props) {
 
 const styles = StyleSheet.create({
   wrap: { gap: 5 },
-  input: { backgroundColor: "#FFFFFF" },
-  error: { color: "#B91C1C", fontSize: 12, fontWeight: "600" },
+  input: { backgroundColor: COLORS.white },
+  error: { color: COLORS.red700, fontSize: 12, fontWeight: "600" },
 });
+
+
+
+
+
+

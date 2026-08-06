@@ -6,6 +6,7 @@ import { DataState } from "@/components/admin";
 import { extractApiError } from "@/utils/apiError";
 import { shareContent } from "@/utils/share";
 
+import { useAdminNotificationMutations } from "../../notifications/hooks/useAdminNotifications";
 import { downloadPartnerDocument } from "../api/partnersApi";
 import { PartnerStatusBadge } from "../components";
 import { usePartnerDashboardStatsQuery, usePartnerDetailsQuery, usePartnerMutations } from "../hooks/usePartners";
@@ -21,15 +22,23 @@ export default function PartnerDetailsPage() {
     updatePartnerSkillsGovernanceMutation,
     runPartnerRiskActionMutation,
   } = usePartnerMutations();
+  const { sendMutation } = useAdminNotificationMutations();
   const [lockMinutes, setLockMinutes] = useState("1440");
   const [forceReason, setForceReason] = useState("Quality audit hold");
   const [categoryIds, setCategoryIds] = useState("");
   const [subServiceIds, setSubServiceIds] = useState("");
   const [riskReason, setRiskReason] = useState("Fraudulent behavior detected");
+  const [warningType, setWarningType] = useState("QUALITY");
+  const [warningReason, setWarningReason] = useState("Service quality issue detected");
+  const [warningGuidance, setWarningGuidance] = useState("Please review the issue and avoid repeating it.");
+  const [warningTitle, setWarningTitle] = useState("New Warning Issued");
+  const [warningMessage, setWarningMessage] = useState("A new warning has been issued to your account. Tap to view the details.");
 
   const partner = detailsQuery.data;
   const stats = statsQuery.data;
   const online = Boolean(partner?.online);
+  const numericPartnerId = Number(partner?.id);
+  const canTargetPartnerById = Number.isFinite(numericPartnerId) && numericPartnerId > 0;
 
   return (
     <div className="space-y-4">
@@ -187,6 +196,125 @@ export default function PartnerDetailsPage() {
                     {action}
                   </button>
                 ))}
+              </div>
+            </div>
+            <div className="rounded border border-[var(--color-border)] p-3 md:col-span-2">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Issue Warning</p>
+                  <p className="mt-1 text-xs text-[var(--color-muted)]">
+                    Sends a partner warning notification using the existing admin notifications flow.
+                  </p>
+                </div>
+                {!canTargetPartnerById ? (
+                  <span className="rounded-full border border-amber-500/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+                    Numeric partner ID required
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <input
+                  value={warningType}
+                  onChange={(event) => setWarningType(event.target.value)}
+                  placeholder="Warning type"
+                  className="w-full rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs"
+                />
+                <input
+                  value={warningTitle}
+                  onChange={(event) => setWarningTitle(event.target.value)}
+                  placeholder="Notification title"
+                  className="w-full rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs"
+                />
+                <textarea
+                  value={warningReason}
+                  onChange={(event) => setWarningReason(event.target.value)}
+                  placeholder="Reason"
+                  rows={3}
+                  className="w-full rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs md:col-span-2"
+                />
+                <textarea
+                  value={warningGuidance}
+                  onChange={(event) => setWarningGuidance(event.target.value)}
+                  placeholder="Guidance"
+                  rows={3}
+                  className="w-full rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs md:col-span-2"
+                />
+                <textarea
+                  value={warningMessage}
+                  onChange={(event) => setWarningMessage(event.target.value)}
+                  placeholder="Notification message"
+                  rows={3}
+                  className="w-full rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs md:col-span-2"
+                />
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!partner || !canTargetPartnerById || sendMutation.isPending}
+                  className="rounded border border-[var(--color-border)] px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => {
+                    if (!partner || !canTargetPartnerById) return;
+                    const nextWarningType = warningType.trim() || "WARNING";
+                    const nextReason = warningReason.trim();
+                    const nextGuidance = warningGuidance.trim();
+                    const nextTitle = warningTitle.trim() || "New Warning Issued";
+                    const nextMessage = warningMessage.trim() || "A new warning has been issued to your account. Tap to view the details.";
+
+                    if (!nextReason) {
+                      toast.error("Warning reason is required");
+                      return;
+                    }
+
+                    sendMutation.mutate(
+                      {
+                        title: nextTitle,
+                        message: nextMessage,
+                        notificationType: "WARNING",
+                        priority: "HIGH",
+                        channels: ["IN_APP", "PUSH"],
+                        targetUserType: "PARTNERS",
+                        userIds: [numericPartnerId],
+                        referenceType: "WARNING",
+                        referenceId: partner.id,
+                        redirectType: "WARNING",
+                        redirectValue: partner.id,
+                        city: partner.city || undefined,
+                        warningType: nextWarningType,
+                        reason: nextReason,
+                        guidance: nextGuidance || undefined,
+                        notificationTitle: nextTitle,
+                        notificationMessage: nextMessage,
+                      },
+                      {
+                        onSuccess: () => {
+                          toast.success("Warning sent to partner");
+                          setWarningMessage("A new warning has been issued to your account. Tap to view the details.");
+                        },
+                        onError: (error) => toast.error(extractApiError(error, "Failed to send warning")),
+                      },
+                    );
+                  }}
+                >
+                  {sendMutation.isPending ? "Sending Warning..." : "Send Warning"}
+                </button>
+                <p className="text-xs text-[var(--color-muted)]">
+                  Backend should persist the warning details separately if it needs to appear inside the partner Warnings screen.
+                </p>
+              </div>
+              <div className="mt-3 rounded border border-[var(--color-border)] bg-[var(--color-surface-soft)] p-3">
+                <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Warning Payload Preview</p>
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-[11px] text-[var(--color-text)]">
+{JSON.stringify({
+  warningType: warningType.trim() || "WARNING",
+  reason: warningReason.trim(),
+  guidance: warningGuidance.trim() || undefined,
+  notificationTitle: warningTitle.trim() || "New Warning Issued",
+  notificationMessage: warningMessage.trim() || "A new warning has been issued to your account. Tap to view the details.",
+  redirectType: "WARNING",
+  targetUserType: "PARTNERS",
+  userIds: canTargetPartnerById ? [numericPartnerId] : [],
+}, null, 2)}
+                </pre>
               </div>
             </div>
           </div>

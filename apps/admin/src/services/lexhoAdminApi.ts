@@ -19,6 +19,60 @@ type ApiErrorShape = { response?: { data?: { message?: unknown }; status?: unkno
 const asRecord = (value: unknown): UnknownRecord =>
   value && typeof value === "object" ? (value as UnknownRecord) : {};
 
+const getApiOrigin = (): string => {
+  const base = String(appConfig.apiBaseUrl ?? "").trim();
+  if (!base) return "";
+  if (base.startsWith("/")) {
+    if (typeof window !== "undefined" && window.location?.origin) {
+      return window.location.origin;
+    }
+    return "";
+  }
+  try {
+    return new URL(base).origin;
+  } catch {
+    return "";
+  }
+};
+
+const toAbsoluteAssetUrl = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) {
+    const origin = getApiOrigin();
+    try {
+      const parsed = new URL(trimmed);
+      if ((parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") && origin) {
+        const target = new URL(origin);
+        parsed.protocol = target.protocol;
+        parsed.host = target.host;
+        return parsed.toString();
+      }
+    } catch {
+      return trimmed;
+    }
+    return trimmed;
+  }
+  const origin = getApiOrigin();
+  if (!origin) return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const normalizedPath = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return `${origin}${normalizedPath}`;
+};
+
+const toRelativeAssetPath = (value: unknown): string => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.pathname}${parsed.search ?? ""}`;
+  } catch {
+    return trimmed.replace(/^https?:\/\/[^/]+/i, "");
+  }
+};
+
 const normalizeAdminApiError = (error: unknown, fallback: string): Error => {
   const e = error as ApiErrorShape;
   const serverMessage = typeof e?.response?.data?.message === "string" ? e.response.data.message.trim() : "";
@@ -97,6 +151,116 @@ const readBooleanLike = (value: unknown, fallback = false): boolean => {
 const readId = (row: UnknownRecord): string =>
   String(row.id ?? row._id ?? row.categoryId ?? row.serviceId ?? "");
 
+const MAX_DETAIL_ITEM_LENGTH = 255;
+
+const splitByNumberedMarkers = (value: string): string[] =>
+  value
+    .split(/(?=\b(?:Q)?\d{1,2}[.)]\s*)/i)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const splitBySentence = (value: string): string[] =>
+  value
+    .split(/(?<=[.?!])\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const chunkByMaxLength = (value: string, maxLength: number): string[] => {
+  const normalized = value.trim();
+  if (!normalized) return [];
+  if (normalized.length <= maxLength) return [normalized];
+
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+
+  const chunks: string[] = [];
+  let current = "";
+  for (const word of words) {
+    if (!current) {
+      if (word.length <= maxLength) {
+        current = word;
+        continue;
+      }
+      for (let i = 0; i < word.length; i += maxLength) {
+        chunks.push(word.slice(i, i + maxLength));
+      }
+      continue;
+    }
+    const next = `${current} ${word}`;
+    if (next.length <= maxLength) {
+      current = next;
+      continue;
+    }
+    chunks.push(current);
+    if (word.length <= maxLength) {
+      current = word;
+      continue;
+    }
+    for (let i = 0; i < word.length; i += maxLength) {
+      const part = word.slice(i, i + maxLength);
+      if (part.length === maxLength) {
+        chunks.push(part);
+      } else {
+        current = part;
+      }
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+};
+
+const normalizeServiceDetailItems = (type: ServiceDetailType, items: string[]): string[] => {
+  const cleanDetailText = (value: string): string => {
+    let text = String(value ?? "").trim();
+    if (!text) return "";
+
+    // Remove common escaped JSON fragments users may paste accidentally.
+    text = text.replace(/\\r\\n|\\n|\\r/g, " ");
+    text = text.replace(/\\"/g, "\"");
+    text = text.replace(/\\,/g, ",");
+    text = text.replace(/"\s*,\s*"/g, " ");
+    text = text.replace(/^"+|"+$/g, "");
+    text = text.replace(/^'+|'+$/g, "");
+    text = text.replace(/(?:,\s*)+$/g, "");
+    text = text.replace(/\s+/g, " ").trim();
+    return text;
+  };
+
+  const normalizedInput = items
+    .flatMap((value) => String(value ?? "").split(/\r?\n/))
+    .map((item) => cleanDetailText(item))
+    .filter(Boolean);
+
+  const expanded: string[] = [];
+  for (const item of normalizedInput) {
+    if (item.length <= MAX_DETAIL_ITEM_LENGTH) {
+      expanded.push(item);
+      continue;
+    }
+
+    const numbered = splitByNumberedMarkers(item);
+    if (numbered.length > 1) {
+      expanded.push(...numbered);
+      continue;
+    }
+
+    if (type === "FAQ" || type === "INSTRUCTION") {
+      const sentenceParts = splitBySentence(item);
+      if (sentenceParts.length > 1) {
+        expanded.push(...sentenceParts);
+        continue;
+      }
+    }
+
+    expanded.push(...chunkByMaxLength(item, MAX_DETAIL_ITEM_LENGTH));
+  }
+
+  return expanded
+    .flatMap((item) => (item.length <= MAX_DETAIL_ITEM_LENGTH ? [item] : chunkByMaxLength(item, MAX_DETAIL_ITEM_LENGTH)))
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && item.length <= MAX_DETAIL_ITEM_LENGTH);
+};
+
 const mapDetailRow = (detail: UnknownRecord, fallbackType: ServiceDetailType = "INCLUDED"): ServiceDetailItem => ({
   id: String(detail.id ?? detail._id ?? detail.detailId ?? detail.itemId ?? `${fallbackType}-${detail.itemName ?? detail.name ?? detail.value ?? ""}`),
   type: (["INCLUDED", "EXCLUDED", "FAQ", "INSTRUCTION"].includes(String(detail.type ?? fallbackType).toUpperCase())
@@ -134,11 +298,32 @@ const readServiceDetails = (row: UnknownRecord): ServiceDetailItem[] => {
   ].filter((detail) => detail.itemName.trim().length > 0);
 };
 
+const mapServiceRow = (row: UnknownRecord, fallbackId = ""): ServiceItem => {
+  const detailRows = readServiceDetails(row);
+
+  return {
+    id: String(row.id ?? row._id ?? fallbackId),
+    name: String(row.name ?? row.serviceName ?? ""),
+    serviceType: String(row.service_type ?? row.serviceType ?? ""),
+    categoryId: String(row.categoryId ?? asRecord(row.category).id ?? ""),
+    categoryName: String(row.categoryName ?? asRecord(row.category).name ?? ""),
+    description: String(row.description ?? ""),
+    price: readNumber(row.price ?? row.basePrice),
+    rating: readNumber(row.rating, 0),
+    imageUrl: toAbsoluteAssetUrl(row.imageUrl ?? row.thumbnailUrl ?? row.iconUrl),
+    active: readBooleanLike(row.active ?? row.status ?? row.isActive, true),
+    details: detailRows,
+  };
+};
+
 const toCategoryPayload = (payload: CategoryPayload) => {
   const active = Boolean(payload.active);
+  const normalizedDisplayOrder = Number(payload.displayOrder);
   return {
     name: payload.name,
-    iconUrl: payload.iconUrl,
+    iconUrl: toRelativeAssetPath(payload.iconUrl),
+    displayOrder: Number.isFinite(normalizedDisplayOrder) ? normalizedDisplayOrder : undefined,
+    priority: Number.isFinite(normalizedDisplayOrder) ? normalizedDisplayOrder : undefined,
     active,
     status: active ? "ACTIVE" : "INACTIVE",
   };
@@ -175,15 +360,7 @@ const parseUploadUrl = (payload: unknown): string | null => {
       continue;
     }
 
-    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-      return trimmed;
-    }
-
-    if (trimmed.startsWith("/")) {
-      return `${appConfig.apiBaseUrl}${trimmed}`;
-    }
-
-    return `${appConfig.apiBaseUrl}/${trimmed}`;
+    return toAbsoluteAssetUrl(trimmed);
   }
 
   return null;
@@ -236,8 +413,9 @@ export async function getCategories(params: {
     (row) => ({
       id: readId(row),
       name: String(row.name ?? ""),
-      iconUrl: String(row.iconUrl ?? row.imageUrl ?? ""),
+      iconUrl: toAbsoluteAssetUrl(row.iconUrl ?? row.imageUrl),
       active: readBooleanLike(row.active ?? row.isActive ?? row.status, false),
+      displayOrder: readNumber(row.displayOrder ?? row.priority ?? row.order, 0) || undefined,
     }),
   );
 
@@ -284,18 +462,7 @@ export async function getServices(params: {
   }
 
   const items = readArray<UnknownRecord>(data, ["data", "items", "content", "results"]).map(
-    (row) => {
-      const detailRows = readServiceDetails(row);
-      return {
-        id: readId(row),
-        name: String(row.name ?? row.serviceName ?? ""),
-        serviceType: String(row.service_type ?? row.serviceType ?? ""),
-        description: String(row.description ?? ""),
-        price: readNumber(row.price ?? row.basePrice),
-        active: readBooleanLike(row.active ?? row.status ?? row.isActive, true),
-        details: detailRows,
-      };
-    },
+    (row) => mapServiceRow(row, readId(row)),
   );
 
   const root = asRecord(data);
@@ -316,22 +483,21 @@ export async function getServiceById(id: string): Promise<ServiceItem | null> {
   if (!row) {
     return null;
   }
-  const detailRows = readServiceDetails(row);
 
-  return {
-    id: String(row.id ?? row._id ?? id),
-    name: String(row.name ?? row.serviceName ?? ""),
-    serviceType: String(row.service_type ?? row.serviceType ?? ""),
-    description: String(row.description ?? ""),
-    price: readNumber(row.price ?? row.basePrice),
-    active: readBooleanLike(row.active ?? row.status ?? row.isActive, true),
-    details: detailRows,
-  };
+  return mapServiceRow(row, id);
 }
 
-export async function createService(payload: ServicePayload) {
+export async function createService(payload: ServicePayload): Promise<{ id: string } | null> {
   try {
-    await api.post("/api/admin/services", payload);
+    const relativeImageUrl = toRelativeAssetPath(payload.imageUrl);
+    const normalizedPayload = {
+      ...payload,
+      imageUrl: relativeImageUrl || undefined,
+    };
+    const { data } = await api.post("/api/admin/services", normalizedPayload);
+    const row = readObject<UnknownRecord>(data, ["data", "item", "service", "result"]) ?? asRecord(data);
+    const id = readId(row);
+    return id ? { id } : null;
   } catch (error) {
     throw normalizeAdminApiError(error, "Unable to create service");
   }
@@ -339,7 +505,12 @@ export async function createService(payload: ServicePayload) {
 
 export async function updateService(id: string, payload: ServicePayload) {
   try {
-    await api.put(`/api/admin/services/${id}`, payload);
+    const relativeImageUrl = toRelativeAssetPath(payload.imageUrl);
+    const normalizedPayload = {
+      ...payload,
+      imageUrl: relativeImageUrl || undefined,
+    };
+    await api.put(`/api/admin/services/${id}`, normalizedPayload);
   } catch (error) {
     throw normalizeAdminApiError(error, "Unable to update service");
   }
@@ -365,9 +536,33 @@ export async function addServiceDetails(
   serviceId: string,
   payload: { type: ServiceDetailType; items: string[] },
 ) {
+  const endpoint = `/api/admin/services/${serviceId}/details`;
   try {
-    await api.post(`/api/admin/services/${serviceId}/details`, payload);
+    const items = normalizeServiceDetailItems(payload.type, payload.items);
+    if (items.length === 0) {
+      throw new Error("At least one detail item is required");
+    }
+    await api.post(endpoint, { ...payload, items });
   } catch (error) {
+    const err = error as ApiErrorShape;
+    const status = Number(err?.response?.status ?? 0);
+    const items = normalizeServiceDetailItems(payload.type, payload.items);
+
+    if (status >= 500 && items.length > 1) {
+      const failedItems: string[] = [];
+      for (const item of items) {
+        try {
+          await api.post(endpoint, { type: payload.type, items: [item] });
+        } catch {
+          failedItems.push(item);
+        }
+      }
+      if (failedItems.length === 0) {
+        return;
+      }
+      throw new Error(`Some items failed to save (${failedItems.length}/${items.length}). Please try shorter/plain-text phrasing.`);
+    }
+
     throw normalizeAdminApiError(error, "Unable to add service details");
   }
 }
@@ -393,12 +588,18 @@ export async function deleteServiceDetail(serviceId: string, detailId: string) {
 }
 
 export async function uploadAdminImage(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append("file", file);
+  if (!(file instanceof File)) {
+    throw new Error("Selected upload is not a valid file");
+  }
+  if (!file.name.trim()) {
+    throw new Error("Selected file name is missing");
+  }
 
-  const { data } = await api.post(appConfig.adminImageUploadEndpoint, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+
+  // Let the browser set the multipart boundary; forcing the header breaks file parsing.
+  const { data } = await api.post(appConfig.adminImageUploadEndpoint, formData);
 
   const imageUrl = parseUploadUrl(data);
   if (!imageUrl) {

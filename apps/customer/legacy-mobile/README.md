@@ -95,3 +95,250 @@ To learn more about React Native, take a look at the following resources:
 - [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
 - [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
 - [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+
+## Customer Platform Docs
+
+- `docs/customer-app-platform-services.md`
+- `docs/ssl-pinning-setup.md`
+- `docs/mobile-release-qa-checklist.md`
+
+## Backend-Driven Booking Flow
+
+The customer app booking flow follows the frozen backend contract. The frontend acts only as a renderer of backend state.
+
+### Single Source Of Truth
+
+Backend controls:
+- Tracking screen
+- Map visibility
+- Polling interval
+- Booking action permissions
+- Subscription action permissions
+- Timeline
+- Payment retry behavior
+
+Frontend responsibilities:
+- Render UI
+- Call APIs
+- Display backend data
+
+Frontend must not infer business rules from `booking.status` or `booking.assignmentStatus`.
+
+### Booking Details Contract
+
+Use:
+
+```text
+GET /api/bookings/details/{bookingId}
+```
+
+Every booking response should include:
+
+```json
+{
+  "contractVersion": 1,
+  "statusHistory": [],
+  "meta": {
+    "trackingScreen": "INSTANT_STATUS",
+    "showMap": false,
+    "trackingRefreshSeconds": 15,
+    "canCancel": true,
+    "canReschedule": false,
+    "canCallPartner": false,
+    "canTrackPartner": false,
+    "canRaiseIssue": false
+  }
+}
+```
+
+### Tracking Screen Router
+
+Open screens using only:
+
+```js
+booking.meta.trackingScreen
+```
+
+Supported values:
+
+```text
+INSTANT_STATUS
+LIVE_TRACKING
+PARTNER_ARRIVED
+SERVICE_STARTED
+SERVICE_IN_PROGRESS
+SERVICE_COMPLETED
+SCHEDULED_STATUS
+SUBSCRIPTION_DETAILS
+```
+
+Unknown values must open `BookingStatusFallback`.
+
+### Dynamic Polling
+
+Use:
+
+```js
+booking.meta.trackingRefreshSeconds
+```
+
+Rules:
+- `15` means poll every 15 seconds.
+- `5` means poll every 5 seconds.
+- `30` means poll every 30 seconds.
+- `0` means stop polling.
+
+No hardcoded polling intervals should be used for booking lifecycle.
+
+### Dynamic Permissions
+
+Render actions only from backend permissions:
+
+```js
+booking.meta.canCancel
+booking.meta.canReschedule
+booking.meta.canCallPartner
+booking.meta.canTrackPartner
+booking.meta.canRaiseIssue
+```
+
+Example:
+
+```jsx
+{booking.meta.canCancel && <CancelButton />}
+```
+
+Do not derive action availability from booking status.
+
+### Mapbox Rules
+
+Load Mapbox only when:
+
+```js
+booking.meta.showMap === true &&
+booking.map?.enabled === true
+```
+
+Partner coordinates must be read only from:
+
+```js
+booking.map.partner.latitude
+booking.map.partner.longitude
+```
+
+Do not use root coordinate fields such as `partnerLatitude`, `partnerLongitude`, `customerLatitude`, or `customerLongitude`.
+
+### Timeline
+
+Render timeline from:
+
+```js
+booking.statusHistory
+```
+
+Do not hardcode timeline states on the frontend.
+
+### Payment Failure And Retry
+
+Supported failure codes/statuses:
+
+```text
+FAILED
+EXPIRED
+PAYMENT_FAILED
+PAYMENT_EXPIRED
+```
+
+Show retry only when:
+
+```js
+booking.retryPaymentAllowed === true
+```
+
+Retry endpoint:
+
+```text
+POST /api/payments/retry
+```
+
+### Subscription Module
+
+Subscription screens must use only subscription APIs:
+
+```text
+GET  /api/subscriptions
+GET  /api/subscriptions/{id}
+GET  /api/subscriptions/{id}/visits
+POST /api/subscriptions/{id}/pause
+POST /api/subscriptions/{id}/resume
+POST /api/subscriptions/{id}/cancel
+```
+
+Do not use booking tracking APIs for subscription screens.
+
+Render visit sections from backend response:
+
+```text
+upcomingVisits
+completedVisits
+cancelledVisits
+```
+
+Subscription actions must use:
+
+```js
+subscription.canPause
+subscription.canResume
+subscription.canCancel
+```
+
+### My Bookings History
+
+Use:
+
+```text
+GET /api/bookings/history?page=1&size=20
+```
+
+Render grouped backend sections directly:
+
+```js
+instantBookings
+scheduledBookings
+subscriptions
+```
+
+Do not merge subscription cards into regular booking lists.
+
+Support pagination with:
+
+```js
+items
+page
+size
+hasMore
+```
+
+### Error Handling
+
+Use backend machine-readable codes:
+
+```js
+error.code
+```
+
+Common codes:
+
+```text
+BOOKING_NOT_FOUND
+PAYMENT_FAILED
+PAYMENT_EXPIRED
+SUBSCRIPTION_PAUSED
+SUBSCRIPTION_CANCELLED
+PARTNER_UNAVAILABLE
+TRACKING_DISABLED
+INVALID_REQUEST
+INTERNAL_ERROR
+```
+
+Do not parse message strings for business decisions.

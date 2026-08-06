@@ -9,7 +9,7 @@ export const CART_CONFIG = {
     itemTotal: "Item total",
     gstAndFees: "GST & Service Fees",
     toPay: "To pay",
-    addMore: "Missed something? Add more services.",
+    addMore: "Add more services.",
     coupons: "View all coupons",
     location: "Location",
     selectAddress: "Select your address",
@@ -22,6 +22,32 @@ export const CART_CONFIG = {
     bookNow: "Book now",
     remove: "Remove",
   },
+  homeBookingOptions: {
+    title: "What do you need today?",
+    items: [
+      {
+        id: "instant",
+        label: "Instant",
+        description: "Start with the fastest available slot.",
+        icon: "flash-outline",
+        route: "InstantBookingWizard",
+      },
+      {
+        id: "scheduled",
+        label: "Schedule",
+        description: "Pick a preferred date and time.",
+        icon: "calendar-clock-outline",
+        route: "ScheduleBookingWizard",
+      },
+      {
+        id: "subscription",
+        label: "Subscription",
+        description: "Repeat service plans.",
+        icon: "calendar-refresh-outline",
+        route: "RecurringBooking",
+      },
+    ],
+  },
   messages: {
     cartEmptyTitle: "Your cart is empty",
     cartEmptySubtitle: "Add services to start booking.",
@@ -33,3 +59,12 @@ export const CART_CONFIG = {
     selectAddressError: "Please select an address to continue.",
   },
 } as const;
+
+export function isPartyCategoryName(value?: string | number | null) {
+  const normalized = String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized.split(" ").includes("party") || normalized.split(" ").includes("parties");
+}

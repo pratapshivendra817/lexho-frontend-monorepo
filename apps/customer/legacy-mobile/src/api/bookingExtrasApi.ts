@@ -1,7 +1,45 @@
-import { api, parseApiError } from "./client";
+import { api, parseApiError, toApiError } from "./client";
 import type { BookingSummaryDto, LiveLocationResponse, RescheduleBookingRequest } from "../types/contracts";
+import { cacheManager } from "../services/cacheManager";
+import { networkService, isNetworkError } from "../services/networkService";
+import { offlineQueue } from "../services/offlineQueue";
+
+function boolValue(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "boolean") return value;
+  }
+  return undefined;
+}
+
+function numberValue(...values: unknown[]) {
+  for (const value of values) {
+    if (value == null || value === "") continue;
+    const next = Number(value);
+    if (Number.isFinite(next)) return next;
+  }
+  return undefined;
+}
+
+function mapStatusHistory(row: any) {
+  const rows = Array.isArray(row?.statusHistory)
+    ? row.statusHistory
+    : Array.isArray(row?.timeline)
+      ? row.timeline
+      : [];
+  return rows
+    .map((item: any, index: number) => ({
+      key: String(item?.key ?? item?.code ?? item?.status ?? index),
+      label: String(item?.label ?? item?.title ?? item?.name ?? "").trim(),
+      status: item?.status ?? item?.state,
+      completed: item?.completed,
+      active: item?.active,
+      timestamp: item?.timestamp ?? item?.createdAt ?? item?.time,
+    }))
+    .filter((item: any) => item.label);
+}
 
 function toBookingSummary(row: any): BookingSummaryDto {
+  const meta = row?.meta && typeof row.meta === "object" ? row.meta : {};
   const status = String(row?.status ?? row?.bookingStatus ?? "").toUpperCase() || undefined;
   const assignment = String(row?.assignmentStatus ?? row?.dispatchStatus ?? status ?? "").toUpperCase() || undefined;
   const rawDate =
@@ -21,6 +59,7 @@ function toBookingSummary(row: any): BookingSummaryDto {
       : undefined;
   return {
     id: String(row?.id ?? row?.bookingId ?? ""),
+    bookingId: String(row?.bookingId ?? row?.id ?? "").trim() || undefined,
     serviceId: String(row?.serviceId ?? row?.service?.id ?? row?.serviceID ?? "").trim() || undefined,
     status,
     serviceName: row?.serviceName ?? row?.service?.name ?? row?.categoryName,
@@ -93,6 +132,54 @@ function toBookingSummary(row: any): BookingSummaryDto {
       row?.partner?.profileImage ??
       row?.partner?.imageUrl ??
       row?.partner?.avatar,
+    subscriptionId: String(row?.subscriptionId ?? row?.subscription?.id ?? "").trim() || undefined,
+    subscriptionServiceType: row?.subscriptionServiceType ?? row?.subscription?.subscriptionServiceType ?? row?.subscription?.serviceType,
+    frequencyDays: Array.isArray(row?.frequencyDays)
+      ? row.frequencyDays
+      : Array.isArray(row?.subscription?.frequencyDays)
+        ? row.subscription.frequencyDays
+        : undefined,
+    frequencyLabel: row?.frequencyLabel ?? row?.subscription?.frequencyLabel ?? row?.frequency,
+    startDate: row?.startDate ?? row?.subscription?.startDate,
+    endDate: row?.endDate ?? row?.subscription?.endDate,
+    visits:
+      row?.visits != null ? Number(row.visits) :
+      row?.visitCount != null ? Number(row.visitCount) :
+      row?.subscription?.visits != null ? Number(row.subscription.visits) :
+      undefined,
+    remainingVisits:
+      row?.remainingVisits != null ? Number(row.remainingVisits) :
+      row?.subscription?.remainingVisits != null ? Number(row.subscription.remainingVisits) :
+      undefined,
+    timeSlot: row?.timeSlot ?? row?.subscription?.timeSlot,
+    nextServiceDate: row?.nextServiceDate ?? row?.subscription?.nextServiceDate,
+    nextVisitDate: row?.nextVisitDate ?? row?.subscription?.nextVisitDate,
+    paymentStatus: row?.paymentStatus,
+    trackingStatus: row?.trackingStatus ?? meta?.trackingStatus,
+    map: row?.map,
+    serviceStartedAt: row?.serviceStartedAt ?? row?.startedAt ?? row?.startTime,
+    estimatedCompletionTime: row?.estimatedCompletionTime ?? row?.expectedCompletionTime ?? row?.estimatedEndTime,
+    progressStatus: row?.progressStatus ?? row?.workStatus ?? row?.trackingStatus,
+    retryPaymentAllowed: boolValue(meta?.retryPaymentAllowed, row?.retryPaymentAllowed),
+    arrivalTime: meta?.arrivalTime ?? row?.arrivalTime ?? row?.arrivedAt ?? row?.partnerArrivedAt,
+    meta: {
+      ...meta,
+      trackingScreen: meta?.trackingScreen,
+      showMap: boolValue(meta?.showMap),
+      canReview: boolValue(meta?.canReview),
+      reviewSubmitted: boolValue(meta?.reviewSubmitted),
+      canCancel: boolValue(meta?.canCancel),
+      canReschedule: boolValue(meta?.canReschedule),
+      canCallPartner: boolValue(meta?.canCallPartner),
+      canTrackPartner: boolValue(meta?.canTrackPartner),
+      canRaiseIssue: boolValue(meta?.canRaiseIssue),
+      canPause: boolValue(meta?.canPause, row?.canPause, row?.subscription?.canPause),
+      canResume: boolValue(meta?.canResume, row?.canResume, row?.subscription?.canResume),
+      trackingRefreshSeconds: numberValue(meta?.trackingRefreshSeconds),
+      retryPaymentAllowed: boolValue(meta?.retryPaymentAllowed, row?.retryPaymentAllowed),
+      arrivalTime: meta?.arrivalTime ?? row?.arrivalTime ?? row?.arrivedAt ?? row?.partnerArrivedAt,
+    },
+    statusHistory: mapStatusHistory(row),
   };
 }
 
@@ -101,23 +188,68 @@ export async function getBookingDetails(id: string): Promise<BookingSummaryDto> 
     const { data } = await api.get(`/api/bookings/details/${id}`);
     const root = data?.data && typeof data?.data === "object" ? data.data : data;
     const mapped = toBookingSummary(root);
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log("[booking:details:mapped]", {
-        requestBookingId: id,
-        rawId: String(root?.id ?? root?.bookingId ?? ""),
-        bookingType: mapped?.bookingType,
-        status: mapped?.status,
-        assignmentStatus: mapped?.assignmentStatus,
-        partnerName: mapped?.partnerName,
-      });
-    }
+    await cacheManager.set(`booking-detail-${id}`, mapped);
     return mapped;
   } catch (e) {
-    throw new Error(parseApiError(e, "Booking details failed"));
+    const cached = await cacheManager.get<BookingSummaryDto>(`booking-detail-${id}`, 15 * 60 * 1000);
+    if (cached) {
+      return cached;
+    }
+    throw toApiError(e, "Booking details failed");
   }
 }
-export async function cancelBooking(id: string): Promise<BookingSummaryDto> { try { const { data } = await api.put(`/api/bookings/cancel/${id}`); const root = data?.data && typeof data?.data === "object" ? data.data : data; return toBookingSummary(root); } catch (e) { throw new Error(parseApiError(e, 'Cancel booking failed')); } }
-export async function rescheduleBooking(id: string, payload: RescheduleBookingRequest): Promise<BookingSummaryDto> { try { const { data } = await api.put(`/api/bookings/reschedule/${id}`, payload); const root = data?.data && typeof data?.data === "object" ? data.data : data; return toBookingSummary(root); } catch (e) { throw new Error(parseApiError(e, 'Reschedule booking failed')); } }
-export async function getPartnerLiveLocation(bookingId: string): Promise<LiveLocationResponse> { try { const { data } = await api.get(`/api/partner/live-location/${bookingId}`); return data as LiveLocationResponse; } catch (e) { throw new Error(parseApiError(e, 'Live location failed')); } }
-
+export async function cancelBooking(id: string): Promise<BookingSummaryDto> {
+  try {
+    if (!(await networkService.getCurrentState())) {
+      await offlineQueue.enqueue({
+        type: "booking:cancel",
+        endpoint: `/api/bookings/cancel/${id}`,
+        method: "put",
+        payload: {},
+      });
+      throw new Error("You are offline. Cancel request has been queued.");
+    }
+    const { data } = await api.put(`/api/bookings/cancel/${id}`);
+    const root = data?.data && typeof data?.data === "object" ? data.data : data;
+    return toBookingSummary(root);
+  } catch (e) {
+    if (isNetworkError(e)) {
+      await offlineQueue.enqueue({
+        type: "booking:cancel",
+        endpoint: `/api/bookings/cancel/${id}`,
+        method: "put",
+        payload: {},
+      });
+      throw new Error("Network unavailable. Cancel request has been queued.");
+    }
+    throw toApiError(e, "Cancel booking failed");
+  }
+}
+export async function rescheduleBooking(id: string, payload: RescheduleBookingRequest): Promise<BookingSummaryDto> {
+  try {
+    if (!(await networkService.getCurrentState())) {
+      await offlineQueue.enqueue({
+        type: "booking:reschedule",
+        endpoint: `/api/bookings/reschedule/${id}`,
+        method: "put",
+        payload: payload as Record<string, unknown>,
+      });
+      throw new Error("You are offline. Reschedule request has been queued.");
+    }
+    const { data } = await api.put(`/api/bookings/reschedule/${id}`, payload);
+    const root = data?.data && typeof data?.data === "object" ? data.data : data;
+    return toBookingSummary(root);
+  } catch (e) {
+    if (isNetworkError(e)) {
+      await offlineQueue.enqueue({
+        type: "booking:reschedule",
+        endpoint: `/api/bookings/reschedule/${id}`,
+        method: "put",
+        payload: payload as Record<string, unknown>,
+      });
+      throw new Error("Network unavailable. Reschedule request has been queued.");
+    }
+    throw toApiError(e, "Reschedule booking failed");
+  }
+}
+export async function getPartnerLiveLocation(bookingId: string): Promise<LiveLocationResponse> { try { const { data } = await api.get(`/api/partner/live-location/${bookingId}`); return data as LiveLocationResponse; } catch (e) { throw toApiError(e, 'Live location failed'); } }

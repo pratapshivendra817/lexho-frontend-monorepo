@@ -7,8 +7,11 @@ import { BookingStageShell } from "../../components/booking/BookingStageShell";
 import { useInstantBookingLifecycle } from "../../hooks/useInstantBookingLifecycle";
 import { addReview } from "../../api/reviewApi";
 import { bookingTheme } from "../../components/booking/bookingTheme";
+import { COLORS } from '../../theme/colors';
+import { radii, shadows, spacing } from "../../constants/theme";
 
 type RatePartnerRoute = { params?: { bookingId?: string } };
+
 
 export function RatePartnerScreen({ route }: { route: RatePartnerRoute }) {
   const bookingId = String(route?.params?.bookingId ?? "").trim();
@@ -73,22 +76,23 @@ export function RatePartnerScreen({ route }: { route: RatePartnerRoute }) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: bookingTheme.radius.card,
+    borderRadius: radii.lg,
     backgroundColor: bookingTheme.colors.cardBg,
     borderWidth: 1,
     borderColor: bookingTheme.colors.cardBorder,
-    padding: 14,
+    padding: spacing.md + 2,
     gap: 7,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    ...shadows.sm,
   },
   row: { color: bookingTheme.colors.textMuted, fontSize: 13, fontWeight: "700" },
-  input: { backgroundColor: "#FFFFFF" },
-  btn: { borderRadius: bookingTheme.radius.button, backgroundColor: bookingTheme.colors.primaryBtn, alignItems: "center", paddingVertical: 13, marginTop: 8 },
+  input: { backgroundColor: COLORS.white, borderRadius: radii.md },
+  btn: { borderRadius: radii.md, backgroundColor: bookingTheme.colors.primaryBtn, alignItems: "center", paddingVertical: spacing.md + 1, marginTop: spacing.sm, ...shadows.sm },
   btnText: { color: bookingTheme.colors.primaryBtnText, fontWeight: "900", letterSpacing: 0.2 },
   info: { color: bookingTheme.colors.success, fontSize: 12, fontWeight: "800" },
   warn: { color: bookingTheme.colors.warning, fontSize: 12, fontWeight: "800" },
 });
+
+
+
+
+

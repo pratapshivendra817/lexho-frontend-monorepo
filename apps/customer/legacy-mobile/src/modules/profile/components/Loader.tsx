@@ -1,10 +1,12 @@
 import { memo } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { COLORS } from '../../../theme/colors';
+
 
 export const Loader = memo(function Loader() {
   return (
     <View style={styles.wrap}>
-      <ActivityIndicator size="large" color="#0F9D58" />
+      <ActivityIndicator size="large" color={COLORS.navy} />
     </View>
   );
 });
@@ -12,3 +14,4 @@ export const Loader = memo(function Loader() {
 const styles = StyleSheet.create({
   wrap: { alignItems: "center", justifyContent: "center", paddingVertical: 20 },
 });
+

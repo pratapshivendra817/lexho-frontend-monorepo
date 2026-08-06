@@ -8,6 +8,7 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Too
 
 import { ConfirmDialog, DataState, DataTable, Modal, Pagination, Skeleton } from "@/components/admin";
 import { useDebounce } from "@/hooks/useDebounce";
+import { initializeAdminPushNotifications } from "@/services/adminPushNotifications";
 import { extractApiError } from "@/utils/apiError";
 import { shareContent } from "@/utils/share";
 
@@ -30,6 +31,20 @@ const emptyStats = {
   channelWiseStats: [],
   trend: [],
 };
+
+const channelOptions = [
+  { label: "In App", value: "IN_APP" },
+  { label: "Push", value: "PUSH" },
+  { label: "Email", value: "EMAIL" },
+  { label: "SMS", value: "SMS" },
+] as const;
+
+function parseUserIds(value?: string) {
+  return String(value ?? "")
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item) && item > 0);
+}
 
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
@@ -73,6 +88,11 @@ export default function NotificationsPage() {
       priority: "MEDIUM",
       channels: ["IN_APP"],
       targetUserType: "CUSTOMER",
+      userIds: "",
+      referenceType: "",
+      referenceId: "",
+      redirectType: "",
+      redirectValue: "",
       city: "",
       scheduledTime: "",
     },
@@ -83,8 +103,14 @@ export default function NotificationsPage() {
   const total = listQuery.data?.totalElements ?? 0;
 
   const handleSend = (values: SendNotificationFormValues) => {
+    const userIds = parseUserIds(values.userIds);
     const payload: SendAdminNotificationPayload = {
       ...values,
+      userIds: userIds.length > 0 ? userIds : undefined,
+      referenceType: values.referenceType || undefined,
+      referenceId: values.referenceId || undefined,
+      redirectType: values.redirectType || undefined,
+      redirectValue: values.redirectValue || undefined,
       city: values.city || undefined,
       scheduledTime: values.scheduledTime || undefined,
     };
@@ -96,6 +122,14 @@ export default function NotificationsPage() {
       },
       onError: (error) => toast.error(extractApiError(error, "Failed to send notification")),
     });
+  };
+
+  const toggleChannel = (value: string) => {
+    const current = form.getValues("channels") ?? [];
+    const next = current.includes(value)
+      ? current.filter((item) => item !== value)
+      : [...current, value];
+    form.setValue("channels", next, { shouldDirty: true, shouldValidate: true });
   };
 
   const rowsWithDate = useMemo(
@@ -114,6 +148,22 @@ export default function NotificationsPage() {
       successMessage: "Notification details copied",
     });
   };
+  const handleEnableBrowserPush = async () => {
+    try {
+      const enabled = await initializeAdminPushNotifications();
+      if (enabled) {
+        toast.success("Browser push enabled");
+        return;
+      }
+      if ("Notification" in window && Notification.permission === "denied") {
+        toast.error("Browser notification permission is blocked. Enable it from Chrome site settings.");
+        return;
+      }
+      toast.error("Browser push could not be enabled. Check Firebase config and browser support.");
+    } catch (error) {
+      toast.error(extractApiError(error, "Failed to enable browser push"));
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -122,13 +172,22 @@ export default function NotificationsPage() {
           <h2 className="text-lg font-semibold text-[var(--color-text)]">Notification Management</h2>
           <p className="text-sm text-[var(--color-muted)]">Send campaigns, monitor status, and retry failures</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setSendModalOpen(true)}
-          className="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white"
-        >
-          Send Notification
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleEnableBrowserPush}
+            className="rounded border border-[var(--color-border)] px-3 py-2 text-sm font-medium text-[var(--color-text)]"
+          >
+            Enable Browser Push
+          </button>
+          <button
+            type="button"
+            onClick={() => setSendModalOpen(true)}
+            className="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white"
+          >
+            Send Notification
+          </button>
+        </div>
       </div>
 
       <NotificationStatsCards stats={stats} />
@@ -311,17 +370,24 @@ export default function NotificationsPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-[var(--color-muted)]">Channel</label>
-            <select
-              className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-              value={form.watch("channels")?.[0] ?? "IN_APP"}
-              onChange={(event) => form.setValue("channels", [event.target.value], { shouldValidate: true })}
-            >
-              <option value="IN_APP">In App</option>
-              <option value="PUSH">Push</option>
-              <option value="EMAIL">Email</option>
-              <option value="SMS">SMS</option>
-            </select>
+            <label className="mb-1 block text-xs text-[var(--color-muted)]">Channels</label>
+            <div className="grid grid-cols-2 gap-2 rounded border border-[var(--color-border)] p-2">
+              {channelOptions.map((option) => {
+                const checked = (form.watch("channels") ?? []).includes(option.value);
+                return (
+                  <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm text-[var(--color-text)]">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleChannel(option.value)}
+                      className="h-4 w-4 accent-blue-600"
+                    />
+                    {option.label}
+                  </label>
+                );
+              })}
+            </div>
+            {form.formState.errors.channels ? <p className="mt-1 text-xs text-rose-300">{form.formState.errors.channels.message}</p> : null}
           </div>
 
           <div>
@@ -332,6 +398,48 @@ export default function NotificationsPage() {
               <option value="ADMIN">Admin</option>
               <option value="ALL_USERS">All Users</option>
             </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--color-muted)]">User IDs (optional)</label>
+            <input
+              placeholder="101, 102"
+              className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
+              {...form.register("userIds")}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--color-muted)]">Reference Type (optional)</label>
+            <select className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" {...form.register("referenceType")}>
+              <option value="">None</option>
+              <option value="BOOKING">Booking</option>
+              <option value="PAYMENT">Payment</option>
+              <option value="SUBSCRIPTION">Subscription</option>
+              <option value="PROMOTION">Promotion</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--color-muted)]">Reference ID (optional)</label>
+            <input className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" {...form.register("referenceId")} />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--color-muted)]">Redirect Type (optional)</label>
+            <select className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" {...form.register("redirectType")}>
+              <option value="">None</option>
+              <option value="BOOKING">Booking</option>
+              <option value="PAYMENT">Payment</option>
+              <option value="SUBSCRIPTION">Subscription</option>
+              <option value="PROMOTION">Promotion</option>
+              <option value="NOTIFICATIONS">Notifications</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-[var(--color-muted)]">Redirect Value (optional)</label>
+            <input placeholder="123 or OFFER20" className="w-full rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm" {...form.register("redirectValue")} />
           </div>
 
           <div>
@@ -384,6 +492,9 @@ export default function NotificationsPage() {
               <p><strong>Type:</strong> {detailsQuery.data.notificationType || "-"}</p>
               <p><strong>Channel:</strong> {detailsQuery.data.channelType || "-"}</p>
               <p><strong>Status:</strong> <NotificationStatusBadge status={detailsQuery.data.status} /></p>
+              {detailsQuery.data.failureReason ? (
+                <p><strong>Failure Reason:</strong> {detailsQuery.data.failureReason}</p>
+              ) : null}
               <p><strong>Created:</strong> {detailsQuery.data.createdAt || "-"}</p>
               <p><strong>Message:</strong> {detailsQuery.data.message || "-"}</p>
             </div>

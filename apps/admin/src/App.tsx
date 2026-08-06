@@ -1,12 +1,15 @@
-﻿import type { ReactElement } from "react";
+import type { ReactElement } from "react";
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 
+import { ErrorFeedbackProvider } from "./components/admin";
 import { AdminLoginScreen } from "./features/auth";
 import AdminLayout from "./layouts/AdminLayout";
 import { adminRoutes } from "./navigation/adminRoutes";
 import { renderRouteConfig } from "./navigation/routeUtils";
+import { initializeAdminPushNotifications } from "./services/adminPushNotifications";
 import { hasAdminSession } from "./utils/authSession";
 
 function NotFound() {
@@ -26,7 +29,15 @@ const queryClient = new QueryClient({
   },
 });
 
+function AdminPushBootstrap() {
+  useEffect(() => {
+    void initializeAdminPushNotifications({ interactive: false }).catch(() => {
+      // Push setup should never block the admin shell.
+    });
+  }, []);
 
+  return null;
+}
 
 function RequireAdminAuth({ children }: { children: ReactElement }) {
   const location = useLocation();
@@ -35,7 +46,12 @@ function RequireAdminAuth({ children }: { children: ReactElement }) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  return children;
+  return (
+    <>
+      <AdminPushBootstrap />
+      {children}
+    </>
+  );
 }
 
 function PublicAuthRoute({ children }: { children: ReactElement }) {
@@ -49,9 +65,10 @@ function PublicAuthRoute({ children }: { children: ReactElement }) {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Toaster position="top-right" />
-        <Routes>
+      <ErrorFeedbackProvider>
+        <BrowserRouter>
+          <Toaster position="top-right" />
+          <Routes>
           <Route
             path="/login"
             element={
@@ -79,9 +96,9 @@ export default function App() {
             {renderRouteConfig(adminRoutes)}
             <Route path="*" element={<NotFound />} />
           </Route>
-        </Routes>
-      </BrowserRouter>
+          </Routes>
+        </BrowserRouter>
+      </ErrorFeedbackProvider>
     </QueryClientProvider>
   );
 }
-

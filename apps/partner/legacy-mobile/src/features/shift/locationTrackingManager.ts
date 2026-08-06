@@ -7,6 +7,7 @@ import { enqueueLocation, flushLocationQueue } from "./locationQueue";
 import { ensureLocationPermissions } from "./locationPermissionManager";
 import { sendPartnerLocationApi } from "./shiftApi";
 import type { LocationPayload } from "./types";
+import { logLocationFailure } from "../../services/crashlyticsService";
 
 type TrackingCondition = {
   shiftStarted: boolean;
@@ -20,6 +21,21 @@ let netUnsub: (() => void) | null = null;
 let currentCondition: TrackingCondition = { shiftStarted: false, online: false, locationEnabled: false };
 let lastSentAt = 0;
 let onLocationSent: ((timestamp: number) => void) | null = null;
+let trackingConfig: {
+  foregroundIntervalMs: number;
+  backgroundIntervalMs: number;
+  minDistanceMeters: number;
+} = {
+  foregroundIntervalMs: SHIFT_TRACKING.minIntervalMs,
+  backgroundIntervalMs: 60_000,
+  minDistanceMeters: SHIFT_TRACKING.minDistanceMeters,
+};
+let currentAppState: AppStateStatus = AppState.currentState;
+let trackingContext: {
+  bookingId?: number;
+  customerLatitude?: number;
+  customerLongitude?: number;
+} = {};
 
 const shouldTrack = (condition: TrackingCondition) =>
   condition.shiftStarted && condition.online && condition.locationEnabled;
@@ -29,7 +45,8 @@ async function pushLocation(payload: LocationPayload) {
     await sendPartnerLocationApi(payload);
     await flushLocationQueue();
     onLocationSent?.(Date.now());
-  } catch {
+  } catch (error) {
+    await logLocationFailure(error, { source: "locationTrackingManager.pushLocation" });
     await enqueueLocation(payload);
   }
 }
@@ -71,23 +88,39 @@ async function startWatch() {
   watchId = Geolocation.watchPosition(
     (position) => {
       const now = Date.now();
-      if (now - lastSentAt < SHIFT_TRACKING.minIntervalMs) return;
+      const intervalMs = currentAppState === "active" ? trackingConfig.foregroundIntervalMs : trackingConfig.backgroundIntervalMs;
+      if (now - lastSentAt < intervalMs) return;
       lastSentAt = now;
       const payload: LocationPayload = {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
         accuracy: position.coords.accuracy,
+        accuracyMeters: position.coords.accuracy,
+        speedKmh:
+          typeof position.coords.speed === "number" && position.coords.speed >= 0
+            ? position.coords.speed * 3.6
+            : undefined,
+        headingDegrees:
+          typeof position.coords.heading === "number" && position.coords.heading >= 0
+            ? position.coords.heading
+            : undefined,
+        mockLocation: Boolean((position as any)?.mocked ?? (position.coords as any)?.mocked),
+        rootedDevice: false,
+        gpsEnabled: true,
+        trackingState: currentCondition.online ? "AVAILABLE" : "OFFLINE",
+        ...trackingContext,
         capturedAt: now,
       };
       pushLocation(payload).catch(() => null);
     },
     async () => {
       // no-op, queued retries will handle transient failures
+      await logLocationFailure(new Error("watch_position_failed"), { source: "locationTrackingManager.watchPosition" });
     },
     {
       enableHighAccuracy: true,
-      distanceFilter: SHIFT_TRACKING.minDistanceMeters,
-      interval: SHIFT_TRACKING.minIntervalMs,
+      distanceFilter: trackingConfig.minDistanceMeters,
+      interval: trackingConfig.foregroundIntervalMs,
       fastestInterval: 15_000,
       showsBackgroundLocationIndicator: true,
       useSignificantChanges: false,
@@ -99,6 +132,7 @@ async function startWatch() {
 function ensureLifecycleHandlers() {
   if (!appStateSub) {
     appStateSub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      currentAppState = state;
       if (!shouldTrack(currentCondition) || state === "active") return;
       // Keep watch active in background-capable mode; immediate flush when app returns.
     });
@@ -141,4 +175,27 @@ export function isTrackingActive() {
 
 export function setLocationSentHandler(handler: ((timestamp: number) => void) | null) {
   onLocationSent = handler;
+}
+
+export function setTrackingContext(context: {
+  bookingId?: number;
+  customerLatitude?: number;
+  customerLongitude?: number;
+}) {
+  trackingContext = context;
+}
+
+export function setTrackingConfig(config: {
+  foregroundTrackingIntervalSeconds?: number;
+  backgroundTrackingIntervalSeconds?: number;
+  minDistanceMeters?: number;
+}) {
+  const foreground = Number(config.foregroundTrackingIntervalSeconds);
+  const background = Number(config.backgroundTrackingIntervalSeconds);
+  const distance = Number(config.minDistanceMeters);
+  trackingConfig = {
+    foregroundIntervalMs: Number.isFinite(foreground) && foreground > 0 ? foreground * 1000 : trackingConfig.foregroundIntervalMs,
+    backgroundIntervalMs: Number.isFinite(background) && background > 0 ? background * 1000 : trackingConfig.backgroundIntervalMs,
+    minDistanceMeters: Number.isFinite(distance) && distance > 0 ? distance : trackingConfig.minDistanceMeters,
+  };
 }

@@ -4,13 +4,12 @@ import toast from "react-hot-toast";
 import { DataState } from "@/components/admin";
 import { extractApiError } from "@/utils/apiError";
 import { BannerForm, defaultBannerFormValues } from "../components/BannerForm";
-import { useBannerCategories, useBannerServices, useCreateBanner } from "../hooks/useBanners";
+import { useBannerCategories, useCreateBanner } from "../hooks/useBanners";
 import type { BannerFormValues } from "../types/banner.types";
 
 export default function BannerCreatePage() {
   const navigate = useNavigate();
   const categoriesQuery = useBannerCategories();
-  const servicesQuery = useBannerServices();
   const createMutation = useCreateBanner();
 
   const handleSubmit = (values: BannerFormValues) => {
@@ -36,20 +35,19 @@ export default function BannerCreatePage() {
 
       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
         <DataState
-          isLoading={categoriesQuery.isLoading || servicesQuery.isLoading}
-          isError={categoriesQuery.isError || servicesQuery.isError}
+          isLoading={categoriesQuery.isLoading}
+          isError={categoriesQuery.isError}
           isEmpty={false}
           loadingText="Loading banner form data..."
-          errorText="Unable to load categories/services"
+          errorText="Unable to load categories"
           emptyText=""
           onRetry={() => {
-            void Promise.all([categoriesQuery.refetch(), servicesQuery.refetch()]);
+            void categoriesQuery.refetch();
           }}
         >
           <BannerForm
             defaultValues={defaultBannerFormValues}
             categories={categoriesQuery.data ?? []}
-            services={servicesQuery.data ?? []}
             isSubmitting={createMutation.isPending}
             onSubmit={handleSubmit}
           />

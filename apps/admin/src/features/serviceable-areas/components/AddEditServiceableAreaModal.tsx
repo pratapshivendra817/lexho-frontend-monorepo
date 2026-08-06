@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, type ReactNode } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 
 import { MapboxPolygonEditor, ModalFormLayout, PolygonPreview } from "@/components/admin";
@@ -12,9 +12,9 @@ const schema = z.object({
   pincode: z.string().regex(/^\d{6}$/, "Pincode must be exactly 6 digits"),
   city: z.string().min(2, "City is required"),
   state: z.string().min(2, "State is required"),
-  cityId: z.string().optional(),
-  zoneId: z.string().optional(),
-  polygonJson: z.string().optional(),
+  cityId: z.string(),
+  zoneId: z.string(),
+  polygonJson: z.string(),
   active: z.boolean(),
 });
 
@@ -36,10 +36,7 @@ type AddEditServiceableAreaModalProps = {
   editingItem: ServiceableAreaItem | null;
   isSubmitting: boolean;
   duplicateCheck: (values: ServiceableAreaFormValues, id?: string) => boolean;
-  cities?: any;
-  zones?: any;
   onClose: () => void;
-  onCityChange?: (cityId?: number) => void;
   onSubmit: (payload: CreateServiceableAreaPayload, id?: string) => void;
 };
 
@@ -48,10 +45,7 @@ export function AddEditServiceableAreaModal({
   editingItem,
   isSubmitting,
   duplicateCheck,
-  cities,
-  zones,
   onClose,
-  onCityChange,
   onSubmit,
 }: AddEditServiceableAreaModalProps) {
   const form = useForm<ServiceableAreaFormValues>({
@@ -77,30 +71,7 @@ export function AddEditServiceableAreaModal({
     });
   }, [editingItem, form]);
 
-  useEffect(() => {
-    const subscription = form.watch((values, info) => {
-      if (info.name === "cityId") {
-        const value = Number(values.cityId ?? "");
-        onCityChange?.(Number.isFinite(value) && value > 0 ? value : undefined);
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, [form, onCityChange]);
-
-  const cityOptions = Array.isArray(cities?.data)
-    ? cities.data
-    : Array.isArray(cities?.items)
-      ? cities.items
-      : Array.isArray(cities)
-        ? cities
-        : [];
-  const zoneOptions = Array.isArray(zones?.data)
-    ? zones.data
-    : Array.isArray(zones?.items)
-      ? zones.items
-      : Array.isArray(zones)
-        ? zones
-        : [];
+  const polygonJsonValue = useWatch({ control: form.control, name: "polygonJson" });
 
   const submit = (values: ServiceableAreaFormValues) => {
     if (duplicateCheck(values, editingItem?.id)) {
@@ -108,15 +79,21 @@ export function AddEditServiceableAreaModal({
       return;
     }
 
+    const cityId = Number(values.cityId);
+    const zoneId = Number(values.zoneId);
+    const normalizedCityId = Number.isFinite(cityId) && cityId > 0 ? cityId : null;
+    const normalizedZoneId = Number.isFinite(zoneId) && zoneId > 0 ? zoneId : null;
+    const polygonJson = values.polygonJson.trim();
+
     onSubmit(
       {
         name: values.name.trim(),
         pincode: values.pincode.trim(),
         city: values.city.trim(),
         state: values.state.trim(),
-        cityId: Number.isFinite(Number(values.cityId ?? "")) && Number(values.cityId ?? "") > 0 ? Number(values.cityId) : undefined,
-        zoneId: Number.isFinite(Number(values.zoneId ?? "")) && Number(values.zoneId ?? "") > 0 ? Number(values.zoneId) : undefined,
-        polygonJson: values.polygonJson?.trim() ? values.polygonJson.trim() : undefined,
+        cityId: normalizedCityId,
+        zoneId: normalizedZoneId,
+        polygonJson: polygonJson || null,
         active: values.active,
       },
       editingItem?.id,
@@ -154,36 +131,45 @@ export function AddEditServiceableAreaModal({
           <Field label="State" error={form.formState.errors.state?.message}>
             <input {...form.register("state")} className={inputClass} />
           </Field>
-          <Field label="City (Geo)" error={form.formState.errors.cityId?.message}>
-            <select {...form.register("cityId")} className={inputClass}>
-              <option value="">Select city</option>
-              {cityOptions.map((item: any) => (
-                <option key={String(item?.id ?? item?.cityId ?? item?.name)} value={String(item?.id ?? item?.cityId ?? "")}>
-                  {String(item?.name ?? item?.cityName ?? "City")}
-                </option>
-              ))}
-            </select>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="City ID" error={form.formState.errors.cityId?.message}>
+            <input {...form.register("cityId")} inputMode="numeric" placeholder="Optional" className={inputClass} />
           </Field>
-          <Field label="Zone (Geo)" error={form.formState.errors.zoneId?.message}>
-            <select {...form.register("zoneId")} className={inputClass}>
-              <option value="">Select zone</option>
-              {zoneOptions.map((item: any) => (
-                <option key={String(item?.id ?? item?.zoneId ?? item?.name)} value={String(item?.id ?? item?.zoneId ?? "")}>
-                  {String(item?.name ?? item?.zoneName ?? "Zone")}
-                </option>
-              ))}
-            </select>
+          <Field label="Zone ID" error={form.formState.errors.zoneId?.message}>
+            <input {...form.register("zoneId")} inputMode="numeric" placeholder="Optional" className={inputClass} />
           </Field>
         </div>
-        <Field label="Polygon JSON (optional)" error={form.formState.errors.polygonJson?.message}>
-          <textarea {...form.register("polygonJson")} rows={3} className={inputClass} />
+
+        <Field label="Serviceable Area Polygon" error={form.formState.errors.polygonJson?.message}>
+          <Controller
+            control={form.control}
+            name="polygonJson"
+            render={({ field }) => (
+              <MapboxPolygonEditor
+                value={field.value}
+                onChange={field.onChange}
+                onSave={(nextPolygonJson) => {
+                  form.setValue("polygonJson", nextPolygonJson, { shouldDirty: true, shouldValidate: true });
+                  submit({ ...form.getValues(), polygonJson: nextPolygonJson });
+                }}
+                autoSaveOnChange={Boolean(editingItem?.id)}
+                isSaving={isSubmitting}
+                saveLabel={editingItem ? "Update Area Polygon" : "Create Area Polygon"}
+                height={260}
+              />
+            )}
+          />
+          <textarea
+            value={polygonJsonValue}
+            onChange={(event) => form.setValue("polygonJson", event.target.value, { shouldDirty: true, shouldValidate: true })}
+            rows={4}
+            placeholder='Polygon JSON: {"type":"Polygon","coordinates":[...]}'
+            className={inputClass}
+          />
+          <PolygonPreview polygonJson={polygonJsonValue} height={160} />
         </Field>
-        <MapboxPolygonEditor
-          value={form.watch("polygonJson")}
-          onChange={(nextPolygonJson) => form.setValue("polygonJson", nextPolygonJson, { shouldDirty: true })}
-          height={220}
-        />
-        <PolygonPreview polygonJson={form.watch("polygonJson")} height={180} />
 
         <label className="inline-flex items-center gap-2 text-sm text-[var(--color-text)]">
           <input type="checkbox" {...form.register("active")} />

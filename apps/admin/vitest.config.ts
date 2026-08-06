@@ -21,5 +21,11 @@ export default defineConfig({
     globals: true,
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     css: true,
+
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html", "lcov", "json", "clover"],
+      reportsDirectory: "./coverage",
+    },
   },
 });

@@ -31,45 +31,34 @@ export async function getNotifications(params?: { userId?: number; page?: number
     userId > 0
       ? { page, size, userId, customerId: userId, targetUserType: "CUSTOMER", appType: "CUSTOMER" }
       : { page, size };
-  const endpoints = ["/api/notifications"];
-  for (const endpoint of endpoints) {
+  const endpoints = [
+    { endpoint: "/api/customer/notifications", params: { page, size } },
+    { endpoint: "/api/notifications", params: queryParams },
+  ];
+  for (const { endpoint, params: endpointParams } of endpoints) {
     try {
-      const { data } = await api.get(endpoint, { params: queryParams });
+      const { data } = await api.get(endpoint, { params: endpointParams });
       const rows = extractNotificationRows(data);
-      if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.log("[notifications:list:probe]", {
-          endpoint,
-          rows: rows.length,
-          hasData: Boolean(data),
-          topKeys: data && typeof data === "object" ? Object.keys(data).slice(0, 10) : [],
-          dataKeys: data?.data && typeof data.data === "object" ? Object.keys(data.data).slice(0, 10) : [],
-        });
-      }
       if (rows.length > 0) return rows;
     } catch {
       // try next endpoint
     }
   }
   try {
-    const { data } = await api.get("/api/notifications", { params: queryParams });
-    const rows = extractNotificationRows(data);
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log("[notifications:list:fallback]", {
-        endpoint: "/api/notifications",
-        rows: rows.length,
-        hasData: Boolean(data),
-        topKeys: data && typeof data === "object" ? Object.keys(data).slice(0, 10) : [],
-        dataKeys: data?.data && typeof data.data === "object" ? Object.keys(data.data).slice(0, 10) : [],
-      });
-    }
-    return rows;
+    const { data } = await api.get("/api/customer/notifications", { params: { page, size } });
+    return extractNotificationRows(data);
   } catch (error) {
     throw new Error(parseApiError(error, "Failed to load notifications"));
   }
 }
-export async function markNotificationRead(id: string) { try { const { data } = await api.put("/api/notifications/read", { id }); return data; } catch (error) { throw new Error(parseApiError(error, "Failed to mark read")); } }
+export async function markNotificationRead(id: string) {
+  try {
+    const { data } = await api.patch(`/api/customer/notifications/${encodeURIComponent(id)}/read`);
+    return data;
+  } catch (error) {
+    throw new Error(parseApiError(error, "Failed to mark read"));
+  }
+}
 
 export async function getUnreadNotificationCount() {
   try {
@@ -81,8 +70,10 @@ export async function getUnreadNotificationCount() {
 }
 
 export async function deleteNotification(id?: string) {
+  const cleanId = String(id ?? "").trim();
+  if (!cleanId) throw new Error("Notification id missing");
   try {
-    const { data } = await api.delete("/api/notifications/read", { data: { id } });
+    const { data } = await api.delete(`/api/customer/notifications/${encodeURIComponent(cleanId)}`);
     return data;
   } catch (error) {
     throw new Error(parseApiError(error, "Failed to delete notification"));

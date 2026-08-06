@@ -1,5 +1,6 @@
 import { api } from "@/api/axios";
 import { appConfig } from "@/config";
+import { getCategories, getServices } from "@/services/lexhoAdminApi";
 
 import type {
   BannerCategoryOption,
@@ -11,10 +12,50 @@ import type {
 } from "../types/banner.types";
 
 type UnknownRecord = Record<string, unknown>;
-const BANNER_MANAGEMENT_BASE = "/api/admin/home/banners";
+const BANNER_MANAGEMENT_BASE = "/api/admin/banners";
 
 const asRecord = (value: unknown): UnknownRecord =>
   value && typeof value === "object" ? (value as UnknownRecord) : {};
+
+const getApiOrigin = (): string => {
+  const base = String(appConfig.apiBaseUrl ?? "").trim();
+  if (!base) return "";
+  if (base.startsWith("/")) {
+    if (typeof window !== "undefined" && window.location?.origin) {
+      return window.location.origin;
+    }
+    return "";
+  }
+  try {
+    return new URL(base).origin;
+  } catch {
+    return "";
+  }
+};
+
+const toAbsoluteAssetUrl = (value: unknown): string => {
+  const raw = asString(value);
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) {
+    const origin = getApiOrigin();
+    try {
+      const parsed = new URL(raw);
+      if ((parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") && origin) {
+        const target = new URL(origin);
+        parsed.protocol = target.protocol;
+        parsed.host = target.host;
+        return parsed.toString();
+      }
+    } catch {
+      return raw;
+    }
+    return raw;
+  }
+  const origin = getApiOrigin();
+  if (!origin) return raw.startsWith("/") ? raw : `/${raw}`;
+  const path = raw.startsWith("/") ? raw : `/${raw}`;
+  return `${origin}${path}`;
+};
 
 const asString = (value: unknown): string => {
   if (typeof value === "string") return value.trim();
@@ -45,7 +86,20 @@ const asBoolean = (value: unknown, fallback = false): boolean => {
 const extractRows = (data: unknown): UnknownRecord[] => {
   if (Array.isArray(data)) return data as UnknownRecord[];
   const root = asRecord(data);
-  const candidates = [root.data, root.content, root.items, root.results, asRecord(root.data).items];
+  const nestedData = asRecord(root.data);
+  const candidates = [
+    root.data,
+    root.content,
+    root.items,
+    root.results,
+    root.rows,
+    nestedData.items,
+    nestedData.content,
+    nestedData.results,
+    nestedData.rows,
+    asRecord(nestedData.data).items,
+    asRecord(nestedData.data).content,
+  ];
   for (const candidate of candidates) {
     if (Array.isArray(candidate)) return candidate as UnknownRecord[];
   }
@@ -61,7 +115,7 @@ const mapBanner = (row: UnknownRecord): BannerItem => {
     title: asString(row.title),
     categoryId: asString(row.categoryId ?? category.id) || null,
     categoryName: asString(row.categoryName ?? category.name),
-    imageUrl: asString(row.imageUrl ?? row.bannerImageUrl ?? row.thumbnailUrl),
+    imageUrl: toAbsoluteAssetUrl(row.imageUrl ?? row.bannerImageUrl ?? row.thumbnailUrl),
     redirectType: (asString(row.redirectType).toUpperCase() || "CATEGORY") as BannerItem["redirectType"],
     redirectValue: asString(row.redirectValue ?? row.redirectId ?? row.redirectUrl),
     status: active ? "ACTIVE" : "INACTIVE",
@@ -114,30 +168,32 @@ const parseUploadUrl = (payload: unknown): string => {
   for (const value of candidates) {
     const url = asString(value);
     if (!url) continue;
-    if (url.startsWith("http://") || url.startsWith("https://")) return url;
-    if (url.startsWith("/")) return `${appConfig.apiBaseUrl}${url}`;
-    return `${appConfig.apiBaseUrl}/${url}`;
+    return toAbsoluteAssetUrl(url);
   }
 
   throw new Error("Image upload succeeded but response URL is missing");
 };
 
 export async function getBannerCategories(): Promise<BannerCategoryOption[]> {
-  const { data } = await api.get("/api/admin/categories", { params: { page: 1, limit: 200 } });
-  const rows = extractRows(data);
-  return rows.map((row) => ({
-    id: asString(row.id ?? row.categoryId),
-    name: asString(row.name ?? row.categoryName),
-  }));
+  const response = await getCategories({ page: 1, limit: 500 });
+  return (response.items ?? [])
+    .filter((item) => Boolean(item.active))
+    .map((item) => ({
+      id: asString(item.id),
+      name: asString(item.name),
+    }))
+    .filter((item) => item.id && item.name);
 }
 
 export async function getBannerServices(): Promise<BannerServiceOption[]> {
-  const { data } = await api.get("/api/admin/services", { params: { page: 0, size: 200 } });
-  const rows = extractRows(data);
-  return rows.map((row) => ({
-    id: asString(row.id ?? row.serviceId),
-    name: asString(row.name ?? row.serviceName ?? row.title),
-  }));
+  const response = await getServices({ page: 1, limit: 500 });
+  return (response.items ?? [])
+    .filter((item) => Boolean(item.active))
+    .map((item) => ({
+      id: asString(item.id),
+      name: asString(item.name),
+    }))
+    .filter((item) => item.id && item.name);
 }
 
 export async function getAdminBanners(params: BannerListParams): Promise<BannerListResponse> {
@@ -188,11 +244,9 @@ export async function reorderAdminBanners(idsInPriorityOrder: string[]) {
 
 export async function uploadBannerImage(file: File): Promise<string> {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", file, file.name);
 
-  const { data } = await api.post("/api/admin/banners/upload/image", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  const { data } = await api.post("/api/admin/banners/upload/image", formData);
 
   return parseUploadUrl(data);
 }

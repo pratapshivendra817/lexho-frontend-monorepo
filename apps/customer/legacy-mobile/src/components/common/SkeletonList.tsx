@@ -1,6 +1,9 @@
 import { useEffect, useRef } from "react";
 import { Animated, StyleSheet, View } from "react-native";
 
+
+import { COLORS } from '../../theme/colors';
+
 export function SkeletonList({ rows = 4 }: { rows?: number }) {
   const pulse = useRef(new Animated.Value(0.35)).current;
 
@@ -26,5 +29,8 @@ export function SkeletonList({ rows = 4 }: { rows?: number }) {
 
 const styles = StyleSheet.create({
   wrap: { gap: 10 },
-  row: { height: 52, borderRadius: 14, backgroundColor: "#EAEFF7" },
+  row: { height: 52, borderRadius: 14, backgroundColor: COLORS.offWhite },
 });
+
+
+

@@ -9,9 +9,11 @@ const mockUseQuery = jest.fn();
 const mockUseMutation = jest.fn();
 const mockUseAppSelector = jest.fn();
 const mockDispatch = jest.fn();
-const mockInitiatePayment = jest.fn();
+const mockCreatePaymentOrder = jest.fn();
+const mockVerifyPayment = jest.fn();
 const mockOpenRazorpayCheckout = jest.fn();
 const mockGetPaymentStatus = jest.fn();
+const mockGetBookingDetails = jest.fn();
 
 jest.mock("react-native-vector-icons/MaterialCommunityIcons", () => {
   return function MockIcon() {
@@ -31,7 +33,8 @@ jest.mock("../src/redux/hooks", () => ({
 
 jest.mock("../src/api/paymentApi", () => ({
   getPaymentOptions: jest.fn(),
-  initiatePayment: (...args: any[]) => mockInitiatePayment(...args),
+  createPaymentOrder: (...args: any[]) => mockCreatePaymentOrder(...args),
+  verifyPayment: (...args: any[]) => mockVerifyPayment(...args),
 }));
 
 jest.mock("../src/services/paymentService", () => ({
@@ -41,6 +44,11 @@ jest.mock("../src/services/paymentService", () => ({
 jest.mock("../src/api/paymentExtrasApi", () => ({
   getPaymentStatus: (...args: any[]) => mockGetPaymentStatus(...args),
   refundPayment: jest.fn(),
+  retryPayment: jest.fn((bookingId: string) => Promise.resolve({ data: { bookingId } })),
+}));
+
+jest.mock("../src/api/bookingExtrasApi", () => ({
+  getBookingDetails: (...args: any[]) => mockGetBookingDetails(...args),
 }));
 
 describe("Critical booking paths", () => {
@@ -62,17 +70,19 @@ describe("Critical booking paths", () => {
       error: null,
     });
 
-    mockInitiatePayment.mockResolvedValue({
-      data: {
-        razorpayOptions: {
-          amount: 1200,
-          currency: "INR",
-          name: "Lexho",
-          description: "Service payment",
-        },
-      },
+    mockCreatePaymentOrder.mockResolvedValue({
+      keyId: "rzp_test_key",
+      razorpayOrderId: "order_123",
+      amountInPaise: 120000,
+      currency: "INR",
     });
-    mockOpenRazorpayCheckout.mockResolvedValue({ success: true });
+    mockOpenRazorpayCheckout.mockResolvedValue({
+      success: true,
+      orderId: "order_123",
+      paymentId: "pay_123",
+      signature: "sig_123",
+    });
+    mockVerifyPayment.mockResolvedValue({ data: { status: "SUCCESS" } });
 
     mockUseMutation.mockImplementation(({ mutationFn, onSuccess, onError }: any) => ({
       isPending: false,
@@ -95,28 +105,34 @@ describe("Critical booking paths", () => {
 
     const pressables = tree.root.findAll((node: any) => typeof node.props?.onPress === "function");
     await ReactTestRenderer.act(async () => {
-      pressables[0]?.props.onPress?.();
-    });
-    const updatedPressables = tree.root.findAll((node: any) => typeof node.props?.onPress === "function");
-    await ReactTestRenderer.act(async () => {
-      updatedPressables[updatedPressables.length - 1]?.props.onPress?.();
+      pressables[pressables.length - 1]?.props.onPress?.();
     });
 
-    expect(mockInitiatePayment).toHaveBeenCalled();
+    expect(mockCreatePaymentOrder).toHaveBeenCalledWith({ bookingId: "BKG123" }, expect.stringMatching(/^booking-BKG123-/));
     expect(mockOpenRazorpayCheckout).toHaveBeenCalled();
-    expect(navigation.replace).toHaveBeenCalledWith("BookingPaymentConfirm", { bookingId: "BKG123" });
+    expect(mockVerifyPayment).toHaveBeenCalledWith({
+      razorpayOrderId: "order_123",
+      razorpayPaymentId: "pay_123",
+      razorpaySignature: "sig_123",
+    });
+    expect(navigation.replace).toHaveBeenCalledWith("BookingPaymentConfirm", {
+      bookingId: "BKG123",
+      bookingMode: undefined,
+    });
   });
 
   it("Scheduled + payment failed -> retry CTA visible and navigates to Payment", async () => {
-    mockUseMutation
-      .mockImplementationOnce(({ onSuccess }: any) => ({
-        isPending: false,
-        mutate: () => onSuccess?.({ data: { status: "FAILED" } }),
-      }))
-      .mockImplementationOnce(() => ({
-        isPending: false,
-        mutate: jest.fn(),
-      }));
+    mockUseMutation.mockImplementation(({ mutationFn, onSuccess }: any) => ({
+      isPending: false,
+      mutate: async () => {
+        const result = await mutationFn();
+        onSuccess?.(result);
+      },
+    }));
+    mockGetBookingDetails.mockResolvedValue({
+      paymentStatus: "FAILED",
+      retryPaymentAllowed: true,
+    });
 
     const navigation = { navigate: jest.fn() };
     const route = { params: { bookingId: "BKG_FAIL_1" } };
@@ -125,10 +141,12 @@ describe("Critical booking paths", () => {
     await ReactTestRenderer.act(async () => {
       tree = ReactTestRenderer.create(<PaymentStatusScreen navigation={navigation} route={route} />);
     });
-    const allTapTargets = tree.root.findAll((node: any) => typeof node.props?.onPress === "function");
+    const checkStatusButton = tree.root.find(
+      (node: any) => node.props?.mode === "contained" && typeof node.props?.onPress === "function",
+    );
 
     await ReactTestRenderer.act(async () => {
-      allTapTargets[0]?.props.onPress?.();
+      checkStatusButton?.props.onPress?.();
     });
 
     const retryButton = tree.root.findAllByType(Text).find((node: any) => {
@@ -151,22 +169,22 @@ describe("Critical booking paths", () => {
     const searchTarget = resolveLifecycleTarget({
       id: "BKG1",
       bookingType: "INSTANT",
-      assignmentStatus: "SEARCHING_PARTNER",
+      meta: { trackingScreen: "INSTANT_STATUS" },
     } as any);
     const assignedTarget = resolveLifecycleTarget({
       id: "BKG1",
       bookingType: "INSTANT",
-      assignmentStatus: "PARTNER_ASSIGNED",
+      meta: { trackingScreen: "LIVE_TRACKING" },
     } as any);
     const progressTarget = resolveLifecycleTarget({
       id: "BKG1",
       bookingType: "INSTANT",
-      assignmentStatus: "IN_PROGRESS",
+      meta: { trackingScreen: "SERVICE_STARTED" },
     } as any);
     const completeTarget = resolveLifecycleTarget({
       id: "BKG1",
       bookingType: "INSTANT",
-      assignmentStatus: "COMPLETED",
+      meta: { trackingScreen: "SERVICE_COMPLETED" },
     } as any);
 
     expect(searchTarget.name).toBe("InstantBookingStatus");

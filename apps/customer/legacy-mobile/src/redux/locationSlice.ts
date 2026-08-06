@@ -35,6 +35,10 @@ type Address = {
 type Coordinates = {
   latitude: number;
   longitude: number;
+  accuracy?: number;
+  timestamp?: number;
+  confidence?: "HIGH" | "MEDIUM" | "LOW";
+  mocked?: boolean;
 };
 
 type LocationState = {
@@ -59,6 +63,24 @@ const initialState: LocationState = {
   error: null,
 };
 
+function areLocationsNearlySame(a: Coordinates | null, b: Coordinates | null): boolean {
+  if (!a || !b) return false;
+  const latDiff = Math.abs(Number(a.latitude ?? 0) - Number(b.latitude ?? 0));
+  const lngDiff = Math.abs(Number(a.longitude ?? 0) - Number(b.longitude ?? 0));
+  return latDiff < 0.0001 && lngDiff < 0.0001;
+}
+
+function areAddressesNearlySame(a: Address | null, b: Address | null): boolean {
+  if (!a || !b) return false;
+  const lineA = String(a.addressLine ?? "").trim().toLowerCase();
+  const lineB = String(b.addressLine ?? "").trim().toLowerCase();
+  const pinA = String(a.pincode ?? "").trim();
+  const pinB = String(b.pincode ?? "").trim();
+  const latDiff = Math.abs(Number(a.latitude ?? 0) - Number(b.latitude ?? 0));
+  const lngDiff = Math.abs(Number(a.longitude ?? 0) - Number(b.longitude ?? 0));
+  return lineA === lineB && pinA === pinB && latDiff < 0.0001 && lngDiff < 0.0001;
+}
+
 function hasValidAddressId(address: Address | null | undefined): boolean {
   return String(address?.id ?? "").trim().length > 0;
 }
@@ -69,7 +91,7 @@ function normalizeAddress(input: any): Address {
   return {
     id: String(rawId ?? "").trim(),
     label: asText(input?.label ?? input?.type ?? input?.customLabel ?? "OTHER").toUpperCase(),
-    addressLine: asText(input?.addressLine ?? input?.fullAddress ?? input?.area ?? input?.city ?? ""),
+    addressLine: asText(input?.formattedAddress ?? input?.addressLine ?? input?.fullAddress ?? input?.area ?? input?.city ?? ""),
     flatNo: asText(input?.flatNo),
     floor: asText(input?.floor),
     buildingName: asText(input?.buildingName),
@@ -272,10 +294,13 @@ const locationSlice = createSlice({
       void AsyncStorage.removeItem(LOCATION_CACHE_KEY);
     },
     setCurrentAddressLocal: (state, action: PayloadAction<Address>) => {
+      if (areAddressesNearlySame(state.currentAddress, action.payload)) return;
       state.currentAddress = action.payload;
       state.selectedAddress = action.payload;
+      void persistState({ currentAddress: state.currentAddress, savedAddresses: state.savedAddresses });
     },
     setCurrentLocationLocal: (state, action: PayloadAction<Coordinates>) => {
+      if (areLocationsNearlySame(state.currentLocation, action.payload)) return;
       state.currentLocation = action.payload;
     },
     setSelectedAddressLocal: (state, action: PayloadAction<Address | null>) => {
@@ -397,3 +422,5 @@ export const {
   setServiceAvailable,
 } = locationSlice.actions;
 export default locationSlice.reducer;
+
+

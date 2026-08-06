@@ -6,6 +6,9 @@ import { store } from "../redux/store";
 import { DEV_LOGIN_BYPASS } from "../constants/env";
 import { DEV_BYPASS_API_TOKEN } from "../constants/env";
 import type { BannerDto, BookingSummaryDto, CategoryDto, HomeDashboardResponse, ServiceDto } from "../types/contracts";
+import { cacheManager } from "../services/cacheManager";
+
+const HOME_REQUEST_TIMEOUT_MS = 6000;
 
 export async function getDashboard(): Promise<HomeDashboardResponse> { try { const { data } = await api.get("/api/home/dashboard"); return data as HomeDashboardResponse; } catch (error) { throw new Error(parseApiError(error, "Dashboard failed")); } }
 
@@ -15,12 +18,12 @@ function toAbsoluteUrl(url?: string) {
   const replaceLocalhostHost = (input: string) => {
     const overrideHost = DEV_IMAGE_HOST || "";
     if (/^https?:\/\/localhost/i.test(input) || /^https?:\/\/127\.0\.0\.1/i.test(input)) {
+      if (overrideHost) {
+        return input.replace("://localhost", `://${overrideHost}`).replace("://127.0.0.1", `://${overrideHost}`);
+      }
       if (Platform.OS === "android") {
         // Android emulator must use 10.0.2.2 for host machine loopback.
         return input.replace("://localhost", "://10.0.2.2").replace("://127.0.0.1", "://10.0.2.2");
-      }
-      if (overrideHost) {
-        return input.replace("://localhost", `://${overrideHost}`).replace("://127.0.0.1", `://${overrideHost}`);
       }
     }
     return input;
@@ -101,154 +104,201 @@ async function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function getGeoParams() {
+  const state = store.getState() as any;
+  const location = state?.location ?? {};
+  const current = location?.currentAddress ?? {};
+  const selected = location?.selectedAddress ?? {};
+  const latitude = Number(selected?.latitude ?? selected?.lat ?? current?.latitude ?? current?.lat ?? 0);
+  const longitude = Number(selected?.longitude ?? selected?.lng ?? current?.longitude ?? current?.lng ?? 0);
+  const pincode = String(selected?.pincode ?? current?.pincode ?? "").trim();
+  return {
+    ...(Number.isFinite(latitude) && latitude !== 0 ? { latitude } : {}),
+    ...(Number.isFinite(longitude) && longitude !== 0 ? { longitude } : {}),
+    ...(pincode ? { pincode } : {}),
+  };
+}
+
 export async function getBanners(): Promise<BannerDto[]> {
   try {
     const headers = await authHeaders();
-    let data: any;
-    try {
-      const response = await api.get("/api/banners", { headers, params: { page: 0, size: 20 } });
-      data = response.data;
-    } catch (error) {
-      // If endpoint is public and auth fails for any reason, fallback to public request.
-      const status = (error as any)?.response?.status;
-      if (status === 401 || status === 403) {
-        const response = await api.get("/api/banners", { params: { page: 0, size: 20 } });
+    let data: any = null;
+    const attempts = [
+      "/api/banners",
+      "/api/customer/banners",
+      "/api/customer/home/banners",
+      "/api/home/banners",
+    ];
+
+    for (const path of attempts) {
+      try {
+        const response = await api.get(path, {
+          headers,
+          params: { page: 0, size: 20, audience: "CUSTOMER", platformType: Platform.OS.toUpperCase() },
+        });
         data = response.data;
-      } else {
-        throw error;
+      } catch (error) {
+        const status = (error as any)?.response?.status;
+        if (status === 401 || status === 403) {
+          try {
+            const response = await api.get(path, {
+              params: { page: 0, size: 20, audience: "CUSTOMER", platformType: Platform.OS.toUpperCase() },
+            });
+            data = response.data;
+          } catch {
+            data = null;
+          }
+        }
+      }
+
+      const tentative = extractCollection<BannerDto>(data, ["banners", "items", "records", "rows", "content"]);
+      if (tentative.length > 0) {
+        break;
       }
     }
 
-    const items = extractCollection<BannerDto>(data, ["banners", "items", "records", "rows"]);
-    if (__DEV__ && items.length === 0) {
-      // eslint-disable-next-line no-console
-      console.log("[homeApi:getBanners:empty]", { topLevelKeys: data && typeof data === "object" ? Object.keys(data) : [] });
-    }
+    const items = extractCollection<BannerDto>(data, ["banners", "items", "records", "rows", "content"]);
     const mapped = items.map((item) => ({
       ...item,
-      imageUrl: toAbsoluteUrl((item as any)?.bannerImageUrl ?? item?.imageUrl),
-      bannerImageUrl: toAbsoluteUrl((item as any)?.bannerImageUrl ?? item?.imageUrl),
+      imageUrl: toAbsoluteUrl(
+        (item as any)?.bannerImageUrl ??
+        item?.imageUrl ??
+        (item as any)?.thumbnailUrl ??
+        (item as any)?.image ??
+        (item as any)?.url ??
+        (item as any)?.path,
+      ),
+      bannerImageUrl: toAbsoluteUrl(
+        (item as any)?.bannerImageUrl ??
+        item?.imageUrl ??
+        (item as any)?.thumbnailUrl ??
+        (item as any)?.image ??
+        (item as any)?.url ??
+        (item as any)?.path,
+      ),
     }));
-    if (__DEV__) {
-      const missingImageIds = mapped
-        .filter((item) => !(item?.bannerImageUrl ?? item?.imageUrl))
-        .map((item) => String(item?.bannerId ?? item?.id ?? ""))
-        .filter(Boolean);
-      if (missingImageIds.length > 0) {
-        // eslint-disable-next-line no-console
-        console.log("[homeApi:getBanners:missingImageUrl]", { missingImageIds });
-      }
-    }
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log("[homeApi:getBanners]", {
-        apiBaseUrl: API_BASE_URL,
-        devImageHost: DEV_IMAGE_HOST || null,
-        platform: Platform.OS,
-        tokenProvided: !!headers.Authorization,
-        count: mapped.length,
-        topLevelKeys: data && typeof data === "object" ? Object.keys(data) : [],
-        rawImageUrl: (items[0] as any)?.bannerImageUrl ?? items[0]?.imageUrl ?? null,
-        sample: mapped[0]
-          ? {
-              id: mapped[0].bannerId ?? mapped[0].id,
-              title: mapped[0].title,
-              imageUrl: mapped[0].bannerImageUrl ?? mapped[0].imageUrl,
-              status: mapped[0].status,
-              startDate: (mapped[0] as any).startDate,
-              endDate: (mapped[0] as any).endDate,
-              city: (mapped[0] as any).city,
-              platformType: (mapped[0] as any).platformType,
-            }
-          : null,
-      });
-    }
-    return mapped;
+    return [...mapped].sort((first: any, second: any) => {
+      const firstOrder = Number(first?.displayOrder ?? first?.priority ?? Number.MAX_SAFE_INTEGER);
+      const secondOrder = Number(second?.displayOrder ?? second?.priority ?? Number.MAX_SAFE_INTEGER);
+      if (firstOrder !== secondOrder) return firstOrder - secondOrder;
+      const firstName = String(first?.categoryName ?? first?.name ?? "");
+      const secondName = String(second?.categoryName ?? second?.name ?? "");
+      return firstName.localeCompare(secondName);
+    });
   } catch (error) {
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log("[homeApi:getBanners:error]", {
-        platform: Platform.OS,
-        message: parseApiError(error, "Banners failed"),
-      });
-    }
     throw new Error(parseApiError(error, "Banners failed"));
   }
 }
 
 export async function getCategories(): Promise<CategoryDto[]> {
+  const cacheKey = "service-categories";
   try {
     const headers = await authHeaders();
-    let data: any;
-    try {
-      const response = await api.get("/api/categories", { headers });
-      data = response.data;
-    } catch (error) {
-      const status = (error as any)?.response?.status;
-      if (status === 401 || status === 403) {
-        const response = await api.get("/api/categories");
-        data = response.data;
-      } else {
-        throw error;
+    let data: any = null;
+    const paths = [
+      "/api/categories",
+      "/api/customer/categories",
+      "/api/v1/categories",
+      "/api/v1/customer/categories",
+    ];
+    const geoParams = getGeoParams();
+    for (const path of paths) {
+      const attempts: Array<{ params?: Record<string, unknown>; withAuth: boolean }> = [
+        { params: Object.keys(geoParams).length > 0 ? geoParams : undefined, withAuth: true },
+        { params: undefined, withAuth: true },
+        { params: Object.keys(geoParams).length > 0 ? geoParams : undefined, withAuth: false },
+        { params: undefined, withAuth: false },
+      ];
+      for (const attempt of attempts) {
+        try {
+          const response = await api.get(path, {
+            headers: attempt.withAuth ? headers : undefined,
+            params: attempt.params,
+            timeout: HOME_REQUEST_TIMEOUT_MS,
+          });
+          const rows = extractCollection<CategoryDto>(response.data, ["categories", "items", "rows", "records"]);
+          if (!data) data = response.data;
+          if (rows.length === 0) continue;
+          data = response.data;
+          break;
+        } catch (error: any) {
+          const status = Number(error?.response?.status ?? 0);
+          if (status === 404 || status === 401 || status === 403) continue;
+          throw error;
+        }
+      }
+      const extractedRows = extractCollection<CategoryDto>(data, ["categories", "items", "rows", "records"]);
+      if (extractedRows.length > 0) {
+        break;
       }
     }
     const extracted = extractCollection<CategoryDto>(data, ["categories", "items", "rows", "records"]);
     const firstArray = findFirstObjectArray(data) as CategoryDto[];
     const dataObjectValues = objectValuesAsArray<CategoryDto>(data?.data);
     const items = extracted.length > 0 ? extracted : firstArray.length > 0 ? firstArray : dataObjectValues;
-    if (__DEV__ && items.length === 0) {
-      // eslint-disable-next-line no-console
-      console.log("[homeApi:getCategories:empty]", { topLevelKeys: data && typeof data === "object" ? Object.keys(data) : [] });
-    }
     const mapped = items.map((item) => ({
       ...item,
       categoryIcon: toAbsoluteUrl(item?.categoryIcon ?? (item as any)?.iconUrl ?? item?.icon),
       categoryImage: toAbsoluteUrl(item?.categoryImage ?? (item as any)?.iconUrl ?? item?.imageUrl),
       imageUrl: toAbsoluteUrl((item as any)?.iconUrl ?? item?.categoryImage ?? item?.imageUrl),
     }));
-    if (__DEV__) {
-      const missingImageIds = mapped
-        .filter((item) => !(item?.categoryImage ?? item?.categoryIcon ?? (item as any)?.imageUrl))
-        .map((item) => String(item?.categoryId ?? item?.id ?? ""))
-        .filter(Boolean);
-      if (missingImageIds.length > 0) {
-        // eslint-disable-next-line no-console
-        console.log("[homeApi:getCategories:missingImageUrl]", { missingImageIds });
-      }
-    }
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log("[homeApi:getCategories]", {
-        apiBaseUrl: API_BASE_URL,
-        devImageHost: DEV_IMAGE_HOST || null,
-        platform: Platform.OS,
-        tokenProvided: !!headers.Authorization,
-        count: mapped.length,
-        topLevelKeys: data && typeof data === "object" ? Object.keys(data) : [],
-        rawImageUrl: (items[0] as any)?.categoryImage ?? (items[0] as any)?.iconUrl ?? (items[0] as any)?.imageUrl ?? null,
-        sample: mapped[0]
-          ? {
-              id: mapped[0].categoryId ?? mapped[0].id,
-              categoryName: mapped[0].categoryName ?? mapped[0].name,
-              categoryImage: mapped[0].categoryImage,
-              activeStatus: mapped[0].activeStatus ?? (mapped[0] as any).status,
-              displayOrder: mapped[0].displayOrder,
-            }
-          : null,
-      });
-    }
+    await cacheManager.set(cacheKey, mapped);
     return mapped;
   } catch (error) {
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log("[homeApi:getCategories:error]", parseApiError(error, "Categories failed"));
+    const cached = await cacheManager.get<CategoryDto[]>(cacheKey, 60 * 60 * 1000);
+    if (cached) {
+      return cached;
     }
     throw new Error(parseApiError(error, "Categories failed"));
   }
 }
-export async function getRecommendedServices(): Promise<ServiceDto[]> { try { const { data } = await api.get("/api/services/recommended"); return extractList<ServiceDto>(data); } catch (error) { throw new Error(parseApiError(error, "Recommended services failed")); } }
-export async function getQuickServices(): Promise<ServiceDto[]> { try { const { data } = await api.get("/api/services/quick"); return extractList<ServiceDto>(data); } catch (error) { throw new Error(parseApiError(error, "Quick services failed")); } }
-export async function searchServices(keyword: string): Promise<ServiceDto[]> { try { const { data } = await api.get("/api/search/services", { params: { keyword } }); return extractList<ServiceDto>(data); } catch (error) { throw new Error(parseApiError(error, "Search failed")); } }
+function mapServiceImages(rows: ServiceDto[]): ServiceDto[] {
+  return rows.map((item) => ({
+    ...item,
+    imageUrl: toAbsoluteUrl((item as any)?.imageUrl ?? (item as any)?.thumbnailUrl ?? (item as any)?.iconUrl),
+  }));
+}
+
+export async function getRecommendedServices(): Promise<ServiceDto[]> {
+  const cacheKey = "recommended-services";
+  try {
+    const { data } = await api.get("/api/services/recommended", { params: getGeoParams() });
+    const mapped = mapServiceImages(extractList<ServiceDto>(data));
+    await cacheManager.set(cacheKey, mapped);
+    return mapped;
+  } catch (error) {
+    const cached = await cacheManager.get<ServiceDto[]>(cacheKey, 30 * 60 * 1000);
+    if (cached) {
+      return cached;
+    }
+    throw new Error(parseApiError(error, "Recommended services failed"));
+  }
+}
+
+export async function getQuickServices(): Promise<ServiceDto[]> {
+  const cacheKey = "quick-services";
+  try {
+    const { data } = await api.get("/api/services/quick", { params: getGeoParams() });
+    const mapped = mapServiceImages(extractList<ServiceDto>(data));
+    await cacheManager.set(cacheKey, mapped);
+    return mapped;
+  } catch (error) {
+    const cached = await cacheManager.get<ServiceDto[]>(cacheKey, 30 * 60 * 1000);
+    if (cached) {
+      return cached;
+    }
+    throw new Error(parseApiError(error, "Quick services failed"));
+  }
+}
+
+export async function searchServices(keyword: string): Promise<ServiceDto[]> {
+  try {
+    const { data } = await api.get("/api/search/services", { params: { keyword, ...getGeoParams() } });
+    return mapServiceImages(extractList<ServiceDto>(data));
+  } catch (error) {
+    throw new Error(parseApiError(error, "Search failed"));
+  }
+}
 
 export async function getHomeData() {
   const [dashboard, banners, categories, recommendedServices, quickServices] = await Promise.all([

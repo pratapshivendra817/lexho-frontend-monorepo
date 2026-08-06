@@ -3,19 +3,18 @@ import { API_BASE_URL } from "../constants/env";
 import { DEV_LOGIN_BYPASS } from "../constants/env";
 import { DEV_BYPASS_API_TOKEN } from "../constants/env";
 import { DEV_INTERNAL_TOKEN } from "../constants/env";
-import { getOrCreateDeviceId, getRefreshToken, getToken, loadSession, saveSession } from "../utils/storage";
+import { getToken } from "../utils/storage";
 import { clearSessionState, setSession } from "../redux/authSlice";
-import { clearSessionWithReason, extractAccessToken, extractRefreshToken } from "../utils/authSessionManager";
+import { clearSessionWithReason } from "../utils/authSessionManager";
+import { captureFrontendError } from "../services/monitoring";
+import { installAuthRefreshInterceptor } from "./authInterceptor";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,
 });
 export const apiClient = api;
-const refreshClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 15000,
-});
+const NORMALIZED_API_BASE_URL = String(API_BASE_URL ?? "").replace(/\/+$/, "");
 
 function getAppStore(): any | null {
   try {
@@ -39,18 +38,67 @@ function toDebugUrl(baseURL?: string, url?: string) {
   return `${String(baseURL ?? "")}${rawUrl}`;
 }
 
+function normalizeRequestUrl(url?: string) {
+  const rawUrl = String(url ?? "").trim();
+  if (!rawUrl || !NORMALIZED_API_BASE_URL) return url;
+
+  let nextUrl = rawUrl;
+  const duplicatedBasePrefix = `${NORMALIZED_API_BASE_URL}${NORMALIZED_API_BASE_URL}`;
+  while (nextUrl.startsWith(duplicatedBasePrefix)) {
+    nextUrl = `${NORMALIZED_API_BASE_URL}${nextUrl.slice(duplicatedBasePrefix.length)}`;
+  }
+
+  if (nextUrl === NORMALIZED_API_BASE_URL) return "/";
+  if (nextUrl.startsWith(`${NORMALIZED_API_BASE_URL}/`)) {
+    return nextUrl.slice(NORMALIZED_API_BASE_URL.length);
+  }
+
+  return nextUrl;
+}
+
+function messageForErrorCode(code?: string) {
+  switch (String(code ?? "").trim().toUpperCase()) {
+    case "RATE_LIMIT_EXCEEDED":
+      return "Too many requests. Please try again later.";
+    case "PAYMENT_FAILED":
+      return "Payment Failed";
+    case "PAYMENT_EXPIRED":
+      return "Payment expired. Please retry payment.";
+    case "BOOKING_NOT_FOUND":
+      return "Booking not found.";
+    case "REVIEW_ALREADY_EXISTS":
+      return "Your review has already been submitted.";
+    case "INVALID_RATING":
+      return "Please select a valid rating from 1 to 5.";
+    case "INTERNAL_ERROR":
+      return "Something went wrong. Please try again.";
+    case "INSTANT_UNAVAILABLE":
+      return "No partner available right now. Please choose a scheduled slot.";
+    case "NO_PARTNER_IN_30_MIN":
+      return "No partner can reach within 30 minutes. Please choose a scheduled slot.";
+    case "SLOT_EXPIRED":
+    case "SLOT_UNAVAILABLE":
+      return "Selected slot is no longer available. Please choose another slot.";
+    default:
+      return "";
+  }
+}
+
 function isProtectedCustomerApi(url?: string) {
   const value = String(url ?? "");
   return value.includes("/api/v1/customer/location/") || value.includes("/api/customer/location/");
 }
 
 api.interceptors.request.use(async (config) => {
+  config.url = normalizeRequestUrl(config.url);
   const headers = (config.headers ?? {}) as Record<string, string>;
+  const skipAuthorization = String(headers["X-Skip-Authorization"] ?? "").trim() === "true";
   const isFormDataRequest = typeof FormData !== "undefined" && config.data instanceof FormData;
   if (isFormDataRequest) {
     delete headers["Content-Type"];
     delete headers["content-type"];
   }
+  delete headers["X-Skip-Authorization"];
   if (DEV_LOGIN_BYPASS && __DEV__) {
     headers["X-Internal-Token"] = DEV_INTERNAL_TOKEN;
     if (DEV_BYPASS_API_TOKEN) {
@@ -71,153 +119,95 @@ api.interceptors.request.use(async (config) => {
     return Promise.reject(new Error("Authorization token is required"));
   }
 
-  if (token) {
+  if (skipAuthorization) {
+    delete headers.Authorization;
+  } else if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
   config.headers = headers as any;
-
-  if (__DEV__ && isLocationApi(config.url)) {
-    // eslint-disable-next-line no-console
-      console.log("[location-api:request]", {
-        method: String(config.method ?? "get").toUpperCase(),
-        url: toDebugUrl(config.baseURL, config.url),
-        params: config.params ?? null,
-        data: config.data ?? null,
-      });
-  }
 
   return config;
 });
 
 api.interceptors.response.use(
   (response) => {
-    if (__DEV__ && isLocationApi(response?.config?.url)) {
-      // eslint-disable-next-line no-console
-      console.log("[location-api:response]", {
-        status: response?.status ?? null,
-        method: String(response?.config?.method ?? "get").toUpperCase(),
-        url: toDebugUrl(response?.config?.baseURL, response?.config?.url),
-        data: response?.data ?? null,
-      });
-    }
     return response;
   },
   async (error) => {
     const status = error?.response?.status;
-    const shouldTryRefresh = status === 401;
-    let shouldForceLogout = false;
     const originalRequest = error?.config as any;
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log("[auth:interceptor:error]", {
-        status,
-        url: `${String(error?.config?.baseURL ?? "")}${String(error?.config?.url ?? "")}`,
-        retried: !!originalRequest?._retry,
-      });
-    }
 
-    if (shouldTryRefresh && originalRequest && !originalRequest._retry) {
-      originalRequest._retry = true;
-      if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.log("[auth:interceptor:401:refresh:attempt]");
-      }
-      try {
-        const session = await loadSession();
-        const currentRefreshToken = session.refreshToken || (await getRefreshToken());
-        if (currentRefreshToken) {
-          const deviceId = await getOrCreateDeviceId();
-          const { data } = await refreshClient.post("/api/auth/refresh", { refreshToken: currentRefreshToken, deviceId });
-          if (__DEV__) {
-            // eslint-disable-next-line no-console
-            console.log("[auth:interceptor:refresh:response]", {
-              topLevelKeys: data && typeof data === "object" ? Object.keys(data) : [],
-            });
-          }
-          const nextAccessToken = extractAccessToken(data);
-          const nextRefreshToken = extractRefreshToken(data, currentRefreshToken);
-          if (nextAccessToken) {
-            const appStore = getAppStore();
-            const user = appStore?.getState?.()?.auth?.user ?? session.user ?? undefined;
-            await saveSession(nextAccessToken, nextRefreshToken, user);
-            appStore?.dispatch?.(setSession({ token: nextAccessToken, refreshToken: nextRefreshToken, user }));
-            originalRequest.headers = originalRequest.headers || {};
-            originalRequest.headers.Authorization = `Bearer ${nextAccessToken}`;
-            if (__DEV__) {
-              // eslint-disable-next-line no-console
-              console.log("[auth:interceptor:refresh:success:retry-request]");
-            }
-            return api(originalRequest);
-          }
-        }
-      } catch (refreshError: any) {
-        const refreshStatus = Number(refreshError?.response?.status ?? 0);
-        const refreshMessage = String(refreshError?.response?.data?.message ?? refreshError?.message ?? "").toLowerCase();
-        shouldForceLogout =
-          refreshStatus === 401 ||
-          refreshMessage.includes("invalid or expired token") ||
-          refreshMessage.includes("invalid refresh token") ||
-          refreshMessage.includes("refresh token expired");
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log("[auth:interceptor:refresh:failed]", {
-            refreshStatus,
-            refreshMessage,
-            shouldForceLogout,
-          });
-        }
-      }
-    }
-
-    if (status === 401 && !originalRequest?._retry) {
-      // If refresh was not even attempted, avoid destructive logout on first unauthorized hit.
-      shouldForceLogout = false;
-    }
-
-    // In dev bypass mode we intentionally keep the mock session alive for fast testing.
-    if (shouldForceLogout && !(DEV_LOGIN_BYPASS && __DEV__)) {
-      const endpoint = `${String(error?.config?.baseURL ?? "")}${String(error?.config?.url ?? "")}`;
-      const message = String(error?.response?.data?.message ?? error?.message ?? "");
-      if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.log("[auth:interceptor:clearSession:trigger]", {
-          reason: "REFRESH_INVALID",
-          source: "api-interceptor",
-          status,
-          endpoint,
-          message,
-        });
-      }
-      const appStore = getAppStore();
-      await clearSessionWithReason("REFRESH_INVALID", appStore?.dispatch ?? (() => null), clearSessionState, {
-        source: "api-interceptor",
-        status,
-        endpoint,
-        message,
-      });
-    }
-
-    if (__DEV__ && isLocationApi(error?.config?.url)) {
-      // eslint-disable-next-line no-console
-      console.log("[location-api:error]", {
-        status: error?.response?.status ?? null,
-        method: String(error?.config?.method ?? "get").toUpperCase(),
-        url: toDebugUrl(error?.config?.baseURL, error?.config?.url),
-        message: String(error?.response?.data?.message ?? error?.message ?? "Unknown error"),
-        data: error?.response?.data ?? null,
-      });
-    }
+    captureFrontendError(error, {
+      screenName: "API",
+      userAction: String(error?.config?.method ?? "request").toUpperCase(),
+      apiEndpoint: toDebugUrl(error?.config?.baseURL, error?.config?.url),
+      errorCode: getApiErrorCode(error) || String(status || "NETWORK_ERROR"),
+    });
 
     return Promise.reject(error);
   },
 );
 
+installAuthRefreshInterceptor(api, {
+  onSessionRefreshed: session => {
+    const appStore = getAppStore();
+    appStore?.dispatch?.(
+      setSession({
+        token: session.accessToken,
+        refreshToken: session.refreshToken,
+        user: session.user ?? undefined,
+      }),
+    );
+  },
+  onLogout: (error: any) => {
+    if (DEV_LOGIN_BYPASS && __DEV__) return;
+    const appStore = getAppStore();
+    const endpoint = toDebugUrl(error?.config?.baseURL, error?.config?.url);
+    const message = String(error?.response?.data?.message ?? error?.message ?? "");
+    return clearSessionWithReason(
+      "REFRESH_INVALID",
+      appStore?.dispatch ?? (() => null),
+      clearSessionState,
+      { source: "api-interceptor", status: error?.response?.status, endpoint, message },
+    );
+  },
+});
+
 export function parseApiError(error: unknown, fallback = "Something went wrong") {
   const e = error as any;
+  const status = Number(e?.response?.status ?? 0);
+  const message = String(e?.response?.data?.message ?? e?.message ?? "");
+  const code = getApiErrorCode(error);
+  const codedMessage = messageForErrorCode(code);
+  if (codedMessage) return codedMessage;
+
   if (e?.response?.status === 429) {
     return "Too many requests, please try again shortly";
   }
-  return e?.response?.data?.message || e?.message || fallback;
+  if (status === 409) {
+    return message || fallback;
+  }
+  return message || fallback;
+}
+
+export function getApiErrorCode(error: unknown) {
+  const e = error as any;
+  return String(e?.response?.data?.code ?? e?.response?.data?.errorCode ?? e?.code ?? e?.errorCode ?? "").trim().toUpperCase();
+}
+
+export function getPayloadCode(payload: unknown) {
+  const root = (payload as any)?.data && typeof (payload as any).data === "object" ? (payload as any).data : payload as any;
+  return String(root?.code ?? root?.errorCode ?? root?.paymentCode ?? "").trim().toUpperCase();
+}
+
+export function toApiError(error: unknown, fallback = "Something went wrong") {
+  const normalized = new Error(parseApiError(error, fallback)) as Error & { code?: string; errorCode?: string };
+  const code = getApiErrorCode(error);
+  if (code) {
+    normalized.code = code;
+    normalized.errorCode = code;
+  }
+  return normalized;
 }
 
 export function unwrapPayload<T>(data: any, fallback: T): T {

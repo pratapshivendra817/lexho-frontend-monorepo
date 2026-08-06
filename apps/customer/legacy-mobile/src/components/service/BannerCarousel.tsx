@@ -2,6 +2,9 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, ImageBackground, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import LinearGradient from "react-native-linear-gradient";
 
+
+import { COLORS } from '../../theme/colors';
+
 type BannerItem = {
   id: string;
   title?: string;
@@ -12,14 +15,16 @@ type BannerCarouselProps = {
   banners: BannerItem[];
   onPressBanner: (item: BannerItem) => void;
   autoScroll?: boolean;
+  imageRequestHeaders?: Record<string, string>;
+  bannerHeight?: number;
 };
 
-function BannerCarouselComponent({ banners, onPressBanner, autoScroll = true }: BannerCarouselProps) {
+function BannerCarouselComponent({ banners, onPressBanner, autoScroll = true, imageRequestHeaders, bannerHeight = 252 }: BannerCarouselProps) {
   const listRef = useRef<FlatList<BannerItem>>(null);
   const indexRef = useRef(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const { width } = useWindowDimensions();
-  const itemWidth = useMemo(() => width - 44, [width]);
+  const itemWidth = useMemo(() => width, [width]);
 
   useEffect(() => {
     if (!autoScroll || banners.length <= 1) return;
@@ -34,10 +39,18 @@ function BannerCarouselComponent({ banners, onPressBanner, autoScroll = true }: 
   const renderItem = ({ item, index }: { item: BannerItem; index: number }) => (
     <Pressable
       onPress={() => onPressBanner(item)}
-      style={[styles.bannerCard, { width: itemWidth }, index === banners.length - 1 && styles.lastBanner]}
+      style={[styles.bannerCard, { width: itemWidth, height: bannerHeight }, index === banners.length - 1 && styles.lastBanner]}
     >
       {item.imageUrl ? (
-        <ImageBackground source={{ uri: item.imageUrl }} style={styles.bannerImage} resizeMode="cover">
+        <ImageBackground
+          source={
+            imageRequestHeaders && Object.keys(imageRequestHeaders).length > 0
+              ? { uri: item.imageUrl, headers: imageRequestHeaders }
+              : { uri: item.imageUrl }
+          }
+          style={styles.bannerImage}
+          resizeMode="cover"
+        >
           <LinearGradient colors={["rgba(2,6,23,0.10)", "rgba(2,6,23,0.64)"]} style={styles.bannerOverlay}>
             <Text style={styles.bannerTag}>FEATURED</Text>
             <Text style={styles.bannerTitle} numberOfLines={2}>{item.title ?? "Special Offer"}</Text>
@@ -45,7 +58,10 @@ function BannerCarouselComponent({ banners, onPressBanner, autoScroll = true }: 
         </ImageBackground>
       ) : (
         <View style={styles.bannerImageFallback}>
-          <Text style={styles.fallbackText}>{item.title ?? "Offer"}</Text>
+          <LinearGradient colors={["rgba(2,6,23,0.10)", "rgba(2,6,23,0.64)"]} style={styles.bannerOverlay}>
+            <Text style={styles.bannerTag}>FEATURED</Text>
+            <Text style={styles.bannerTitle} numberOfLines={2}>{item.title ?? "Special Offer"}</Text>
+          </LinearGradient>
         </View>
       )}
     </Pressable>
@@ -58,13 +74,13 @@ function BannerCarouselComponent({ banners, onPressBanner, autoScroll = true }: 
         data={banners}
         horizontal
         pagingEnabled
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => `${item.id}-${index}`}
         renderItem={renderItem}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
-        getItemLayout={(_, index) => ({ length: itemWidth + 12, offset: (itemWidth + 12) * index, index })}
+        getItemLayout={(_, index) => ({ length: itemWidth, offset: itemWidth * index, index })}
         onMomentumScrollEnd={(event) => {
-          const next = Math.round(event.nativeEvent.contentOffset.x / (itemWidth + 12));
+          const next = Math.round(event.nativeEvent.contentOffset.x / itemWidth);
           if (Number.isFinite(next)) {
             indexRef.current = next;
             setActiveIndex(next);
@@ -73,7 +89,7 @@ function BannerCarouselComponent({ banners, onPressBanner, autoScroll = true }: 
       />
       <View style={styles.dotsRow}>
         {banners.slice(0, 6).map((banner, idx) => (
-          <View key={banner.id} style={[styles.dot, idx === activeIndex && styles.dotActive]} />
+          <View key={`${banner.id}-${idx}`} style={[styles.dot, idx === activeIndex && styles.dotActive]} />
         ))}
       </View>
     </>
@@ -84,15 +100,23 @@ export const BannerCarousel = memo(BannerCarouselComponent);
 
 const styles = StyleSheet.create({
   listContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 8,
   },
   bannerCard: {
-    height: 150,
-    borderRadius: 16,
-    marginRight: 12,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    marginRight: 0,
     overflow: "hidden",
-    backgroundColor: "#E5E7EB",
+    backgroundColor: COLORS.neutral200,
+    borderWidth: 1,
+    borderColor: COLORS.goldSoft,
+    shadowColor: "#041C4A",
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
   },
   lastBanner: {
     marginRight: 0,
@@ -104,48 +128,48 @@ const styles = StyleSheet.create({
   bannerOverlay: {
     flex: 1,
     justifyContent: "flex-end",
-    padding: 14,
-    gap: 5,
+    padding: 16,
+    gap: 6,
+    backgroundColor: "rgba(2, 27, 74, 0.40)",
   },
   bannerTag: {
-    color: "#E0F2FE",
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.9,
+    color: COLORS.goldSoft,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1,
   },
   bannerTitle: {
-    color: "#FFFFFF",
-    fontSize: 16,
+    color: COLORS.white,
+    fontSize: 20,
     fontWeight: "800",
+    lineHeight: 26,
   },
   bannerImageFallback: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#D1D5DB",
-    paddingHorizontal: 12,
-  },
-  fallbackText: {
-    color: "#111827",
-    fontWeight: "700",
-    textAlign: "center",
+    backgroundColor: COLORS.navyDark,
   },
   dotsRow: {
-    marginTop: 2,
+    marginTop: 8,
     marginBottom: 8,
     flexDirection: "row",
     justifyContent: "center",
-    gap: 6,
+    gap: 5,
   },
   dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: "#CBD5E1",
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.45)",
   },
   dotActive: {
-    width: 18,
+    width: 16,
     borderRadius: 99,
-    backgroundColor: "#0EA5E9",
+    backgroundColor: COLORS.goldSoft,
   },
 });
+
+
+
+
+
+

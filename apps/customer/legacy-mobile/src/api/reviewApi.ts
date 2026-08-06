@@ -1,8 +1,17 @@
 import { api, parseApiError } from "./client";
-import type { AddReviewRequest, ReviewDto } from "../types/contracts";
+import type { AddReviewRequest, ReviewDto, SubmitCustomerReviewRequest } from "../types/contracts";
 
 export async function addReview(payload: AddReviewRequest) { try { const { data } = await api.post('/api/reviews/add', payload); return data as ReviewDto; } catch (e) { throw new Error(parseApiError(e, 'Add review failed')); } }
 export async function getServiceReviews(id: string): Promise<ReviewDto[]> { try { const { data } = await api.get(`/api/reviews/service/${id}`); return (Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []) as ReviewDto[]; } catch (e) { throw new Error(parseApiError(e, 'Reviews failed')); } }
+
+export async function submitCustomerReview(payload: SubmitCustomerReviewRequest) {
+  try {
+    const { data } = await api.post("/api/v1/customer/reviews", payload);
+    return data;
+  } catch (e) {
+    throw new Error(parseApiError(e, "Review submit failed"));
+  }
+}
 
 export async function getReviews(serviceId = "svc-1") {
   return getServiceReviews(serviceId);

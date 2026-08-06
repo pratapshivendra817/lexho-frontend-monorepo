@@ -2,7 +2,7 @@
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import PartnersPage from "@/features/partners/pages/PartnersPage";
+import PartnersPage from "@/features/providers/pages/ProvidersPage";
 import { renderWithPartners } from "../utils/renderWithPartners";
 
 const mocks = vi.hoisted(() => ({
@@ -56,6 +56,18 @@ describe("PartnersPage", () => {
       totalElements: 1,
       totalPages: 1,
       pageNumber: 0,
+    });
+
+    mocks.getPartnerDetails.mockResolvedValue({
+      id: "prv-1",
+      name: "Rahul",
+      phone: "9999999999",
+      serviceType: "COOK",
+      city: "Delhi",
+      appliedDate: "2026-04-26",
+      status: "PENDING",
+      documents: [],
+      statusHistory: [],
     });
 
     mocks.approvePartner.mockResolvedValue(undefined);

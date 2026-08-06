@@ -1,0 +1,14 @@
+import React, { useEffect, useState } from "react";
+import { Alert, FlatList, Linking, StyleSheet, View } from "react-native";
+import { Button, Card, IconButton, Text, TextInput } from "react-native-paper";
+import { createEmergencyContact, deleteEmergencyContact, getEmergencyContacts } from "../services/SOSApiService";
+import type { EmergencyContact } from "../types";
+
+export function EmergencyContactsScreen() {
+  const [contacts, setContacts] = useState<EmergencyContact[]>([]); const [name, setName] = useState(""); const [phone, setPhone] = useState(""); const [loading, setLoading] = useState(false);
+  const load = async () => { setLoading(true); try { setContacts(await getEmergencyContacts()); } catch { Alert.alert("Unable to load contacts", "Check your connection and retry."); } finally { setLoading(false); } };
+  useEffect(() => { void load(); }, []);
+  const add = async () => { const cleanName = name.trim(); const cleanPhone = phone.replace(/[^+\d]/g, ""); if (!cleanName || cleanPhone.length < 7) return Alert.alert("Invalid contact", "Enter a name and valid phone number."); setLoading(true); try { await createEmergencyContact({ name: cleanName, phone: cleanPhone }); setName(""); setPhone(""); await load(); } catch { setLoading(false); Alert.alert("Unable to save contact"); } };
+  return <View style={styles.root}><Text variant="titleLarge" style={styles.title}>Emergency Contacts</Text><TextInput label="Name" value={name} onChangeText={setName} mode="outlined" /><TextInput label="Phone number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" mode="outlined" /><Button mode="contained" buttonColor="#C62828" loading={loading} onPress={() => void add()}>Add Contact</Button><FlatList data={contacts} keyExtractor={item => item.id} refreshing={loading} onRefresh={() => void load()} ListEmptyComponent={<Text style={styles.empty}>No emergency contacts saved.</Text>} renderItem={({ item }) => <Card style={styles.card}><Card.Content style={styles.contact}><View style={styles.flex}><Text variant="titleMedium">{item.name}</Text><Text>{item.phone}{item.relationship ? ` · ${item.relationship}` : ""}</Text></View><IconButton icon="phone" onPress={() => void Linking.openURL(`tel:${item.phone}`)} /><IconButton icon="delete-outline" iconColor="#C62828" onPress={() => Alert.alert("Delete contact?", item.name, [{ text: "Cancel" }, { text: "Delete", style: "destructive", onPress: () => void deleteEmergencyContact(item.id).then(load) }])} /></Card.Content></Card>} /></View>;
+}
+const styles = StyleSheet.create({ root: { flex: 1, padding: 18, gap: 12, backgroundColor: "#FFF7F7" }, title: { fontWeight: "900", color: "#8E0000" }, card: { marginBottom: 10, backgroundColor: "#FFFFFF" }, contact: { flexDirection: "row", alignItems: "center" }, flex: { flex: 1 }, empty: { textAlign: "center", marginTop: 30, color: "#667085" } });

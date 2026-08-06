@@ -2,7 +2,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "../constants/env";
 
-const BASE_URL = String(API_BASE_URL || "http://localhost:8082").replace(/\/+$/, "");
+const BASE_URL = String(API_BASE_URL ?? "").replace(/\/+$/, "");
 const TOKEN_KEY = "@lexho/customer/token";
 const DEV_INTERNAL_TOKEN = "LexhoInternal@2026#Admin";
 
@@ -28,17 +28,6 @@ profileHttp.interceptors.request.use(async (config) => {
 
   headers.Accept = "application/json";
   config.headers = headers;
-
-  if (__DEV__) {
-    // eslint-disable-next-line no-console
-    console.log("[profile-http:request]", {
-      method: String(config.method || "get").toUpperCase(),
-      url: `${String(config.baseURL || "")}${String(config.url || "")}`,
-      hasAuth: !!headers.Authorization,
-      isFormData: typeof FormData !== "undefined" && config.data instanceof FormData,
-      hasContentType: Object.prototype.hasOwnProperty.call(headers, "Content-Type"),
-    });
-  }
 
   return config;
 });
@@ -147,10 +136,6 @@ export async function uploadProfileImageWithFetch(image) {
   });
 
   const text = await response.text();
-  if (__DEV__) {
-    // eslint-disable-next-line no-console
-    console.log("[profile-upload:fetch]", { status: response.status, body: text });
-  }
 
   if (!response.ok) {
     throw new Error(`Upload failed (${response.status}): ${text || "Unknown error"}`);

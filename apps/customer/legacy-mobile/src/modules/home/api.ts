@@ -1,5 +1,5 @@
 import { api, parseApiError } from "../../api/client";
-import type { HomeSection, HomeSectionItem, HomeSectionType } from "./types";
+import type { HomeSection, HomeSectionApiType, HomeSectionItem } from "./types";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -29,7 +29,15 @@ const asBoolean = (value: unknown, fallback = false): boolean => {
   return fallback;
 };
 
-const normalizeType = (value: unknown): HomeSectionType => {
+const readVisualColor = (row: UnknownRecord, keys: string[]): string | null => {
+  for (const key of keys) {
+    const value = asString(row[key]);
+    if (value) return value;
+  }
+  return null;
+};
+
+const normalizeType = (value: unknown): HomeSectionApiType => {
   const type = asString(value).toUpperCase();
   if (type === "STATS" || type === "TRUST" || type === "TAGLINE" || type === "HIGHLIGHTS" || type === "BANNERS") return type;
   return "CUSTOM";
@@ -61,24 +69,39 @@ const readRows = (payload: unknown): UnknownRecord[] => {
 };
 
 const mapItem = (row: UnknownRecord, index: number): HomeSectionItem => ({
-  id: asString(row.id ?? row.itemId ?? index),
+  id: asNumber(row.id ?? row.itemId, index),
+  sectionId: asNumber(row.sectionId, 0),
   title: asString(row.title),
-  value: asString(row.value) || undefined,
+  subtitle: asString(row.subtitle) || null,
+  value: asString(row.value) || null,
+  icon: asString(row.icon) || null,
+  color: readVisualColor(row, ["color", "textColor", "text_color"]),
+  borderColor: readVisualColor(row, ["borderColor", "border_color"]),
+  backgroundColor: readVisualColor(row, ["backgroundColor", "background_color", "bgColor", "bg_color"]),
+  iconColor: readVisualColor(row, ["iconColor", "icon_color"]),
   priority: asNumber(row.priority, index + 1),
-  isActive: asBoolean(row.isActive ?? row.active ?? row.status === "ACTIVE", true),
+  active: asBoolean(row.active ?? row.isActive ?? row.status === "ACTIVE", true),
 });
 
 const mapSection = (row: UnknownRecord, index: number): HomeSection => ({
-  id: asString(row.id ?? row.sectionId ?? index),
+  id: asNumber(row.id ?? row.sectionId, index),
   type: normalizeType(row.type),
-  title: asString(row.title),
-  subtitle: asString(row.subtitle ?? row.description) || undefined,
+  title: asString(row.title) || null,
+  subtitle: asString(row.subtitle ?? row.description) || null,
+  icon: asString(row.icon) || null,
+  color: readVisualColor(row, ["color", "textColor", "text_color"]),
+  borderColor: readVisualColor(row, ["borderColor", "border_color"]),
+  backgroundColor: readVisualColor(row, ["backgroundColor", "background_color", "bgColor", "bg_color"]),
+  iconColor: readVisualColor(row, ["iconColor", "icon_color"]),
   priority: asNumber(row.priority, index + 1),
-  isActive: asBoolean(row.isActive ?? row.active ?? row.status === "ACTIVE", true),
-  items: readRows(row.items).map(mapItem),
+  active: asBoolean(row.active ?? row.isActive ?? row.enabled ?? row.status === "ACTIVE", true),
+  createdAt: asString(row.createdAt) || null,
+  items: readRows(row.items).map((item, itemIndex) =>
+    mapItem(item, itemIndex),
+  ),
 });
 
-async function fetchSectionItems(sectionId: string): Promise<HomeSectionItem[]> {
+async function fetchSectionItems(sectionId: number): Promise<HomeSectionItem[]> {
   const endpointCandidates = [
     `/api/customer/home/sections/${sectionId}/items`,
     `/api/sections/${sectionId}/items`,
@@ -88,7 +111,9 @@ async function fetchSectionItems(sectionId: string): Promise<HomeSectionItem[]> 
   for (const endpoint of endpointCandidates) {
     try {
       const { data } = await api.get(endpoint);
-      return readRows(data).map(mapItem);
+      return readRows(data).map((item, itemIndex) =>
+        mapItem(item, itemIndex),
+      );
     } catch (error: any) {
       const status = error?.response?.status;
       if (status === 401 || status === 403) {
@@ -122,7 +147,9 @@ export async function getHomeSections(): Promise<HomeSection[]> {
   for (const endpoint of endpointCandidates) {
     try {
       const { data } = await api.get(endpoint);
-      const base = readRows(data).map(mapSection);
+      const base = readRows(data).map((section, sectionIndex) =>
+        mapSection(section, sectionIndex),
+      );
       const hydrated = await Promise.all(
         base.map(async (section) => {
           if (section.items.length > 0) return section;
@@ -130,13 +157,7 @@ export async function getHomeSections(): Promise<HomeSection[]> {
           return { ...section, items };
         }),
       );
-      return hydrated
-        .filter((section) => section.isActive)
-        .map((section) => ({
-          ...section,
-          items: [...section.items].filter((item) => item.isActive).sort((a, b) => a.priority - b.priority),
-        }))
-        .sort((a, b) => a.priority - b.priority);
+      return hydrated;
     } catch (error: any) {
       lastError = error;
       if (isUnauthorizedError(error)) {

@@ -182,6 +182,10 @@ const probeClient = axios.create({
   timeout: 15000,
 });
 
+function resolveClient(path: string) {
+  return path.includes("/login") || path.includes("/verify-otp") ? probeClient : api;
+}
+
 function defaultResults() {
   const initial: Record<string, CheckResult> = {};
   checks.forEach((check) => {
@@ -192,36 +196,46 @@ function defaultResults() {
   return initial;
 }
 
+function getCheckedAt() {
+  return new Date().toLocaleTimeString();
+}
+
+function buildResult(status: CheckResultStatus, details: Omit<CheckResult, "status"> = {}): CheckResult {
+  return {
+    status,
+    ...details,
+    checkedAt: details.checkedAt ?? getCheckedAt(),
+  };
+}
+
+function logReadinessFailure(check: EndpointCheck, suffix: string, error: unknown) {
+  console.error(`[Readiness Check Failed] ${check.method} ${appConfig.apiBaseUrl}${check.path} -> ${suffix}`, error);
+}
+
 export default function ApiReadinessPage() {
   const [results, setResults] = useState<Record<string, CheckResult>>(defaultResults);
   const [isRunningAll, setIsRunningAll] = useState(false);
 
   const autoChecks = useMemo(() => checks.filter((check) => check.kind === "auto"), []);
 
-  const runCheck = async (check: EndpointCheck) => {
+  const updateResult = (checkKey: string, result: CheckResult) => {
     setResults((prev) => ({
       ...prev,
-      [check.key]: {
-        status: "running",
-      },
+      [checkKey]: result,
     }));
+  };
+
+  const runCheck = async (check: EndpointCheck) => {
+    updateResult(check.key, { status: "running" });
 
     try {
-      const client = check.path.includes("/login") || check.path.includes("/verify-otp") ? probeClient : api;
+      const client = resolveClient(check.path);
       const response =
         check.method === "GET"
           ? await client.get(check.path)
           : await client.post(check.path, check.body ?? {});
 
-      setResults((prev) => ({
-        ...prev,
-        [check.key]: {
-          status: "success",
-          httpStatus: response.status,
-          message: "OK",
-          checkedAt: new Date().toLocaleTimeString(),
-        },
-      }));
+      updateResult(check.key, buildResult("success", { httpStatus: response.status, message: "OK" }));
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
         const httpStatus = error.response?.status;
@@ -232,36 +246,19 @@ export default function ApiReadinessPage() {
             ? error.response.data
             : (error.response?.data as { message?: unknown })?.message;
 
-        console.error(
-          `[Readiness Check Failed] ${check.method} ${appConfig.apiBaseUrl}${check.path} -> ${httpStatus ?? "NO_STATUS"}`,
-          error,
-        );
-
-        setResults((prev) => ({
-          ...prev,
-          [check.key]: {
-            status: nextStatus,
+        logReadinessFailure(check, String(httpStatus ?? "NO_STATUS"), error);
+        updateResult(
+          check.key,
+          buildResult(nextStatus, {
             httpStatus,
             message: typeof message === "string" && message.length > 0 ? message : error.message,
-            checkedAt: new Date().toLocaleTimeString(),
-          },
-        }));
+          }),
+        );
         return;
       }
 
-      console.error(
-        `[Readiness Check Failed] ${check.method} ${appConfig.apiBaseUrl}${check.path} -> UNKNOWN`,
-        error,
-      );
-
-      setResults((prev) => ({
-        ...prev,
-        [check.key]: {
-          status: "error",
-          message: "Unknown error",
-          checkedAt: new Date().toLocaleTimeString(),
-        },
-      }));
+      logReadinessFailure(check, "UNKNOWN", error);
+      updateResult(check.key, buildResult("error", { message: "Unknown error" }));
     }
   };
 

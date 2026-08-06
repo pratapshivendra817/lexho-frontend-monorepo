@@ -59,15 +59,22 @@ const normalizeStatus = (value: unknown): AdminReview["status"] => {
 
 const toReview = (row: UnknownRecord): AdminReview => ({
   id: asString(row.id ?? row.reviewId),
+  bookingId: asString(row.bookingId ?? asRecord(row.booking).id) || undefined,
+  customerId: asString(row.customerId ?? row.userId ?? asRecord(row.customer).id ?? asRecord(row.user).id) || undefined,
+  partnerId: asString(row.partnerId ?? row.providerId ?? asRecord(row.partner).id ?? asRecord(row.provider).id) || undefined,
   customerName: asString(row.customerName ?? row.userName ?? row.customer),
   partnerName: asString(row.partnerName ?? row.partner),
   serviceName: asString(row.serviceName ?? row.service),
   rating: asNumber(row.rating),
-  comment: asString(row.comment ?? row.reviewComment),
+  comment: asString(row.comment ?? row.reviewComment ?? row.reviewText),
+  reviewText: asString(row.reviewText ?? row.comment ?? row.reviewComment) || undefined,
   images: readArray(row.images, ["images", "media", "attachments"]).map((item) => asString(item)).filter(Boolean),
   status: normalizeStatus(row.status),
   reportCount: asNumber(row.reportCount ?? row.reports ?? row.flagCount),
   reportReason: asString(row.reportReason ?? row.reason) || undefined,
+  moderationReason: asString(row.moderationReason ?? row.adminReason ?? row.rejectionReason ?? row.hideReason) || undefined,
+  requestId: asString(row.requestId) || undefined,
+  correlationId: asString(row.correlationId) || undefined,
   createdAt: asString(row.createdAt ?? row.created_on) || undefined,
 });
 
@@ -90,8 +97,11 @@ export async function getAdminReviews(params: AdminReviewsQueryParams): Promise<
     rating: params.rating,
     status: params.status || undefined,
     partner: params.partner || undefined,
+    customer: params.customer || undefined,
     service: params.service || undefined,
     search: params.search || undefined,
+    startDate: params.startDate || undefined,
+    endDate: params.endDate || undefined,
   };
   const { data } = await api.get("/api/admin/reviews", { params: query });
   const content = readArray(data, ["content", "data", "items", "reviews", "results"]).map(toReview);
@@ -114,12 +124,12 @@ export async function approveAdminReview(id: string) {
   await api.patch(`/api/admin/reviews/${id}/approve`);
 }
 
-export async function rejectAdminReview(id: string) {
-  await api.patch(`/api/admin/reviews/${id}/reject`);
+export async function rejectAdminReview(id: string, reason?: string) {
+  await api.patch(`/api/admin/reviews/${id}/reject`, reason ? { reason } : undefined);
 }
 
-export async function hideAdminReview(id: string) {
-  await api.patch(`/api/admin/reviews/${id}/hide`);
+export async function hideAdminReview(id: string, reason?: string) {
+  await api.patch(`/api/admin/reviews/${id}/hide`, reason ? { reason } : undefined);
 }
 
 export async function getReportedAdminReviews(params: { page: number; size: number }): Promise<AdminReviewsListResponse> {

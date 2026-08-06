@@ -9,15 +9,19 @@ import { ServiceableAreaTable, ServiceableAreaTableSkeleton } from "../component
 import {
   useCreateServiceableArea,
   useDeleteServiceableArea,
-  useGeoCities,
-  useGeoZones,
   useServiceableAreas,
   useToggleServiceableAreaStatus,
   useUpdateServiceableArea,
 } from "../hooks/useServiceableAreas";
 import type { ServiceableAreaItem, ServiceableAreaStatus, SortDir } from "../types";
+import GeoManagementPage from "./GeoManagementPage";
+import SettingsPage from "../../settings/pages/SettingsPage";
+import LiveDispatchMonitorPage from "../../live-dispatch/pages/LiveDispatchMonitorPage";
+
+type ServiceableAreaMode = "serviceable-areas" | "geo" | "settings" | "live-dispatch";
 
 export default function ServiceableAreaPage() {
+  const [mode, setMode] = useState<ServiceableAreaMode>("serviceable-areas");
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(10);
   const [query, setQuery] = useState("");
@@ -27,7 +31,6 @@ export default function ServiceableAreaPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ServiceableAreaItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ServiceableAreaItem | null>(null);
-  const [selectedCityId, setSelectedCityId] = useState<number | undefined>(undefined);
 
   const queryParams = useMemo(
     () => ({
@@ -42,8 +45,6 @@ export default function ServiceableAreaPage() {
   );
 
   const listQuery = useServiceableAreas(queryParams);
-  const citiesQuery = useGeoCities();
-  const zonesQuery = useGeoZones(selectedCityId);
   const createMutation = useCreateServiceableArea();
   const updateMutation = useUpdateServiceableArea();
   const deleteMutation = useDeleteServiceableArea();
@@ -63,11 +64,39 @@ export default function ServiceableAreaPage() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingItem(null);
-    setSelectedCityId(undefined);
   };
+
+  if (mode === "geo") {
+    return (
+      <div className="space-y-4">
+        <ServiceableAreaModeTabs mode={mode} onModeChange={setMode} />
+        <GeoManagementPage />
+      </div>
+    );
+  }
+
+  if (mode === "settings") {
+    return (
+      <div className="space-y-4">
+        <ServiceableAreaModeTabs mode={mode} onModeChange={setMode} />
+        <SettingsPage />
+      </div>
+    );
+  }
+
+  if (mode === "live-dispatch") {
+    return (
+      <div className="space-y-4">
+        <ServiceableAreaModeTabs mode={mode} onModeChange={setMode} />
+        <LiveDispatchMonitorPage />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
+      <ServiceableAreaModeTabs mode={mode} onModeChange={setMode} />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-[var(--color-text)]">Serviceable Area Management</h2>
@@ -144,7 +173,6 @@ export default function ServiceableAreaPage() {
               deletePendingId={deleteMutation.variables ?? null}
               onEdit={(item) => {
                 setEditingItem(item);
-                setSelectedCityId(item.cityId);
                 setIsModalOpen(true);
               }}
               onDelete={(item) => setDeleteTarget(item)}
@@ -169,12 +197,9 @@ export default function ServiceableAreaPage() {
       <AddEditServiceableAreaModal
         open={isModalOpen}
         editingItem={editingItem}
-        cities={citiesQuery.data}
-        zones={zonesQuery.data}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
         duplicateCheck={duplicateCheck}
         onClose={closeModal}
-        onCityChange={(cityId) => setSelectedCityId(cityId)}
         onSubmit={(payload, id) => {
           if (id) {
             updateMutation.mutate(
@@ -212,6 +237,43 @@ export default function ServiceableAreaPage() {
           });
         }}
       />
+    </div>
+  );
+}
+
+function ServiceableAreaModeTabs({
+  mode,
+  onModeChange,
+}: {
+  mode: ServiceableAreaMode;
+  onModeChange: (mode: ServiceableAreaMode) => void;
+}) {
+  const tabs: Array<{ label: string; value: ServiceableAreaMode }> = [
+    { label: "Serviceable Areas", value: "serviceable-areas" },
+    { label: "Geo Cities & Zones", value: "geo" },
+    { label: "Settings", value: "settings" },
+    { label: "Live Dispatch", value: "live-dispatch" },
+  ];
+
+  return (
+    <div className="inline-flex rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1">
+      {tabs.map((tab) => {
+        const isActive = mode === tab.value;
+        return (
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => onModeChange(tab.value)}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+              isActive
+                ? "bg-[var(--color-accent)] text-white shadow"
+                : "text-[var(--color-muted)] hover:text-[var(--color-text)]"
+            }`}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

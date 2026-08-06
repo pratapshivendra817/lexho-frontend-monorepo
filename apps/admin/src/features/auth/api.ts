@@ -12,7 +12,7 @@ const ADMIN_AUTH_ENDPOINTS = {
   verifyOtp: "/api/admin/verify-otp",
 } as const;
 
-function extractApiError(error: unknown, fallback: string) {
+function extractApiError(error: unknown, fallback: string, statusMessages?: Record<number, string>) {
   if (!isAxiosError(error)) {
     return fallback;
   }
@@ -34,6 +34,10 @@ function extractApiError(error: unknown, fallback: string) {
     }
   }
 
+  if (status && statusMessages?.[status]) {
+    return statusMessages[status];
+  }
+
   return status ? `${fallback} (HTTP ${status})` : fallback;
 }
 
@@ -48,7 +52,11 @@ export const requestAdminOtp = async (payload: {
   try {
     return await authClient.post(ADMIN_AUTH_ENDPOINTS.login, requestPayload);
   } catch (error) {
-    throw new Error(extractApiError(error, "Unable to request OTP"));
+    throw new Error(
+      extractApiError(error, "Unable to request OTP", {
+        401: "Invalid admin email or password",
+      }),
+    );
   }
 };
 
@@ -61,7 +69,11 @@ export const verifyAdminOtp = async (payload: {
   try {
     return await authClient.post(ADMIN_AUTH_ENDPOINTS.verifyOtp, requestPayload);
   } catch (error) {
-    throw new Error(extractApiError(error, "OTP verification failed"));
+    throw new Error(
+      extractApiError(error, "OTP verification failed", {
+        401: "Invalid or expired OTP",
+      }),
+    );
   }
 };
 

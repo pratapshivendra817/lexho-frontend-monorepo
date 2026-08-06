@@ -24,12 +24,14 @@ export type CategoryItem = {
   name: string;
   iconUrl: string;
   active: boolean;
+  displayOrder?: number;
 };
 
 export type CategoryPayload = {
   name: string;
   iconUrl: string;
   active: boolean;
+  displayOrder?: number;
 };
 
 export type ServiceItem = {
@@ -38,6 +40,10 @@ export type ServiceItem = {
   name: string;
   description: string;
   price: number;
+  rating?: number;
+  categoryId?: string;
+  categoryName?: string;
+  imageUrl?: string;
   active: boolean;
   details: ServiceDetailItem[];
 };
@@ -46,7 +52,11 @@ export type ServicePayload = {
   name: string;
   description: string;
   price: number;
+  rating?: number;
   service_type: string;
+  categoryId?: number;
+  category_id?: number;
+  imageUrl?: string;
 };
 
 export type ServiceDetailType = "INCLUDED" | "EXCLUDED" | "FAQ" | "INSTRUCTION";

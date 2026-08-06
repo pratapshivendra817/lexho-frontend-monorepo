@@ -12,12 +12,7 @@ export const settingsRoutes: AdminRouteConfig[] = [
   },
 ];
 
-export const settingsNavItems: AdminNavItem[] = [
-  {
-    path: "/settings",
-    label: "Settings",
-  },
-];
+export const settingsNavItems: AdminNavItem[] = [];
 
 export const settingsRouteMeta: AdminRouteMeta[] = [
   {

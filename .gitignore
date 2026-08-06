@@ -1,5 +1,7 @@
+# =========================
 # Logs
-logs
+# =========================
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,18 +9,97 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# =========================
+# Dependencies
+# =========================
+node_modules/
+**/node_modules/
+
+# =========================
+# Build outputs
+# =========================
+dist/
+dist-ssr/
+**/dist/
+**/dist-ssr/
+
+# =========================
+# Test coverage
+# =========================
+coverage/
+**/coverage/
+.nyc_output/
+
+# =========================
+# Android generated builds
+# =========================
+**/.android-build/
+**/android/.gradle/
+**/android/app/build/
+**/android/build/
+
+# =========================
+# Temporary / cache files
+# =========================
+**/.tmp/
+.tmp/
+tmp/
+temp/
+.cache/
+**/.cache/
+
+# =========================
+# SonarQube generated files
+# =========================
+.scannerwork/
+**/.scannerwork/
+
+# =========================
+# React Native / Metro
+# =========================
+.metro-cache/
+**/.metro-cache/
+.metro-health-check*
+
+# =========================
+# Environment / Secrets
+# =========================
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Keep example environment files
+!.env.example
+!**/.env.example
+
+# =========================
+# Local files
+# =========================
 *.local
 
-# Editor directories and files
+# =========================
+# Editor directories/files
+# =========================
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
+*.swp
+*.swo
+
+# =========================
+# Windows
+# =========================
+Thumbs.db
+Desktop.ini
+# Temporary/debug artifacts
+tmp*
+*.bundle
+
+# Firebase local config
+**/google-services.json

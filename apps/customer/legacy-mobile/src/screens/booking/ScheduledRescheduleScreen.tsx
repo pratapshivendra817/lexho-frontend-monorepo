@@ -3,12 +3,19 @@ import { Alert, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "react-native-paper";
 import { useState } from "react";
 import { rescheduleBooking } from "../../api/bookingExtrasApi";
+import { getApiErrorCode } from "../../api/client";
 import { getAvailableTimeSlots } from "../../api/cartApi";
 import { BookingStageShell } from "../../components/booking/BookingStageShell";
 import { TimePicker } from "../../components/cart/TimePicker";
 import { bookingTheme } from "../../components/booking/bookingTheme";
+import { trackBookingRescheduled } from "../../services/customerAnalyticsEvents";
+import { captureFrontendError } from "../../services/monitoring";
+import { radii, shadows, spacing } from "../../constants/theme";
 
 type ScheduledRescheduleRoute = { params?: { bookingId?: string; currentScheduledAt?: string } };
+
+
+import { COLORS } from '../../theme/colors';
 
 function formatDateTime(value?: string | null) {
   const raw = String(value ?? "").trim();
@@ -52,10 +59,17 @@ export function ScheduledRescheduleScreen({ route, navigation }: { route: Schedu
       return rescheduleBooking(bookingId, { date: scheduledTime });
     },
     onSuccess: (updated) => {
+      void trackBookingRescheduled({ booking_id: bookingId, source: "scheduled_reschedule" });
       Alert.alert("Rescheduled", "Your booking has been rescheduled successfully.");
       navigation.replace("ScheduledBookingStatus", { bookingId: updated?.id ?? bookingId });
     },
     onError: (e: any) => {
+      captureFrontendError(e, {
+        screenName: "ScheduledReschedule",
+        userAction: "reschedule_booking",
+        apiEndpoint: `/api/bookings/reschedule/${bookingId}`,
+        errorCode: getApiErrorCode(e) || "RESCHEDULE_BOOKING_FAILED",
+      });
       Alert.alert("Reschedule failed", String(e?.message ?? "Could not reschedule booking."));
     },
   });
@@ -99,27 +113,24 @@ export function ScheduledRescheduleScreen({ route, navigation }: { route: Schedu
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: bookingTheme.radius.card,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: bookingTheme.colors.cardBorder,
     backgroundColor: bookingTheme.colors.cardBg,
-    padding: 14,
+    padding: spacing.md + 2,
     gap: 8,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    ...shadows.sm,
   },
   rowLine: { gap: 2, paddingVertical: 3 },
-  rowLabel: { color: "#6B7B92", fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },
+  rowLabel: { color: COLORS.slate500, fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.3 },
   rowValue: { color: bookingTheme.colors.textPrimary, fontSize: 13, fontWeight: "700" },
-  primaryBtn: {
-    backgroundColor: bookingTheme.colors.primaryBtn,
-    borderRadius: bookingTheme.radius.button,
-    paddingVertical: 13,
-    alignItems: "center",
-  },
+  primaryBtn: { backgroundColor: bookingTheme.colors.primaryBtn, borderRadius: radii.md, paddingVertical: spacing.md + 1, alignItems: "center", ...shadows.sm },
   primaryBtnText: { color: bookingTheme.colors.primaryBtnText, fontSize: 14, fontWeight: "900", letterSpacing: 0.2 },
   disabledBtn: { opacity: 0.7 },
 });
+
+
+
+
+
+

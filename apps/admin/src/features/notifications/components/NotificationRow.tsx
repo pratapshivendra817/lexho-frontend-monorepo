@@ -34,7 +34,7 @@ export default function NotificationRow({
       await new Promise((res) => setTimeout(res, 800));
 
       toast.success(`Resent: ${data.title}`);
-    } catch (err) {
+    } catch {
       toast.error("Failed to resend");
     } finally {
       setLoading(false);

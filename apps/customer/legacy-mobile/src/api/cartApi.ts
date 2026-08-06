@@ -1,5 +1,6 @@
 import { api, parseApiError } from "./client";
-import { API_BASE_URL } from "../constants/env";
+import { API_BASE_URL, DEV_IMAGE_HOST } from "../constants/env";
+import { DEFAULT_CART_POLICY, normalizeCartPolicy, type CartPolicy } from "../constants/cartPolicy";
 import type { AddCartRequest, CartItemDto, UpdateCartRequest } from "../types/contracts";
 import type { SlotOption } from "../types/contracts";
 
@@ -18,10 +19,19 @@ export type CustomerCartItem = {
   serviceId: number;
   name: string;
   imageUrl?: string;
+  categoryId?: string;
+  categoryName?: string;
   serviceType?: string;
   price: number;
   quantity: number;
   totalPrice: number;
+  familySizeId?: number;
+  familySize?: string;
+  familySizeLabel?: string;
+  addons?: SelectedCartAddon[];
+  serviceActive?: boolean;
+  addonActive?: boolean;
+  areaAvailable?: boolean;
 };
 
 export type CustomerCartResponse = {
@@ -44,9 +54,10 @@ export type CustomerCartResponse = {
   assignmentMode?: string;
 };
 
-function isNotFoundError(error: any) {
-  return Number(error?.response?.status ?? 0) === 404;
-}
+export type SelectedCartAddon = {
+  addonId: number;
+  quantity: number;
+};
 
 function asArray(value: unknown): any[] {
   return Array.isArray(value) ? value : [];
@@ -62,109 +73,21 @@ function pickFirstNonEmptyString(...values: any[]) {
 }
 
 function toAbsoluteUrl(value: string) {
-  const clean = value.trim();
+  const clean = value.trim().replace(/\\/g, "/");
   if (!clean) return "";
-  if (clean.startsWith("http://") || clean.startsWith("https://")) return clean;
+  if (clean.startsWith("http://") || clean.startsWith("https://")) {
+    return clean.replace(
+      /^https?:\/\/(localhost|127\.0\.0\.1|10\.0\.2\.2)(:\d+)?/i,
+      (match, _host, port) => {
+        const protocol = match.startsWith("https://") ? "https://" : "http://";
+        return `${protocol}${DEV_IMAGE_HOST}${String(port ?? "")}`;
+      },
+    );
+  }
   if (clean.startsWith("//")) return `http:${clean}`;
   const normalizedBase = API_BASE_URL.replace(/\/+$/, "");
   const normalizedPath = clean.startsWith("/") ? clean : `/${clean}`;
   return `${normalizedBase}${normalizedPath}`;
-}
-
-function pickImageUrl(row: any) {
-  const nestedService = row?.service ?? {};
-  const nestedDetails = row?.serviceDetails ?? {};
-
-  const mediaCandidates = [
-    row?.media?.[0]?.url,
-    row?.media?.[0]?.imageUrl,
-    nestedService?.media?.[0]?.url,
-    nestedService?.media?.[0]?.imageUrl,
-    nestedDetails?.media?.[0]?.url,
-    nestedDetails?.media?.[0]?.imageUrl,
-    row?.images?.[0]?.url,
-    row?.images?.[0]?.imageUrl,
-    nestedService?.images?.[0]?.url,
-    nestedService?.images?.[0]?.imageUrl,
-    nestedDetails?.images?.[0]?.url,
-    nestedDetails?.images?.[0]?.imageUrl,
-  ];
-
-  const raw = pickFirstNonEmptyString(
-    row?.imageUrl,
-    row?.image,
-    row?.serviceImage,
-    row?.serviceImageUrl,
-    row?.thumbnail,
-    row?.thumbnailUrl,
-    row?.icon,
-    row?.iconUrl,
-    nestedService?.imageUrl,
-    nestedService?.image,
-    nestedService?.serviceImage,
-    nestedService?.serviceImageUrl,
-    nestedService?.thumbnail,
-    nestedService?.thumbnailUrl,
-    nestedService?.icon,
-    nestedService?.iconUrl,
-    nestedDetails?.imageUrl,
-    nestedDetails?.image,
-    nestedDetails?.serviceImage,
-    nestedDetails?.serviceImageUrl,
-    nestedDetails?.thumbnail,
-    nestedDetails?.thumbnailUrl,
-    nestedDetails?.icon,
-    nestedDetails?.iconUrl,
-    ...mediaCandidates,
-  );
-
-  return raw ? toAbsoluteUrl(raw) : undefined;
-}
-
-function toServiceLookupShape(payload: any): Array<{ serviceId: number; imageUrl?: string; name?: string }> {
-  const root = payload?.data && typeof payload.data === "object" ? payload.data : payload;
-  const rows = Array.isArray(root) ? root : Array.isArray(root?.items) ? root.items : Array.isArray(root?.data) ? root.data : [];
-  return rows.map((row: any) => {
-    const serviceId = Number(row?.id ?? row?.serviceId ?? 0);
-    const imageUrl = pickImageUrl(row);
-    const name = pickFirstNonEmptyString(row?.name, row?.serviceName, row?.title);
-    return {
-      serviceId,
-      imageUrl,
-      name: name || undefined,
-    };
-  });
-}
-
-async function enrichCartWithCatalog(cart: CustomerCartResponse): Promise<CustomerCartResponse> {
-  if (!Array.isArray(cart.items) || cart.items.length === 0) return cart;
-  const missingImage = cart.items.some((item) => !item.imageUrl);
-  if (!missingImage) return cart;
-
-  try {
-    const { data } = await api.get("/api/customer/services/catalog", { params: { page: 0, size: 200 } });
-    const catalog = toServiceLookupShape(data);
-    const imageByServiceId = new Map<number, { imageUrl?: string; name?: string }>();
-    catalog.forEach((row) => {
-      if (row.serviceId > 0) imageByServiceId.set(row.serviceId, { imageUrl: row.imageUrl, name: row.name });
-    });
-
-    return {
-      ...cart,
-      items: cart.items.map((item) => {
-        if (item.imageUrl) return item;
-        const fallback = imageByServiceId.get(Number(item.serviceId));
-        if (!fallback) return item;
-        return {
-          ...item,
-          imageUrl: fallback.imageUrl ?? item.imageUrl,
-          name: item.name?.startsWith("Service #") && fallback.name ? fallback.name : item.name,
-        };
-      }),
-    };
-  } catch {
-    return cart;
-  }
 }
 
 function toCartShape(payload: any): CustomerCartResponse {
@@ -194,19 +117,67 @@ function toCartShape(payload: any): CustomerCartResponse {
       row?.serviceDetails?.serviceName,
       row?.serviceDetails?.title,
     ) || `Service #${serviceId || itemId || ""}`;
-    const imageUrl = pickImageUrl(row);
+    const imageRaw = pickFirstNonEmptyString(
+      row?.imageUrl,
+      row?.service?.imageUrl,
+      row?.serviceDetails?.imageUrl,
+    );
+    const imageUrl = imageRaw ? toAbsoluteUrl(imageRaw) : undefined;
+    const category = row?.category && typeof row.category === "object" ? row.category : {};
+    const serviceCategory = row?.service?.category && typeof row.service.category === "object" ? row.service.category : {};
+    const serviceDetailsCategory = row?.serviceDetails?.category && typeof row.serviceDetails.category === "object" ? row.serviceDetails.category : {};
+    const categoryId = pickFirstNonEmptyString(
+      row?.categoryId != null ? String(row.categoryId) : "",
+      row?.serviceCategoryId != null ? String(row.serviceCategoryId) : "",
+      category?.id != null ? String(category.id) : "",
+      category?.categoryId != null ? String(category.categoryId) : "",
+      row?.service?.categoryId != null ? String(row.service.categoryId) : "",
+      serviceCategory?.id != null ? String(serviceCategory.id) : "",
+      serviceCategory?.categoryId != null ? String(serviceCategory.categoryId) : "",
+      row?.serviceDetails?.categoryId != null ? String(row.serviceDetails.categoryId) : "",
+      serviceDetailsCategory?.id != null ? String(serviceDetailsCategory.id) : "",
+      serviceDetailsCategory?.categoryId != null ? String(serviceDetailsCategory.categoryId) : "",
+    );
+    const categoryName = pickFirstNonEmptyString(
+      row?.categoryName,
+      row?.serviceCategory,
+      row?.serviceCategoryName,
+      category?.name,
+      category?.categoryName,
+      row?.service?.categoryName,
+      row?.service?.serviceCategory,
+      row?.service?.serviceCategoryName,
+      serviceCategory?.name,
+      serviceCategory?.categoryName,
+      row?.serviceDetails?.categoryName,
+      row?.serviceDetails?.serviceCategory,
+      row?.serviceDetails?.serviceCategoryName,
+      serviceDetailsCategory?.name,
+      serviceDetailsCategory?.categoryName,
+    );
     return {
       itemId,
       serviceId,
       name,
       imageUrl,
+      categoryId: categoryId || undefined,
+      categoryName: categoryName || undefined,
       serviceType: row?.serviceType ? String(row.serviceType) : undefined,
       price: Number(row?.price ?? 0),
       quantity: Number(row?.quantity ?? 1),
       totalPrice: Number(row?.totalPrice ?? (Number(row?.price ?? 0) * Number(row?.quantity ?? 1))),
+      familySizeId: row?.familySizeId != null ? Number(row.familySizeId) : row?.cookFamilySizeId != null ? Number(row.cookFamilySizeId) : undefined,
+      familySize: pickFirstNonEmptyString(row?.familySize, row?.cookFamilySize, row?.familySizeCode),
+      familySizeLabel: pickFirstNonEmptyString(row?.familySizeLabel, row?.cookFamilySizeLabel, row?.familySizeName),
+      addons: asArray(row?.addons ?? row?.selectedAddons).map((addon: any) => ({
+        addonId: Number(addon?.addonId ?? addon?.id ?? 0),
+        quantity: Number(addon?.quantity ?? 1),
+      })).filter((addon) => addon.addonId > 0),
+      serviceActive: row?.serviceActive ?? row?.active ?? row?.service?.active,
+      addonActive: row?.addonActive,
+      areaAvailable: row?.areaAvailable ?? row?.serviceAvailableInArea,
     };
   });
-
   return {
     cartId: root?.cartId != null ? Number(root.cartId) : null,
     address: address
@@ -244,30 +215,62 @@ function toCartShape(payload: any): CustomerCartResponse {
   };
 }
 
+export async function getCartPolicy(): Promise<CartPolicy> {
+  const endpoints = ["/api/customer/cart/config", "/api/customer/cart/policy", "/api/cart/config"];
+  for (const endpoint of endpoints) {
+    try {
+      const { data } = await api.get(endpoint);
+      return normalizeCartPolicy(data);
+    } catch {
+      // Fall through to the next known endpoint, then defaults.
+    }
+  }
+  return DEFAULT_CART_POLICY;
+}
+
 export async function getCustomerCart(): Promise<CustomerCartResponse> {
   try {
-    try {
-      const { data } = await api.get("/api/customer/cart");
-      const cart = toCartShape(data);
-      return await enrichCartWithCatalog(cart);
-    } catch (e) {
-      if (!isNotFoundError(e)) throw e;
-      const { data } = await api.get("/api/cart");
-      const cart = toCartShape(data);
-      return await enrichCartWithCatalog(cart);
-    }
+    const { data } = await api.get("/api/customer/cart");
+    return toCartShape(data);
   } catch (e) {
     throw new Error(parseApiError(e, "Get customer cart failed"));
   }
 }
 
-export async function addCustomerCartItem(payload: { serviceId: number; quantity: number }) {
+export async function addCustomerCartItem(payload: {
+  serviceId: number;
+  quantity: number;
+  addons?: SelectedCartAddon[];
+  familySizeId?: number;
+  familySize?: string;
+  familySizeLabel?: string;
+}) {
   try {
     const addPayload = {
       serviceId: Number(payload.serviceId),
       quantity: Number(payload.quantity ?? 1),
+      ...(payload.familySizeId ? { familySizeId: Number(payload.familySizeId) } : {}),
+      ...(payload.familySize ? { familySize: String(payload.familySize) } : {}),
+      ...(payload.familySizeLabel ? { familySizeLabel: String(payload.familySizeLabel) } : {}),
+      ...(Array.isArray(payload.addons) && payload.addons.length > 0
+        ? {
+            addons: payload.addons.map((addon) => ({
+              addonId: Number(addon.addonId),
+              quantity: Number(addon.quantity ?? 1),
+            })),
+          }
+        : {}),
     };
-    const { data } = await api.post("/api/customer/cart/add", addPayload);
+    let data: any;
+    try {
+      const response = await api.post("/api/customer/cart", addPayload);
+      data = response.data;
+    } catch (primaryError: any) {
+      const status = Number(primaryError?.response?.status ?? 0);
+      if (![404, 405].includes(status)) throw primaryError;
+      const response = await api.post("/api/customer/cart/add", addPayload);
+      data = response.data;
+    }
     const root = data?.data && typeof data.data === "object" ? data.data : data;
     const cart = await getCustomerCart();
     return {
@@ -281,16 +284,10 @@ export async function addCustomerCartItem(payload: { serviceId: number; quantity
   }
 }
 
-export async function updateCustomerCartItem(payload: { itemId: number; quantity: number }) {
+export async function updateCustomerCartItem(payload: { itemId: number; quantity?: number; familySizeId?: number; familySize?: string; familySizeLabel?: string }) {
   try {
-    try {
-      const { data } = await api.put("/api/customer/cart/item", payload);
-      return await enrichCartWithCatalog(toCartShape(data));
-    } catch (e) {
-      if (!isNotFoundError(e)) throw e;
-      const { data } = await api.put("/api/cart/item", payload);
-      return await enrichCartWithCatalog(toCartShape(data));
-    }
+    await api.put("/api/customer/cart/item", payload);
+    return await getCustomerCart();
   } catch (e) {
     throw new Error(parseApiError(e, "Update cart item failed"));
   }
@@ -298,14 +295,8 @@ export async function updateCustomerCartItem(payload: { itemId: number; quantity
 
 export async function removeCustomerCartItem(itemId: number) {
   try {
-    try {
-      const { data } = await api.delete(`/api/customer/cart/item/${itemId}`);
-      return await enrichCartWithCatalog(toCartShape(data));
-    } catch (e) {
-      if (!isNotFoundError(e)) throw e;
-      const { data } = await api.delete(`/api/cart/item/${itemId}`);
-      return await enrichCartWithCatalog(toCartShape(data));
-    }
+    await api.delete(`/api/customer/cart/item/${itemId}`);
+    return await getCustomerCart();
   } catch (e) {
     throw new Error(parseApiError(e, "Remove cart item failed"));
   }
@@ -313,14 +304,8 @@ export async function removeCustomerCartItem(itemId: number) {
 
 export async function clearCustomerCart() {
   try {
-    try {
-      const { data } = await api.delete("/api/customer/cart/clear");
-      return await enrichCartWithCatalog(toCartShape(data));
-    } catch (e) {
-      if (!isNotFoundError(e)) throw e;
-      const { data } = await api.delete("/api/cart/clear");
-      return await enrichCartWithCatalog(toCartShape(data));
-    }
+    const { data } = await api.delete("/api/customer/cart/clear");
+    return toCartShape(data);
   } catch (e) {
     throw new Error(parseApiError(e, "Clear cart failed"));
   }
@@ -328,14 +313,8 @@ export async function clearCustomerCart() {
 
 export async function patchCustomerCartMeta(payload: { addressId: number; scheduledTime: string }) {
   try {
-    try {
-      const { data } = await api.patch("/api/customer/cart/meta", payload);
-      return await enrichCartWithCatalog(toCartShape(data));
-    } catch (e) {
-      if (!isNotFoundError(e)) throw e;
-      const { data } = await api.patch("/api/cart/meta", payload);
-      return await enrichCartWithCatalog(toCartShape(data));
-    }
+    const { data } = await api.patch("/api/customer/cart/meta", payload);
+    return toCartShape(data);
   } catch (e) {
     throw new Error(parseApiError(e, "Update cart meta failed"));
   }
@@ -344,11 +323,12 @@ export async function patchCustomerCartMeta(payload: { addressId: number; schedu
 export async function getAvailableTimeSlots(date: string): Promise<SlotOption[]> {
   const buildFullDayQuarterSlots = () => {
     const all: SlotOption[] = [];
+    const intervalMinutes = DEFAULT_CART_POLICY.slotIntervalMinutes;
     for (let hour = 6; hour <= 22; hour += 1) {
-      for (let minute = 0; minute < 60; minute += 15) {
+      for (let minute = 0; minute < 60; minute += intervalMinutes) {
         const start = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
         let endHour = hour;
-        let endMinute = minute + 15;
+        let endMinute = minute + intervalMinutes;
         if (endMinute >= 60) {
           endMinute -= 60;
           endHour += 1;
@@ -363,42 +343,6 @@ export async function getAvailableTimeSlots(date: string): Promise<SlotOption[]>
     }
     return all;
   };
-  const toMinutes = (hhmm: string) => {
-    const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(hhmm || "").trim());
-    if (!m) return null;
-    return Number(m[1]) * 60 + Number(m[2]);
-  };
-  const toHHMM = (mins: number) => {
-    const total = Math.max(0, mins);
-    const hh = Math.floor(total / 60) % 24;
-    const mm = total % 60;
-    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-  };
-  const expandToQuarterHourSlots = (rows: SlotOption[]) => {
-    const expanded: SlotOption[] = [];
-    for (const row of rows) {
-      const raw = String(row?.slot ?? "").trim();
-      const parts = raw.split("-");
-      if (parts.length !== 2) {
-        expanded.push(row);
-        continue;
-      }
-      const startMins = toMinutes(parts[0].trim());
-      const endMins = toMinutes(parts[1].trim());
-      if (startMins == null || endMins == null || endMins <= startMins) {
-        expanded.push(row);
-        continue;
-      }
-      for (let cur = startMins; cur + 15 <= endMins; cur += 15) {
-        expanded.push({
-          ...row,
-          slot: `${toHHMM(cur)}-${toHHMM(cur + 15)}`,
-        });
-      }
-    }
-    return expanded;
-  };
-
   try {
     const { data } = await api.get("/api/customer/cart/slots", { params: { date } });
     const root = data?.data && typeof data.data === "object" ? data.data : data;
@@ -435,46 +379,8 @@ export async function getAvailableTimeSlots(date: string): Promise<SlotOption[]>
         rows = Array.isArray(grouped?.slots) ? grouped.slots : Array.isArray(grouped?.items) ? grouped.items : Array.isArray(grouped?.content) ? grouped.content : [];
       }
     }
-    const slots = rows
-      .map((row: any) => {
-        const isObj = row && typeof row === "object";
-        const start = isObj ? String(row?.startTime ?? row?.start ?? row?.from ?? "").trim() : "";
-        const end = isObj ? String(row?.endTime ?? row?.end ?? row?.to ?? "").trim() : "";
-        const slot = String(isObj ? (row?.label ?? row?.time ?? row?.slot ?? (start && end ? `${start}-${end}` : start) ?? "") : row ?? "").trim();
-        if (!slot) return null;
-        const availableRaw = isObj ? row?.available ?? row?.isAvailable : true;
-        return {
-          slot,
-          etaMinutes: isObj && row?.etaMinutes != null ? Number(row.etaMinutes) : undefined,
-          instantEligible: isObj ? Boolean(row?.instantEligible ?? row?.isInstantEligible ?? false) : false,
-          available: availableRaw == null ? true : Boolean(availableRaw),
-        } as SlotOption;
-      })
-      .filter(Boolean) as SlotOption[];
-    const expandedSlots = buildFullDayQuarterSlots();
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log("[cart:slots:parsed]", {
-        requestDate: date,
-        totalRows: Array.isArray(rows) ? rows.length : 0,
-        parsedCount: slots.length,
-        expandedCount: expandedSlots.length,
-        firstThreeRaw: (Array.isArray(rows) ? rows.slice(0, 3) : []),
-        firstThreeParsed: slots.slice(0, 3),
-        firstThreeExpanded: expandedSlots.slice(0, 3),
-      });
-    }
-    return expandedSlots;
+    return buildFullDayQuarterSlots();
   } catch (error: any) {
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log("[cart:slots:error]", {
-        requestDate: date,
-        status: error?.response?.status ?? null,
-        message: String(error?.response?.data?.message ?? error?.message ?? "Unknown"),
-        data: error?.response?.data ?? null,
-      });
-    }
     return buildFullDayQuarterSlots();
   }
 }
@@ -507,6 +413,7 @@ export async function addToCart(payload: AddCartRequest) {
   return addCustomerCartItem({
     serviceId: Number(payload.serviceId),
     quantity: Number(payload.quantity ?? 1),
+    addons: payload.addons,
   });
 }
 export async function updateCart(payload: UpdateCartRequest) { return updateCustomerCartItem({ itemId: Number((payload as any).id ?? 0), quantity: Number(payload.quantity ?? 1) }); }

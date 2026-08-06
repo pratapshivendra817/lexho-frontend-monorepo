@@ -248,6 +248,12 @@ async function postCurrentLocation() {
     latitude: current.latitude,
     longitude: current.longitude,
     accuracy: current.accuracy ?? 0,
+    accuracyMeters: current.accuracy ?? undefined,
+    source: "gps",
+    trackingState: "AVAILABLE",
+    mockLocation: false,
+    rootedDevice: false,
+    gpsEnabled: true,
   });
 }
 
@@ -346,6 +352,12 @@ export async function detectAndSyncCurrentLocation(): Promise<{
       latitude: location.latitude,
       longitude: location.longitude,
       accuracy: location.accuracy ?? 0,
+      accuracyMeters: location.accuracy ?? undefined,
+      source: "gps",
+      trackingState: "AVAILABLE",
+      mockLocation: false,
+      rootedDevice: false,
+      gpsEnabled: true,
     });
     const city =
       locationResp?.data?.city ??

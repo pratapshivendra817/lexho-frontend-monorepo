@@ -22,3 +22,5 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: "800", color: palette.text },
   subtitle: { color: palette.muted },
 });
+
+

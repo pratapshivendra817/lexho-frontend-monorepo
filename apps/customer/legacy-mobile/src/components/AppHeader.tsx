@@ -1,5 +1,6 @@
 import { View, StyleSheet } from "react-native";
 import { IconButton, Text } from "react-native-paper";
+import { palette, radii, shadows, spacing } from "../constants/theme";
 
 type Props = {
   title: string;
@@ -13,30 +14,37 @@ export function AppHeader({ title, subtitle, onBack, rightActionIcon, onRightAct
   return (
     <View style={styles.container}>
       <View style={styles.left}>
-        {onBack ? <IconButton icon="arrow-left" onPress={onBack} /> : null}
+        {onBack ? <IconButton icon="arrow-left" iconColor={palette.primaryDark} onPress={onBack} /> : null}
         <View>
-          <Text variant="titleLarge">{title}</Text>
-          {subtitle ? <Text variant="bodySmall">{subtitle}</Text> : null}
+          <Text variant="titleLarge" style={styles.title}>{title}</Text>
+          {subtitle ? <Text variant="bodySmall" style={styles.subtitle}>{subtitle}</Text> : null}
         </View>
       </View>
 
-      {rightActionIcon ? <IconButton icon={rightActionIcon} onPress={onRightActionPress} /> : null}
+      {rightActionIcon ? <IconButton icon={rightActionIcon} iconColor={palette.primaryDark} onPress={onRightActionPress} /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    borderRadius: radii.lg,
+    backgroundColor: palette.surfaceAlt,
+    ...shadows.sm,
   },
   left: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: spacing.xs,
   },
+  title: { color: palette.primaryDark, fontWeight: "800" },
+  subtitle: { color: palette.muted },
 });
+
+
 

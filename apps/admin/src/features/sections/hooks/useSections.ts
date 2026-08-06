@@ -3,9 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   addSectionItems,
   createSection,
+  deleteSectionItem,
   getSections,
+  reorderSectionItems,
   reorderSections,
   updateSection,
+  updateSectionItem,
+  updateSectionItemStatus,
   updateSectionStatus,
 } from "../api/sectionsApi";
 import type { SectionItemPayload, SectionPayload } from "../types";
@@ -43,6 +47,25 @@ export function useSectionsMutations() {
     }),
     addSectionItemsMutation: useMutation({
       mutationFn: ({ id, items }: { id: number; items: SectionItemPayload[] }) => addSectionItems(id, items),
+      onSuccess: invalidate,
+    }),
+    updateSectionItemMutation: useMutation({
+      mutationFn: ({ sectionId, itemId, payload }: { sectionId: number; itemId: number; payload: SectionItemPayload }) =>
+        updateSectionItem(sectionId, itemId, payload),
+      onSuccess: invalidate,
+    }),
+    updateSectionItemStatusMutation: useMutation({
+      mutationFn: ({ sectionId, itemId, isActive }: { sectionId: number; itemId: number; isActive: boolean }) =>
+        updateSectionItemStatus(sectionId, itemId, isActive),
+      onSuccess: invalidate,
+    }),
+    deleteSectionItemMutation: useMutation({
+      mutationFn: ({ sectionId, itemId }: { sectionId: number; itemId: number }) => deleteSectionItem(sectionId, itemId),
+      onSuccess: invalidate,
+    }),
+    reorderSectionItemsMutation: useMutation({
+      mutationFn: ({ sectionId, rows }: { sectionId: number; rows: Array<{ id: number; priority: number }> }) =>
+        reorderSectionItems(sectionId, rows),
       onSuccess: invalidate,
     }),
   };

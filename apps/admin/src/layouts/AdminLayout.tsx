@@ -1,7 +1,7 @@
 ﻿import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { FiSearch } from "react-icons/fi";
 
-import { ThemeToggle } from "@/components/admin";
+import { ApiDebugPanel, ThemeToggle } from "@/components/admin";
 import { clearAccessToken } from "@/utils/authSession";
 import { adminNavItems, getAdminRouteMeta } from "../navigation/adminNavigation";
 
@@ -69,6 +69,7 @@ export default function AdminLayout() {
 
         <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-inner sm:p-4">
           <Outlet />
+          <ApiDebugPanel visible />
         </div>
       </main>
     </div>

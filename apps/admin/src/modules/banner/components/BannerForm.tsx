@@ -8,7 +8,6 @@ import type {
   BannerCategoryOption,
   BannerFormValues,
   BannerRedirectType,
-  BannerServiceOption,
 } from "../types/banner.types";
 
 const schema = z
@@ -38,7 +37,6 @@ const schema = z
 type BannerFormProps = {
   defaultValues: BannerFormValues;
   categories: BannerCategoryOption[];
-  services: BannerServiceOption[];
   isSubmitting: boolean;
   onSubmit: (values: BannerFormValues) => void;
 };
@@ -46,24 +44,30 @@ type BannerFormProps = {
 export function BannerForm({
   defaultValues,
   categories,
-  services,
   isSubmitting,
   onSubmit,
 }: BannerFormProps) {
   const form = useForm<BannerFormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as never,
     defaultValues,
   });
 
   useEffect(() => {
     form.reset(defaultValues);
   }, [defaultValues, form]);
+  useEffect(() => {
+    if (form.getValues("redirectType") === "SERVICE") {
+      form.setValue("redirectType", "CATEGORY", { shouldDirty: true });
+      if (!form.getValues("redirectValue")) {
+        form.setValue("redirectValue", "", { shouldDirty: true });
+      }
+    }
+  }, [form]);
 
   const redirectType = form.watch("redirectType");
   const submitForm = form.handleSubmit((values: BannerFormValues) => onSubmit(values));
   const redirectLabel = useMemo(() => {
     if (redirectType === "CATEGORY") return "Redirect Category ID";
-    if (redirectType === "SERVICE") return "Redirect Service ID";
     return "Redirect URL";
   }, [redirectType]);
 
@@ -115,7 +119,6 @@ export function BannerForm({
           className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
         >
           <option value="CATEGORY">CATEGORY</option>
-          <option value="SERVICE">SERVICE</option>
           <option value="EXTERNAL">EXTERNAL</option>
         </select>
       </label>
@@ -131,26 +134,6 @@ export function BannerForm({
             {categories.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name}
-              </option>
-            ))}
-          </select>
-          {form.formState.errors.redirectValue ? (
-            <span className="text-xs text-red-300">{form.formState.errors.redirectValue.message}</span>
-          ) : null}
-        </label>
-      ) : null}
-
-      {redirectType === "SERVICE" ? (
-        <label className="grid gap-1 text-sm text-[var(--color-text)]">
-          <span>Redirect Service</span>
-          <select
-            {...form.register("redirectValue")}
-            className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-          >
-            <option value="">Select service</option>
-            {services.map((service) => (
-              <option key={service.id} value={service.id}>
-                {service.name}
               </option>
             ))}
           </select>

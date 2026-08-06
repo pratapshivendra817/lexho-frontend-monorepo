@@ -3,18 +3,24 @@ import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { Text } from "react-native-paper";
 
+
+import { COLORS } from '../../theme/colors';
+import { spacing } from "../../constants/theme";
+
 type SectionHeaderProps = {
   title: string;
   subtitle?: string;
   rightSlot?: ReactNode;
+  subtitleColor?: string;
+  titleColor?: string;
 };
 
-function SectionHeaderComponent({ title, subtitle, rightSlot }: SectionHeaderProps) {
+function SectionHeaderComponent({ title, subtitle, rightSlot, subtitleColor, titleColor }: SectionHeaderProps) {
   return (
     <View style={styles.row}>
       <View style={styles.content}>
-        <Text style={styles.title}>{title}</Text>
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        <Text style={[styles.title, titleColor ? { color: titleColor } : null]}>{title}</Text>
+        {subtitle ? <Text style={[styles.subtitle, subtitleColor ? { color: subtitleColor } : null]}>{subtitle}</Text> : null}
       </View>
       {rightSlot}
     </View>
@@ -25,25 +31,30 @@ export const SectionHeader = memo(SectionHeaderComponent);
 
 const styles = StyleSheet.create({
   row: {
-    marginHorizontal: 16,
-    marginTop: 22,
+    marginHorizontal: spacing.sm + 2,
+    marginTop: spacing.xl + 2,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
   content: {
     flexShrink: 1,
-    paddingRight: 8,
+    paddingRight: spacing.sm,
   },
   title: {
     fontSize: 19,
     fontWeight: "800",
-    color: "#0F172A",
+    color: COLORS.slate900,
     letterSpacing: 0.1,
   },
   subtitle: {
     marginTop: 4,
     fontSize: 12,
-    color: "#64748B",
+    color: COLORS.slate500,
   },
 });
+
+
+
+
+

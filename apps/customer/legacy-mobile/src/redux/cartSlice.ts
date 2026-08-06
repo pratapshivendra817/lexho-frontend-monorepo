@@ -4,11 +4,15 @@ import {
   clearCustomerCart,
   getCustomerAddresses,
   getCustomerCart,
+  getCartPolicy,
   patchCustomerCartMeta,
   removeCustomerCartItem,
   updateCustomerCartItem,
   type CustomerCartItem,
+  type SelectedCartAddon,
 } from "../api/cartApi";
+import { DEFAULT_CART_POLICY, type CartPolicy } from "../constants/cartPolicy";
+import { getCartSnapshot, saveCartSnapshot } from "../services/storage";
 
 type AddressRow = {
   id: number;
@@ -17,6 +21,8 @@ type AddressRow = {
   pincode?: string;
   latitude?: number;
   longitude?: number;
+  lat?: number;
+  lng?: number;
   default?: boolean;
 };
 
@@ -44,6 +50,7 @@ type CartState = {
   matchedPartners: number;
   assignmentMode: string | null;
   requestStatus: "IDLE" | "PENDING" | "ACCEPTED" | "REJECTED";
+  policy: CartPolicy;
   paymentLock: {
     active: boolean;
     bookingId: string | null;
@@ -75,6 +82,7 @@ const initialState: CartState = {
   matchedPartners: 0,
   assignmentMode: null,
   requestStatus: "IDLE",
+  policy: DEFAULT_CART_POLICY,
   paymentLock: {
     active: false,
     bookingId: null,
@@ -115,24 +123,82 @@ export const fetchCustomerCartThunk = createAsyncThunk("cart/fetchCustomerCart",
   return await getCustomerCart();
 });
 
+export const restoreCartSnapshotThunk = createAsyncThunk("cart/restoreSnapshot", async () => {
+  return await getCartSnapshot();
+});
+
+export const fetchCartPolicyThunk = createAsyncThunk("cart/fetchPolicy", async () => {
+  return await getCartPolicy();
+});
+
 export const fetchCustomerAddressesThunk = createAsyncThunk("cart/fetchCustomerAddresses", async () => {
   return await getCustomerAddresses();
 });
 
 export const addToCartThunk = createAsyncThunk(
   "cart/addToCart",
-  async (payload: { serviceId: number; quantity?: number }) => {
+  async (payload: {
+    serviceId: number;
+    quantity?: number;
+    addons?: SelectedCartAddon[];
+    familySizeId?: number;
+    familySize?: string;
+    familySizeLabel?: string;
+  }, { getState, rejectWithValue }) => {
+    const state = (getState() as any)?.cart as CartState | undefined;
+    const policy = state?.policy ?? DEFAULT_CART_POLICY;
+    const hasFamilySize = Boolean(payload.familySizeId || payload.familySize || payload.familySizeLabel);
+    const maxQuantity = hasFamilySize ? policy.maxCookQuantity : policy.maxOtherServiceQuantity;
+    const existingItem = state?.items?.find((item) => {
+      if (Number(item.serviceId) !== Number(payload.serviceId)) return false;
+      if (!hasFamilySize) return !item.familySizeId && !item.familySize && !item.familySizeLabel;
+      return (
+        Number(item.familySizeId ?? 0) === Number(payload.familySizeId ?? 0) ||
+        (payload.familySize && String(item.familySize ?? "").toUpperCase() === String(payload.familySize).toUpperCase())
+      );
+    });
+    if (!existingItem && Number(state?.items?.length ?? 0) >= policy.maxCartItems) {
+      return rejectWithValue(`Cart limit exceeded. Maximum ${policy.maxCartItems} services allowed.`);
+    }
+    const nextQuantity = Number(existingItem?.quantity ?? 0) + Number(payload.quantity ?? 1);
+    if (nextQuantity > maxQuantity) {
+      return rejectWithValue(`Quantity exceeded. Maximum ${maxQuantity} allowed per service.`);
+    }
+    if (existingItem && (!payload.addons || payload.addons.length === 0)) {
+      return await updateCustomerCartItem({
+        itemId: existingItem.itemId,
+        quantity: Math.max(policy.minServiceQuantity, nextQuantity),
+      });
+    }
     return await addCustomerCartItem({
       serviceId: payload.serviceId,
-      quantity: payload.quantity ?? 1,
+      quantity: Math.max(policy.minServiceQuantity, payload.quantity ?? 1),
+      addons: payload.addons,
+      familySizeId: payload.familySizeId,
+      familySize: payload.familySize,
+      familySizeLabel: payload.familySizeLabel,
     });
   },
 );
 
 export const updateCartItemThunk = createAsyncThunk(
   "cart/updateCartItem",
-  async (payload: { itemId: number; quantity: number }) => {
-    return await updateCustomerCartItem(payload);
+  async (payload: { itemId: number; quantity?: number; familySizeId?: number; familySize?: string; familySizeLabel?: string }, { getState, rejectWithValue }) => {
+    const policy = ((getState() as any)?.cart as CartState | undefined)?.policy ?? DEFAULT_CART_POLICY;
+    const state = (getState() as any)?.cart as CartState | undefined;
+    const item = state?.items?.find((row) => Number(row.itemId) === Number(payload.itemId));
+    const isCookItem = Boolean(item?.familySizeId || item?.familySize || item?.familySizeLabel || payload.familySizeId || payload.familySize);
+    const maxQuantity = isCookItem ? policy.maxCookQuantity : policy.maxOtherServiceQuantity;
+    if (payload.quantity != null && payload.quantity > maxQuantity) {
+      return rejectWithValue(`Quantity exceeded. Maximum ${maxQuantity} allowed per service.`);
+    }
+    return await updateCustomerCartItem({
+      itemId: payload.itemId,
+      quantity: payload.quantity == null ? undefined : Math.max(policy.minServiceQuantity, payload.quantity),
+      familySizeId: payload.familySizeId,
+      familySize: payload.familySize,
+      familySizeLabel: payload.familySizeLabel,
+    });
   },
 );
 
@@ -193,10 +259,21 @@ const cartSlice = createSlice({
           return;
         }
         applyCart(state, action.payload);
+        void saveCartSnapshot(state.items as any);
       })
       .addCase(fetchCustomerCartThunk.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message ?? "Cart load failed";
+      })
+      .addCase(restoreCartSnapshotThunk.fulfilled, (state, action) => {
+        if (state.items.length > 0) return;
+        state.items = (action.payload as any[]) ?? [];
+        state.itemTotal = state.items.reduce((sum, item) => sum + Number((item as any).totalPrice || (item as any).price || 0), 0);
+        state.grandTotal = state.itemTotal;
+        state.toPay = state.itemTotal;
+      })
+      .addCase(fetchCartPolicyThunk.fulfilled, (state, action) => {
+        state.policy = action.payload ?? DEFAULT_CART_POLICY;
       })
       .addCase(fetchCustomerAddressesThunk.pending, (state) => {
         state.refreshing = true;
@@ -229,10 +306,11 @@ const cartSlice = createSlice({
         applyCart(state, action.payload);
         const firstItem = action.payload.items[action.payload.items.length - 1];
         state.recentlyAddedServiceId = firstItem?.serviceId ?? null;
+        void saveCartSnapshot(state.items as any);
       })
       .addCase(addToCartThunk.rejected, (state, action) => {
         state.updating = false;
-        state.error = action.error.message ?? "Add to cart failed";
+        state.error = String(action.payload ?? action.error.message ?? "Add to cart failed");
       })
       .addCase(updateCartItemThunk.pending, (state) => {
         state.updating = true;
@@ -240,16 +318,19 @@ const cartSlice = createSlice({
       .addCase(updateCartItemThunk.fulfilled, (state, action) => {
         state.updating = false;
         applyCart(state, action.payload);
+        void saveCartSnapshot(state.items as any);
       })
       .addCase(updateCartItemThunk.rejected, (state, action) => {
         state.updating = false;
-        state.error = action.error.message ?? "Update quantity failed";
+        state.error = String(action.payload ?? action.error.message ?? "Update quantity failed");
       })
       .addCase(removeCartItemThunk.fulfilled, (state, action) => {
         applyCart(state, action.payload);
+        void saveCartSnapshot(state.items as any);
       })
       .addCase(clearCartThunk.fulfilled, (state, action) => {
         applyCart(state, action.payload);
+        void saveCartSnapshot([]);
       })
       .addCase(updateCartMetaThunk.pending, (state) => {
         state.updating = true;

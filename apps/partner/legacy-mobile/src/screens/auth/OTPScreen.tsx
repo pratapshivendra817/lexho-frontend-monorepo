@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { COLORS } from "../../constants/colors";
 import { sendOtp, verifyOtp } from "../../services/authService";
+import { trackAuthenticationEvent } from "../../services/firebaseAnalytics";
 
 type Props = {
   navigation: any;
@@ -45,6 +46,7 @@ export default function OTPScreen({ route, onAuthSuccess }: Props) {
     if (otp.length !== 6) {
       const message = "Enter a valid 6-digit OTP.";
       setErrorMessage(message);
+      void trackAuthenticationEvent(false, { stage: "verify_validation" });
       Alert.alert("Invalid OTP", message);
       return;
     }
@@ -57,6 +59,7 @@ export default function OTPScreen({ route, onAuthSuccess }: Props) {
     } catch (e: any) {
       const message = e?.message || "OTP verification failed. Please try again.";
       setErrorMessage(message);
+      void trackAuthenticationEvent(false, { stage: "verify_otp", message });
       Alert.alert("OTP verification failed", message);
     } finally {
       setLoading(false);
@@ -68,15 +71,6 @@ export default function OTPScreen({ route, onAuthSuccess }: Props) {
       setLoading(true);
       setErrorMessage("");
       const response = await sendOtp(mobile);
-      if (__DEV__) {
-        const otp =
-          response?.otp ??
-          response?.data?.otp ??
-          response?.code ??
-          response?.data?.code;
-        // eslint-disable-next-line no-console
-        console.log(`[PARTNER DEV OTP RESEND] ${mobile}: ${otp ?? "OTP not present in response"}`);
-      }
       setTimer(response?.resendAfter || resendAfter);
       Alert.alert("OTP sent", "A new code has been sent to your mobile.");
     } catch (e: any) {

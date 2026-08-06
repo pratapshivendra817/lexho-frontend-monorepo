@@ -1,7 +1,8 @@
 import { memo } from "react";
-import { Image, Pressable, StyleSheet, View } from "react-native";
-import { Text } from "react-native-paper";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIcons";
+import { COLORS } from '../../theme/colors';
+import { radii, spacing } from "../../constants/theme";
 
 type PopularServiceCardProps = {
   item: {
@@ -9,6 +10,7 @@ type PopularServiceCardProps = {
     name: string;
     imageUrl?: string;
     ratingLabel: string;
+    ratingValue?: number;
     priceLabel: string;
   };
   width: number;
@@ -18,32 +20,52 @@ type PopularServiceCardProps = {
   badgeLabel?: string;
 };
 
-function ServiceCardComponent({ item, width, onPress, onAdd, accentColor = "#2563EB", badgeLabel = "Top Rated" }: PopularServiceCardProps) {
+function ServiceCardComponent({ item, width, onPress, onAdd, accentColor = COLORS.blue600, badgeLabel = "Top Rated" }: PopularServiceCardProps) {
+  const ratingValue = String(item.ratingLabel ?? "").replace(/^rating\s*/i, "").trim();
+  const ratingDisplay = ratingValue || badgeLabel;
   return (
-    <Pressable style={[styles.card, { width }]} onPress={() => onPress(item.id)}>
-      {item.imageUrl ? (
-        <Image source={{ uri: item.imageUrl }} style={styles.image} resizeMode="cover" />
-      ) : (
-        <View style={styles.imageFallback} />
-      )}
+    <Pressable
+      style={({ pressed }) => [
+        styles.card,
+        { width },
+        pressed ? styles.cardPressed : null,
+      ]}
+      onPress={() => onPress(item.id)}
+    >
+      <View style={styles.imageWrap}>
+        {item.imageUrl ? (
+          <Image source={{ uri: item.imageUrl }} style={styles.image} resizeMode="cover" />
+        ) : (
+          <View style={styles.imageFallback} />
+        )}
+        <View style={styles.imageRatingBadge}>
+          <MaterialCommunityIcon name="star" size={12} color={COLORS.warning} />
+          <Text style={[styles.meta, { color: COLORS.black }]}>{ratingDisplay}</Text>
+        </View>
+      </View>
 
       <View style={styles.content}>
-        <View style={[styles.badge, { backgroundColor: `${accentColor}18`, borderColor: `${accentColor}44` }]}>
-          <Text style={[styles.badgeText, { color: accentColor }]}>{badgeLabel}</Text>
-        </View>
         <Text style={styles.name} numberOfLines={2}>
           {item.name}
         </Text>
-        <View style={styles.metaRow}>
-          <MaterialCommunityIcon name="star" size={12} color="#F59E0B" />
-          <Text style={styles.meta}>{item.ratingLabel}</Text>
+        <View style={styles.footerRow}>
+          <Text style={styles.price}>{item.priceLabel}</Text>
+          <View style={styles.bookActionWrap}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Book service"
+              style={({ pressed }) => [
+                styles.addButton,
+                { backgroundColor: accentColor },
+                pressed ? styles.addButtonPressed : null,
+              ]}
+              onPress={() => onAdd(item.id)}
+            >
+              <MaterialCommunityIcon name="plus" size={14} color={COLORS.white} />
+            </Pressable>
+          </View>
         </View>
-        <Text style={styles.price}>{item.priceLabel}</Text>
       </View>
-
-      <Pressable style={[styles.addButton, { backgroundColor: accentColor }]} onPress={() => onAdd(item.id)}>
-        <Text style={styles.addText}>Book</Text>
-      </Pressable>
     </Pressable>
   );
 }
@@ -52,85 +74,110 @@ export const ServiceCard = memo(ServiceCardComponent);
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    position: "relative",
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#E8ECF2",
-    backgroundColor: "#FFFFFF",
+    borderColor: COLORS.goldSoft,
+    backgroundColor: "#FFFDF8",
     overflow: "hidden",
-    marginRight: 12,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 3,
+    marginRight: spacing.md,
+    height: 178,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
+  cardPressed: {
+    transform: [{ scale: 0.985 }],
+    opacity: 0.96,
   },
   image: {
     width: "100%",
-    height: 102,
+    height: 94,
+    backgroundColor: "#F8F2E4",
   },
   imageFallback: {
     width: "100%",
-    height: 102,
-    backgroundColor: "#EEF2F7",
+    height: 94,
+    backgroundColor: "#F8F2E4",
   },
-  content: {
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 16,
+  imageWrap: {
+    width: "100%",
+    height: 94,
+    position: "relative",
   },
-  badge: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderRadius: 999,
+  imageRatingBadge: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    borderRadius: radii.pill,
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    marginBottom: 7,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.2,
-  },
-  name: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#111827",
-    minHeight: 36,
-    lineHeight: 18,
-  },
-  metaRow: {
-    marginTop: 7,
+    paddingVertical: 4,
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: COLORS.goldSoft,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
   },
+  content: {
+    marginTop: "auto",
+    paddingHorizontal: spacing.sm,
+    paddingTop: 3,
+    paddingBottom: 3,
+    backgroundColor: COLORS.white,
+  },
+  name: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.black,
+    minHeight: 30,
+    lineHeight: 16,
+    paddingRight: 0,
+    textShadowColor: "transparent",
+    textShadowRadius: 0,
+    textShadowOffset: { width: 0, height: 0 },
+  },
   meta: {
-    fontSize: 11,
-    color: "#64748B",
+    fontSize: 10,
+    color: COLORS.slate600,
+    textShadowColor: "transparent",
+    textShadowRadius: 0,
+    textShadowOffset: { width: 0, height: 0 },
+  },
+  footerRow: {
+    marginTop: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
   },
   price: {
-    marginTop: 4,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "800",
-    color: "#0F766E",
+    color: COLORS.black,
+    flexShrink: 1,
+    textShadowColor: "transparent",
+    textShadowRadius: 0,
+    textShadowOffset: { width: 0, height: 0 },
   },
   addButton: {
-    position: "absolute",
-    right: 8,
-    bottom: 8,
-    minWidth: 54,
-    height: 30,
-    borderRadius: 999,
-    backgroundColor: "#2563EB",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#173B8F",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 10,
   },
-  addText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "700",
-    lineHeight: 12,
-    letterSpacing: 0.2,
+  addButtonPressed: {
+    transform: [{ scale: 0.96 }],
+    opacity: 0.92,
   },
+  bookActionWrap: { flexDirection: "row", alignItems: "center" },
 });
+
+
+
+
+
+

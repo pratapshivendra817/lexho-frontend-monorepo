@@ -1,19 +1,33 @@
-export type HomeSectionType = "STATS" | "TRUST" | "TAGLINE" | "HIGHLIGHTS" | "BANNERS" | "CUSTOM";
+export type HomeSectionType = "STATS" | "TRUST" | "TAGLINE" | "HIGHLIGHTS";
+export type HomeSectionApiType = HomeSectionType | "BANNERS" | "CUSTOM";
 
 export type HomeSectionItem = {
-  id: string;
+  id: number;
+  sectionId: number;
   title: string;
-  value?: string;
+  subtitle?: string | null;
+  value?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  borderColor?: string | null;
+  backgroundColor?: string | null;
+  iconColor?: string | null;
   priority: number;
-  isActive: boolean;
+  active: boolean;
 };
 
 export type HomeSection = {
-  id: string;
-  type: HomeSectionType;
-  title: string;
-  subtitle?: string;
+  id: number;
+  type: HomeSectionApiType;
+  title?: string | null;
+  subtitle?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  borderColor?: string | null;
+  backgroundColor?: string | null;
+  iconColor?: string | null;
   priority: number;
-  isActive: boolean;
+  active: boolean;
+  createdAt?: string | null;
   items: HomeSectionItem[];
 };

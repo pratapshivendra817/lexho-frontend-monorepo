@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { COLORS } from '../../theme/colors';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   FlatList,
   Linking,
@@ -9,15 +10,17 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { fetchBannersByCategory, fetchServicesByCategory } from "../../redux/serviceSlice";
-import { addToCartThunk, clearRecentlyAdded } from "../../redux/cartSlice";
 import { ServiceCard } from "../../components/service/ServiceCard";
 import { BannerCarousel } from "../../components/service/BannerCarousel";
 import { palette } from "../../constants/theme";
+import { DEV_INTERNAL_TOKEN, DEV_LOGIN_BYPASS } from "../../constants/env";
+import { getToken } from "../../utils/storage";
 
 function formatPrice(value?: number) {
   if (!Number.isFinite(value)) return "Rs --";
@@ -40,6 +43,10 @@ function toValidServiceId(value: unknown): number | null {
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
   }
   return null;
+}
+
+function normalizeSearch(value: unknown) {
+  return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function buildRatingLabel(item: any) {
@@ -80,14 +87,83 @@ function ServiceGridShimmer() {
 type SortMode = "popular" | "price_low" | "price_high" | "rating" | "new";
 
 export function ServiceListScreen({ route, navigation }: any) {
+  const { width } = useWindowDimensions();
+  const BANNER_HEIGHT = Math.max(width * 0.9, 340);
+  const listRef = useRef<FlatList<any>>(null);
   const dispatch = useAppDispatch();
   const { services, loading, refreshing, loadingMore, hasMore, page, error, banners, bannersLoading, bannersError } = useAppSelector((state) => state.service);
   const authToken = useAppSelector((state) => state.auth.token);
-  const recentlyAddedServiceId = useAppSelector((state) => state.cart.recentlyAddedServiceId);
+  const [imageAuthToken, setImageAuthToken] = useState("");
   const categoryId = route?.params?.categoryId;
+  const categoryName = String(route?.params?.categoryName ?? "").trim();
+  const isCookCategory = useMemo(() => {
+    const normalized = normalizeSearch(categoryName);
+    return normalized.includes("cook") || normalized.includes("chef") || normalized.includes("breakfast") || normalized.includes("party") || normalized.includes("parties");
+  }, [categoryName]);
+  const isCleaningCategory = useMemo(() => {
+    const normalized = normalizeSearch(categoryName);
+    return normalized.includes("clean");
+  }, [categoryName]);
 
   const [sortMode, setSortMode] = useState<SortMode>("popular");
   const [quickOnly, setQuickOnly] = useState(false);
+  const bannerScrollY = useRef(new Animated.Value(0)).current;
+
+  const bannerOpacity = bannerScrollY.interpolate({
+    inputRange: [0, 90],
+    outputRange: [1, 0],
+    extrapolate: "clamp",
+  });
+  const bannerScale = bannerScrollY.interpolate({
+    inputRange: [0, 170],
+    outputRange: [1, 1],
+    extrapolate: "clamp",
+  });
+  const bannerTranslateY = bannerScrollY.interpolate({
+    inputRange: [0, 170],
+    outputRange: [0, -170],
+    extrapolate: "clamp",
+  });
+
+  useEffect(() => {
+    bannerScrollY.setValue(0);
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset?.({ offset: 0, animated: false });
+    });
+  }, [bannerScrollY, categoryId]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const tokenFromRedux = String(authToken ?? "").trim();
+      if (tokenFromRedux) {
+        if (mounted) setImageAuthToken(tokenFromRedux);
+        return;
+      }
+      try {
+        const tokenFromStorage = String((await getToken()) ?? "").trim();
+        if (mounted) setImageAuthToken(tokenFromStorage);
+      } catch {
+        if (mounted) setImageAuthToken("");
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [authToken]);
+
+  const imageRequestHeaders = useMemo(() => {
+    const headers: Record<string, string> = {};
+    if (imageAuthToken) headers.Authorization = `Bearer ${imageAuthToken}`;
+    if (DEV_LOGIN_BYPASS && __DEV__) headers["X-Internal-Token"] = DEV_INTERNAL_TOKEN;
+    return headers;
+  }, [imageAuthToken]);
+
+  const normalizeImageUrl = useCallback((value: unknown) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return undefined;
+    return raw;
+  }, []);
 
   const mappedServices = useMemo(
     () =>
@@ -100,7 +176,7 @@ export function ServiceListScreen({ route, navigation }: any) {
         return {
           id,
           name: String(item?.serviceName ?? item?.name ?? item?.title ?? "Service"),
-          imageUrl: item?.imageUrl ?? item?.thumbnailUrl ?? item?.serviceImageUrl,
+          imageUrl: normalizeImageUrl(item?.imageUrl ?? item?.thumbnailUrl ?? item?.serviceImageUrl),
           isNew,
           rating,
           ratingLabel: buildRatingLabel(item),
@@ -109,7 +185,7 @@ export function ServiceListScreen({ route, navigation }: any) {
           originalPriceLabel: originalPrice > discountedPrice ? formatPrice(originalPrice) : undefined,
         };
       }).filter((row) => Number.isFinite(row.id) && Number(row.id) > 0),
-    [services],
+    [normalizeImageUrl, services],
   );
 
   const sortedServices = useMemo(() => {
@@ -125,6 +201,14 @@ export function ServiceListScreen({ route, navigation }: any) {
     return rows;
   }, [mappedServices, quickOnly, sortMode]);
 
+  const servicesById = useMemo(() => {
+    const map = new Map<number, any>();
+    sortedServices.forEach((row) => {
+      map.set(Number(row.id), row);
+    });
+    return map;
+  }, [sortedServices]);
+
   const loadServices = useCallback(() => {
     if (!categoryId && categoryId !== 0) return;
     dispatch(fetchServicesByCategory({ categoryId, page: 0, size: 20, append: false }));
@@ -135,8 +219,7 @@ export function ServiceListScreen({ route, navigation }: any) {
   }, [loadServices]);
 
   useEffect(() => {
-    if (!categoryId && categoryId !== 0) return;
-    dispatch(fetchBannersByCategory({ categoryId }));
+    dispatch(fetchBannersByCategory({ categoryId: categoryId ?? "" }));
   }, [categoryId, dispatch]);
 
   const handleRefresh = useCallback(() => {
@@ -150,35 +233,30 @@ export function ServiceListScreen({ route, navigation }: any) {
     dispatch(fetchServicesByCategory({ categoryId, page: page + 1, size: 20, append: true }));
   }, [categoryId, dispatch, hasMore, loading, loadingMore, page, refreshing]);
 
-  const handleAdd = useCallback(async (serviceId: number) => {
-    if (!authToken) {
-      Alert.alert("Login Required", "Please login again. Authorization token is missing.");
-      return;
-    }
-    try {
-      await dispatch(addToCartThunk({ serviceId, quantity: 1 })).unwrap();
-      navigation.navigate("CartCrud");
-    } catch (e: any) {
-      Alert.alert("Add to cart failed", String(e?.message ?? "Please try again."));
-    }
-  }, [authToken, dispatch, navigation]);
-
-  useEffect(() => {
-    if (!recentlyAddedServiceId) return;
-    const timer = setTimeout(() => {
-      dispatch(clearRecentlyAdded());
-    }, 1400);
-    return () => clearTimeout(timer);
-  }, [dispatch, recentlyAddedServiceId]);
-
   const handleCardPress = useCallback((serviceId: number | null) => {
     if (!serviceId || !Number.isFinite(serviceId) || serviceId <= 0) return;
-    navigation.navigate("ServiceDetail", { serviceId: String(serviceId) });
-  }, [navigation]);
+    const selected = servicesById.get(Number(serviceId));
+    navigation.navigate("ServiceDetail", {
+      serviceId: String(serviceId),
+      serviceName: selected?.name,
+      servicePriceLabel: selected?.discountedPriceLabel,
+      serviceImageUrl: selected?.imageUrl,
+      categoryId: String(categoryId ?? ""),
+      categoryName,
+      showCookCoverage: isCookCategory,
+      showCleaningCoverage: isCleaningCategory,
+    });
+  }, [categoryId, categoryName, isCleaningCategory, isCookCategory, navigation, servicesById]);
 
   const renderItem = useCallback(({ item }: any) => (
-    <ServiceCard item={item} onAdd={handleAdd} onPress={handleCardPress} isAdded={Number(recentlyAddedServiceId) === Number(item.id)} />
-  ), [handleAdd, handleCardPress, recentlyAddedServiceId]);
+    <ServiceCard
+      item={item}
+      onAdd={handleCardPress}
+      onPress={handleCardPress}
+      isAdded={false}
+      imageRequestHeaders={imageRequestHeaders}
+    />
+  ), [handleCardPress, imageRequestHeaders]);
 
   const keyExtractor = useCallback((item: any) => item.id.toString(), []);
 
@@ -188,13 +266,13 @@ export function ServiceListScreen({ route, navigation }: any) {
         .map((item: any, index: number) => ({
           id: String(item?.bannerId ?? item?.id ?? index),
           title: item?.title,
-          imageUrl: item?.bannerImageUrl ?? item?.imageUrl,
+          imageUrl: normalizeImageUrl(item?.bannerImageUrl ?? item?.imageUrl),
           redirectType: String(item?.redirectType ?? "").toUpperCase(),
           redirectValue: item?.redirectValue,
           redirectUrl: item?.redirectUrl,
         }))
         .filter((item) => item.id.length > 0),
-    [banners],
+    [banners, normalizeImageUrl],
   );
 
   const handleBannerPress = useCallback(async (item: any) => {
@@ -220,34 +298,15 @@ export function ServiceListScreen({ route, navigation }: any) {
 
   return (
     <View style={styles.root}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stickyFiltersWrap}>
-        <Pressable style={[styles.filterChip, sortMode === "popular" && styles.filterChipActive]} onPress={() => setSortMode("popular")}>
-          <MaterialCommunityIcon name="trending-up" size={14} color={sortMode === "popular" ? "#075985" : "#475569"} />
-          <Text style={[styles.filterChipText, sortMode === "popular" && styles.filterChipTextActive]}>Popular</Text>
-        </Pressable>
-        <Pressable style={[styles.filterChip, sortMode === "rating" && styles.filterChipActive]} onPress={() => setSortMode("rating")}>
-          <MaterialCommunityIcon name="star-circle-outline" size={14} color={sortMode === "rating" ? "#075985" : "#475569"} />
-          <Text style={[styles.filterChipText, sortMode === "rating" && styles.filterChipTextActive]}>Top Rated</Text>
-        </Pressable>
-        <Pressable style={[styles.filterChip, sortMode === "price_low" && styles.filterChipActive]} onPress={() => setSortMode("price_low")}>
-          <MaterialCommunityIcon name="cash-minus" size={14} color={sortMode === "price_low" ? "#075985" : "#475569"} />
-          <Text style={[styles.filterChipText, sortMode === "price_low" && styles.filterChipTextActive]}>Price Low</Text>
-        </Pressable>
-        <Pressable style={[styles.filterChip, sortMode === "price_high" && styles.filterChipActive]} onPress={() => setSortMode("price_high")}>
-          <MaterialCommunityIcon name="cash-plus" size={14} color={sortMode === "price_high" ? "#075985" : "#475569"} />
-          <Text style={[styles.filterChipText, sortMode === "price_high" && styles.filterChipTextActive]}>Price High</Text>
-        </Pressable>
-        <Pressable style={[styles.filterChip, quickOnly && styles.filterChipActive]} onPress={() => setQuickOnly((v) => !v)}>
-          <MaterialCommunityIcon name="lightning-bolt-outline" size={14} color={quickOnly ? "#075985" : "#475569"} />
-          <Text style={[styles.filterChipText, quickOnly && styles.filterChipTextActive]}>Quick Picks</Text>
-        </Pressable>
-      </ScrollView>
-
-      <FlatList
+      <Pressable style={styles.backButton} onPress={() => navigation.goBack()} hitSlop={10}>
+        <MaterialCommunityIcon name="chevron-left" size={24} color={COLORS.white} />
+      </Pressable>
+      <Animated.FlatList
+        ref={listRef}
         data={!loading && !error ? sortedServices : []}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        numColumns={2}
+        numColumns={3}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         columnWrapperStyle={styles.row}
@@ -255,11 +314,61 @@ export function ServiceListScreen({ route, navigation }: any) {
         onRefresh={handleRefresh}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.4}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: bannerScrollY } } }],
+          {
+            useNativeDriver: true,
+          },
+        )}
+        scrollEventThrottle={16}
         ListHeaderComponent={(
           <>
-            {bannersLoading ? <View style={styles.bannerSkeleton} /> : null}
-            {!bannersLoading && mappedBanners.length > 0 ? <BannerCarousel banners={mappedBanners} onPressBanner={handleBannerPress} autoScroll /> : null}
+            {bannersLoading ? (
+              <Animated.View style={[styles.bannerAnimWrap, { height: BANNER_HEIGHT }]}>
+                <Animated.View style={{ opacity: bannerOpacity, transform: [{ translateY: bannerTranslateY }, { scale: bannerScale }] }}>
+                  <View style={styles.bannerSkeleton} />
+                </Animated.View>
+              </Animated.View>
+            ) : null}
+            {!bannersLoading && mappedBanners.length > 0 ? (
+              <Animated.View style={[styles.bannerAnimWrap, { height: BANNER_HEIGHT }]}>
+                <Animated.View style={{ opacity: bannerOpacity, transform: [{ translateY: bannerTranslateY }, { scale: bannerScale }] }}>
+                  <View style={styles.bannerEdgeToEdge}>
+                    <BannerCarousel
+                      banners={mappedBanners}
+                      onPressBanner={handleBannerPress}
+                      autoScroll={false}
+                      imageRequestHeaders={imageRequestHeaders}
+                      bannerHeight={BANNER_HEIGHT}
+                    />
+                  </View>
+                </Animated.View>
+              </Animated.View>
+            ) : null}
             {!bannersLoading && bannersError ? <Text style={styles.bannerErrorText}>Promotional banners unavailable right now.</Text> : null}
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stickyFiltersWrap}>
+              <Pressable style={[styles.filterChip, sortMode === "popular" && styles.filterChipActive]} onPress={() => setSortMode("popular")}>
+                <MaterialCommunityIcon name="trending-up" size={14} color={sortMode === "popular" ? COLORS.navy : COLORS.white} />
+                <Text style={[styles.filterChipText, sortMode === "popular" && styles.filterChipTextActive]}>Popular</Text>
+              </Pressable>
+              <Pressable style={[styles.filterChip, sortMode === "rating" && styles.filterChipActive]} onPress={() => setSortMode("rating")}>
+                <MaterialCommunityIcon name="star-circle-outline" size={14} color={sortMode === "rating" ? COLORS.navy : COLORS.white} />
+                <Text style={[styles.filterChipText, sortMode === "rating" && styles.filterChipTextActive]}>Top Rated</Text>
+              </Pressable>
+              <Pressable style={[styles.filterChip, sortMode === "price_low" && styles.filterChipActive]} onPress={() => setSortMode("price_low")}>
+                <MaterialCommunityIcon name="cash-minus" size={14} color={sortMode === "price_low" ? COLORS.navy : COLORS.white} />
+                <Text style={[styles.filterChipText, sortMode === "price_low" && styles.filterChipTextActive]}>Price Low</Text>
+              </Pressable>
+              <Pressable style={[styles.filterChip, sortMode === "price_high" && styles.filterChipActive]} onPress={() => setSortMode("price_high")}>
+                <MaterialCommunityIcon name="cash-plus" size={14} color={sortMode === "price_high" ? COLORS.navy : COLORS.white} />
+                <Text style={[styles.filterChipText, sortMode === "price_high" && styles.filterChipTextActive]}>Price High</Text>
+              </Pressable>
+              <Pressable style={[styles.filterChip, quickOnly && styles.filterChipActive]} onPress={() => setQuickOnly((v) => !v)}>
+                <MaterialCommunityIcon name="lightning-bolt-outline" size={14} color={quickOnly ? COLORS.navy : COLORS.white} />
+                <Text style={[styles.filterChipText, quickOnly && styles.filterChipTextActive]}>Quick Picks</Text>
+              </Pressable>
+            </ScrollView>
 
             <View style={styles.sectionHead}>
               <Text style={styles.sectionTitle}>Available Services</Text>
@@ -286,51 +395,90 @@ export function ServiceListScreen({ route, navigation }: any) {
           </>
         )}
       />
-
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#EEF6FF" },
+  root: { flex: 1, backgroundColor: palette.bg },
+  backButton: {
+    position: "absolute",
+    top: 16,
+    left: 12,
+    zIndex: 50,
+    elevation: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: COLORS.goldSoft,
+    backgroundColor: "rgba(2, 27, 74, 0.58)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bannerEdgeToEdge: {
+    marginHorizontal: 0,
+    marginTop: 0,
+  },
+  bannerAnimWrap: {
+    overflow: "hidden",
+  },
   stickyFiltersWrap: {
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 6,
-    gap: 8,
-    backgroundColor: "#EEF6FF",
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 10,
+    backgroundColor: "transparent",
+    alignItems: "center",
   },
   filterChip: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: "#F8FAFC",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderColor: COLORS.goldSoft,
+    backgroundColor: "rgba(2, 27, 74, 0.46)",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    marginRight: 8,
+    minHeight: 38,
   },
-  filterChipActive: { backgroundColor: "#DBEAFE", borderColor: "#93C5FD" },
-  filterChipText: { color: "#334155", fontSize: 12, fontWeight: "700" },
-  filterChipTextActive: { color: "#075985" },
+  filterChipActive: {
+    backgroundColor: COLORS.goldSoft,
+    borderColor: COLORS.gold,
+    shadowColor: COLORS.gold,
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  filterChipText: { color: COLORS.white, fontSize: 12, fontWeight: "800" },
+  filterChipTextActive: { color: COLORS.navy },
   sectionHead: { paddingHorizontal: 16, marginTop: 10, marginBottom: 4 },
-  sectionTitle: { fontSize: 18, fontWeight: "800", color: palette.text },
+  sectionTitle: { fontSize: 18, fontWeight: "800", color: COLORS.white },
   sectionSub: { color: palette.muted, marginTop: 2, fontSize: 12 },
-  listContent: { paddingHorizontal: 8, paddingBottom: 14, backgroundColor: "#EEF6FF" },
+  listContent: { paddingHorizontal: 0, paddingBottom: 14, backgroundColor: palette.bg },
   row: { justifyContent: "space-between" },
   footerSpacer: { height: 12 },
   centerWrap: { alignItems: "center", justifyContent: "center", paddingHorizontal: 24, paddingVertical: 22 },
-  emptyText: { color: "#6B7280", fontSize: 15, fontWeight: "600", textAlign: "center" },
-  errorText: { color: "#B91C1C", fontSize: 14, textAlign: "center", marginBottom: 12 },
+  emptyText: { color: COLORS.gray, fontSize: 15, fontWeight: "600", textAlign: "center" },
+  errorText: { color: COLORS.red700, fontSize: 14, textAlign: "center", marginBottom: 12 },
   retryButton: { backgroundColor: palette.accentBlue, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 11 },
-  retryButtonText: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
+  retryButtonText: { color: COLORS.white, fontWeight: "700", fontSize: 14 },
   skeletonGrid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 8, justifyContent: "space-between" },
-  skeletonCard: { width: "48%", margin: 8, borderRadius: 16, backgroundColor: "#FFFFFF", padding: 10 },
-  skeletonImage: { height: 132, borderRadius: 12, backgroundColor: "#E5E7EB" },
-  skeletonLineLg: { marginTop: 10, height: 14, borderRadius: 7, backgroundColor: "#E5E7EB" },
-  skeletonLineSm: { marginTop: 8, width: "62%", height: 12, borderRadius: 6, backgroundColor: "#E5E7EB" },
+  skeletonCard: { width: "31.5%", marginBottom: 10, borderRadius: 16, backgroundColor: COLORS.offWhite, padding: 10 },
+  skeletonImage: { height: 132, borderRadius: 12, backgroundColor: COLORS.neutral200 },
+  skeletonLineLg: { marginTop: 10, height: 14, borderRadius: 7, backgroundColor: COLORS.neutral200 },
+  skeletonLineSm: { marginTop: 8, width: "62%", height: 12, borderRadius: 6, backgroundColor: COLORS.neutral200 },
   loaderBottom: { marginTop: 8 },
-  bannerSkeleton: { height: 160, borderRadius: 18, backgroundColor: "#E5E7EB", marginHorizontal: 16, marginVertical: 12 },
-  bannerErrorText: { marginHorizontal: 16, marginTop: 4, marginBottom: 6, color: "#6B7280", fontSize: 12 },
+  bannerSkeleton: { flex: 1, borderRadius: 0, backgroundColor: COLORS.neutral200, marginHorizontal: 0, marginTop: 0, marginBottom: 4 },
+  bannerErrorText: { marginHorizontal: 16, marginTop: 4, marginBottom: 6, color: COLORS.gray, fontSize: 12 },
 });
+
+
+
+
+
+
+

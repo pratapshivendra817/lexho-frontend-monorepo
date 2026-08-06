@@ -1,5 +1,6 @@
 import { ImageBackground, StyleSheet, View } from "react-native";
 import { ActivityIndicator, Text } from "react-native-paper";
+import { COLORS } from '../theme/colors';
 
 export function SplashScreen() {
   return (
@@ -13,7 +14,7 @@ export function SplashScreen() {
           <Text style={styles.brand}>Lexho</Text>
           <Text style={styles.tagline}>CokAtHome</Text>
           <Text style={styles.subTagline}>Cleaning Service</Text>
-          <ActivityIndicator style={styles.spinner} size="small" color="#FFFFFF" />
+          <ActivityIndicator style={styles.spinner} size="small" color={COLORS.white} />
           <Text style={styles.helper}>Loading your experience...</Text>
         </View>
       </View>
@@ -36,20 +37,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   brand: {
-    color: "#FFFFFF",
+    color: COLORS.white,
     fontSize: 58,
     lineHeight: 60,
     fontWeight: "800",
   },
   tagline: {
     marginTop: 6,
-    color: "#E2E8F0",
+    color: COLORS.borderSoft,
     fontSize: 24,
     fontWeight: "700",
   },
   subTagline: {
     marginTop: 4,
-    color: "#F8FAFC",
+    color: COLORS.offWhite,
     fontSize: 17,
     fontWeight: "500",
   },
@@ -58,7 +59,13 @@ const styles = StyleSheet.create({
   },
   helper: {
     marginTop: 12,
-    color: "#E5E7EB",
+    color: COLORS.neutral200,
     fontSize: 15,
   },
 });
+
+
+
+
+
+

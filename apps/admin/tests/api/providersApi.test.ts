@@ -23,7 +23,7 @@ import {
   getPartnerStats,
   rejectPartner,
   unblockPartner,
-} from "@/features/partners/api/partnersApi";
+} from "@/features/providers/api/partnersApi";
 
 describe("partnersApi", () => {
   beforeEach(() => {

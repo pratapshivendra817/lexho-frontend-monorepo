@@ -1,5 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+
+import { COLORS } from '../../theme/colors';
+
 type CartItemProps = {
   item: {
     itemId: number;
@@ -43,28 +46,34 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#DCE7F3",
-    backgroundColor: "#FFFFFF",
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.white,
     padding: 12,
     gap: 8,
     marginBottom: 10,
   },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  name: { fontSize: 15, fontWeight: "800", color: "#0F172A", flex: 1, marginRight: 8 },
-  remove: { color: "#DC2626", fontWeight: "700", fontSize: 12 },
-  price: { color: "#334155", fontWeight: "700" },
+  name: { fontSize: 15, fontWeight: "800", color: COLORS.slate900, flex: 1, marginRight: 8 },
+  remove: { color: COLORS.danger, fontWeight: "700", fontSize: 12 },
+  price: { color: COLORS.slate700, fontWeight: "700" },
   stepper: { flexDirection: "row", alignItems: "center", gap: 8 },
   stepBtn: {
     width: 28,
     height: 28,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#BFD6EE",
+    borderColor: COLORS.borderSoft,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F0F7FF",
+    backgroundColor: COLORS.offWhite,
   },
-  stepText: { fontSize: 16, fontWeight: "800", color: "#0A2E66" },
-  qty: { minWidth: 18, textAlign: "center", fontWeight: "800", color: "#0F172A" },
-  total: { color: "#0F766E", fontWeight: "800", fontSize: 13 },
+  stepText: { fontSize: 16, fontWeight: "800", color: COLORS.primary },
+  qty: { minWidth: 18, textAlign: "center", fontWeight: "800", color: COLORS.slate900 },
+  total: { color: COLORS.teal700, fontWeight: "800", fontSize: 13 },
 });
+
+
+
+
+
+

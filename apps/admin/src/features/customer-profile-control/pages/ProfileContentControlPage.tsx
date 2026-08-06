@@ -1,14 +1,19 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 
+import { SegmentedTabs } from "@/components/admin";
 import { getProfileContentAdmin, updateProfileContentAdmin } from "../api/customerProfileControlApi";
 import { profileContentSchema } from "../schema";
 import type { CustomerProfileContent } from "../types";
+import SectionsPage from "../../sections/pages/SectionsPage";
+
+type ContentMode = "profile-content" | "sections";
 
 export default function ProfileContentControlPage() {
+  const [mode, setMode] = useState<ContentMode>("profile-content");
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["profile-content-control"],
     queryFn: getProfileContentAdmin,
@@ -34,8 +39,19 @@ export default function ProfileContentControlPage() {
     saveMutation.mutate(values);
   });
 
+  if (mode === "sections") {
+    return (
+      <div className="space-y-4">
+        <SegmentedTabs items={contentModeTabs} value={mode} onChange={setMode} />
+        <SectionsPage />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      <SegmentedTabs items={contentModeTabs} value={mode} onChange={setMode} />
+
       <div>
         <h2 className="text-xl font-semibold">Profile Content Manager</h2>
         <p className="text-sm text-[var(--color-muted)]">Manage About Us, Terms of Service and Privacy Policy shown in customer app profile.</p>
@@ -76,3 +92,8 @@ export default function ProfileContentControlPage() {
     </div>
   );
 }
+
+const contentModeTabs: Array<{ label: string; value: ContentMode }> = [
+  { label: "Profile Content", value: "profile-content" },
+  { label: "Sections", value: "sections" },
+];

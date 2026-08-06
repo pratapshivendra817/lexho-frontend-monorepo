@@ -32,3 +32,5 @@ export function validateImageMime(type?: string) {
   const normalized = String(type ?? "").trim().toLowerCase();
   return ALLOWED_IMAGE_TYPES.has(normalized);
 }
+
+

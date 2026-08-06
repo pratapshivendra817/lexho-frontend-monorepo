@@ -7,6 +7,11 @@ export const sendNotificationSchema = z.object({
   priority: z.string().min(1, "Priority is required"),
   channels: z.array(z.string().min(1)).min(1, "At least one channel is required"),
   targetUserType: z.string().min(1, "Target user type is required"),
+  userIds: z.string().optional(),
+  referenceType: z.string().optional(),
+  referenceId: z.string().optional(),
+  redirectType: z.string().optional(),
+  redirectValue: z.string().optional(),
   city: z.string().optional(),
   scheduledTime: z.string().optional(),
 });

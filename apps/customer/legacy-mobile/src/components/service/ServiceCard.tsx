@@ -1,5 +1,10 @@
 import { memo } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIcons";
+
+
+import { COLORS } from '../../theme/colors';
+import { radii, spacing } from "../../constants/theme";
 
 type ServiceCardProps = {
   item: {
@@ -14,14 +19,27 @@ type ServiceCardProps = {
   onAdd: (serviceId: number) => void;
   onPress?: (serviceId: number) => void;
   isAdded?: boolean;
+  imageRequestHeaders?: Record<string, string>;
 };
 
-function ServiceCardComponent({ item, onAdd, onPress, isAdded = false }: ServiceCardProps) {
+function ServiceCardComponent({ item, onAdd, onPress, isAdded = false, imageRequestHeaders }: ServiceCardProps) {
+  const ratingValue = String(item.ratingLabel ?? "")
+    .replace(/^\*\s*/, "")
+    .match(/\d+(\.\d+)?/)?.[0] ?? "0";
+
   return (
     <Pressable style={styles.card} onPress={() => onPress?.(item.id)}>
       <View style={styles.imageWrap}>
         {item.imageUrl ? (
-          <Image source={{ uri: item.imageUrl }} resizeMode="cover" style={styles.image} />
+          <Image
+            source={
+              imageRequestHeaders && Object.keys(imageRequestHeaders).length > 0
+                ? { uri: item.imageUrl, headers: imageRequestHeaders }
+                : { uri: item.imageUrl }
+            }
+            resizeMode="cover"
+            style={styles.image}
+          />
         ) : (
           <View style={styles.imageFallback} />
         )}
@@ -30,31 +48,34 @@ function ServiceCardComponent({ item, onAdd, onPress, isAdded = false }: Service
             <Text style={styles.newBadgeText}>NEW</Text>
           </View>
         ) : null}
-        <View style={styles.ratingBadge}>
-          <Text style={styles.ratingText}>{item.ratingLabel}</Text>
+        <View style={styles.imageRatingBadge}>
+          <MaterialCommunityIcon name="star" size={12} color={COLORS.warning} />
+          <Text style={[styles.meta, { color: COLORS.black }]}>{ratingValue}</Text>
         </View>
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.categoryHint}>Premium Service</Text>
         <Text style={styles.name} numberOfLines={2}>
           {item.name}
         </Text>
-        <View style={styles.priceRow}>
-          <Text style={styles.discountedPrice}>{item.discountedPriceLabel}</Text>
-          {item.originalPriceLabel ? <Text style={styles.originalPrice}>{item.originalPriceLabel}</Text> : null}
+        <View style={styles.footerRow}>
+          <View style={styles.priceRow}>
+            <Text style={styles.discountedPrice}>{item.discountedPriceLabel}</Text>
+            {item.originalPriceLabel ? <Text style={styles.originalPrice}>{item.originalPriceLabel}</Text> : null}
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add service"
+            style={[styles.addButton, isAdded && styles.addButtonAdded]}
+            onPress={(event) => {
+              event.stopPropagation?.();
+              onAdd(item.id);
+            }}
+          >
+            <MaterialCommunityIcon name={isAdded ? "check" : "plus"} size={14} color={COLORS.white} />
+          </Pressable>
         </View>
       </View>
-
-      <Pressable
-        style={[styles.addButton, isAdded && styles.addButtonAdded]}
-        onPress={(event) => {
-          event.stopPropagation?.();
-          onAdd(item.id);
-        }}
-      >
-        <Text style={styles.addButtonText}>{isAdded ? "Added" : "Add"}</Text>
-      </Pressable>
     </Pressable>
   );
 }
@@ -63,23 +84,23 @@ export const ServiceCard = memo(ServiceCardComponent);
 
 const styles = StyleSheet.create({
   card: {
-    width: "48%",
-    margin: 8,
+    width: "31.5%",
+    marginBottom: 10,
     borderRadius: 18,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    elevation: 3,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    borderColor: COLORS.goldSoft,
+    height: 178,
+    elevation: 0,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
     overflow: "hidden",
   },
   imageWrap: {
     position: "relative",
     width: "100%",
-    height: 132,
+    height: 94,
   },
   image: {
     width: "100%",
@@ -92,96 +113,93 @@ const styles = StyleSheet.create({
     height: "100%",
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: COLORS.neutral200,
   },
   newBadge: {
     position: "absolute",
     top: 8,
     left: 8,
-    backgroundColor: "#F97316",
+    backgroundColor: COLORS.warning,
+    borderWidth: 1,
+    borderColor: COLORS.goldSoft,
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   newBadgeText: {
-    color: "#FFFFFF",
+    color: COLORS.white,
     fontSize: 10,
     fontWeight: "700",
   },
-  ratingBadge: {
+  imageRatingBadge: {
     position: "absolute",
-    top: 8,
-    right: 8,
-    borderRadius: 10,
-    backgroundColor: "rgba(0, 0, 0, 0.66)",
+    top: 0,
+    right: 0,
+    borderRadius: radii.pill,
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: COLORS.goldSoft,
     paddingHorizontal: 8,
     paddingVertical: 4,
-  },
-  ratingText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "700",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   content: {
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 16,
-  },
-  categoryHint: {
-    color: "#0284C7",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-    textTransform: "uppercase",
-    marginBottom: 5,
+    marginTop: "auto",
+    paddingHorizontal: spacing.sm,
+    paddingTop: 3,
+    paddingBottom: 3,
+    backgroundColor: COLORS.white,
   },
   name: {
-    color: "#111827",
-    fontSize: 14,
-    fontWeight: "800",
-    minHeight: 38,
+    color: COLORS.black,
+    fontSize: 12,
+    fontWeight: "700",
+    minHeight: 28,
+    lineHeight: 14,
+  },
+  meta: {
+    fontSize: 10,
+    color: COLORS.slate600,
+  },
+  footerRow: {
+    marginTop: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
   },
   priceRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
   },
   discountedPrice: {
-    color: "#0F766E",
-    fontSize: 14,
+    color: COLORS.black,
+    fontSize: 12,
     fontWeight: "800",
     marginRight: 8,
   },
   originalPrice: {
-    color: "#9CA3AF",
+    color: COLORS.slate400,
     fontSize: 12,
     textDecorationLine: "line-through",
   },
   addButton: {
-    position: "absolute",
-    right: 10,
-    bottom: 12,
-    minWidth: 44,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#2563EB",
-    paddingHorizontal: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.blue600,
     alignItems: "center",
     justifyContent: "center",
-    elevation: 5,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
   addButtonAdded: {
-    backgroundColor: "#16A34A",
-  },
-  addButtonText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: "700",
-    letterSpacing: 0.2,
+    backgroundColor: COLORS.green600,
   },
 });
+
+
+
+
+
+

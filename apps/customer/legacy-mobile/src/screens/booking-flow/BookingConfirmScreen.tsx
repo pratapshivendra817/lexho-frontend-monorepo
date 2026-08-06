@@ -5,6 +5,7 @@ import { createBooking } from "../../services/bookingService";
 import { useAppSelector } from "../../redux/hooks";
 import { Loader } from "../../components/Loader";
 import { ErrorState } from "../../components/ErrorState";
+import { COLORS } from '../../theme/colors';
 
 export function BookingConfirmScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(false);
@@ -56,7 +57,12 @@ export function BookingConfirmScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#fff", padding: 16, gap: 10 },
-  title: { fontSize: 22, fontWeight: "700", color: "#0f172a" },
-  row: { color: "#334155" },
+  root: { flex: 1, backgroundColor: COLORS.white, padding: 16, gap: 10 },
+  title: { fontSize: 22, fontWeight: "700", color: COLORS.slate900 },
+  row: { color: COLORS.slate700 },
 });
+
+
+
+
+

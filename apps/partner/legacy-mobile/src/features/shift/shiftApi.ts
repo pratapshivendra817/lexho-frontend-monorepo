@@ -94,9 +94,13 @@ export async function endShiftApi() {
   try {
     let data: unknown;
     try {
-      ({ data } = await API.post("/api/v1/partner/dispatch/shift/end"));
+      ({ data } = await API.post("/api/v1/partner/dispatch/shift/end", {
+        shiftEnd: new Date().toISOString(),
+      }));
     } catch {
-      ({ data } = await API.post("/api/partner/dispatch/shift/end"));
+      ({ data } = await API.post("/api/partner/dispatch/shift/end", {
+        shiftEnd: new Date().toISOString(),
+      }));
     }
     assertContractSuccess(data, [], "Shift end failed");
     return data;
@@ -105,12 +109,12 @@ export async function endShiftApi() {
   }
 }
 
-export async function setPartnerAvailabilityApi(online: boolean) {
+export async function setPartnerAvailabilityApi(online: boolean, maxActiveJobs?: number) {
   const payloadCandidates = [
-    { online },
-    { isOnline: online },
-    { available: online },
-    { online, isOnline: online, available: online },
+    { online, maxActiveJobs },
+    { isOnline: online, maxActiveJobs },
+    { available: online, maxActiveJobs },
+    { online, isOnline: online, available: online, maxActiveJobs },
   ];
 
   try {
@@ -179,17 +183,28 @@ export async function setPartnerAvailabilityApi(online: boolean) {
 
 export async function sendPartnerLocationApi(payload: LocationPayload) {
   try {
+    const requestPayload = {
+      latitude: payload.latitude,
+      longitude: payload.longitude,
+      source: payload.source ?? "gps",
+      trackingState: payload.trackingState,
+      bookingId: payload.bookingId,
+      customerLatitude: payload.customerLatitude,
+      customerLongitude: payload.customerLongitude,
+      accuracyMeters: payload.accuracyMeters ?? payload.accuracy,
+      speedKmh: payload.speedKmh,
+      headingDegrees: payload.headingDegrees,
+      mockLocation: payload.mockLocation,
+      rootedDevice: payload.rootedDevice,
+      gpsEnabled: payload.gpsEnabled ?? true,
+    };
+
     let data: unknown;
     try {
-      ({ data } = await API.post("/api/v1/partner/dispatch/location", {
-        latitude: payload.latitude,
-        longitude: payload.longitude,
-        source: "GPS",
-      }));
+      ({ data } = await API.post("/api/v1/partner/dispatch/location", requestPayload));
     } catch {
       ({ data } = await API.post("/api/partner/dispatch/location", {
-        latitude: payload.latitude,
-        longitude: payload.longitude,
+        ...requestPayload,
         accuracy: payload.accuracy,
       }));
     }

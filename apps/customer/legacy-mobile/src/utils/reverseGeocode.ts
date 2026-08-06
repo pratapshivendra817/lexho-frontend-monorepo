@@ -1,6 +1,12 @@
 type ReverseGeocodeResult = {
   displayName: string;
   shortName: string;
+  area?: string;
+  sector?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  pincode?: string;
 };
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -59,13 +65,20 @@ export async function reverseGeocodeCoordinates(
     const data: any = await response.json();
     const displayName = String(data?.display_name ?? "").trim();
     const shortName = pickShortName(data?.address);
+    const address = data?.address ?? {};
+    const sector = displayName.match(/\bSector\s+\d+[A-Za-z]?\b/i)?.[0] ?? "";
     if (!displayName) return null;
     return {
       displayName,
       shortName: shortName || displayName,
+      area: String(address?.suburb ?? address?.neighbourhood ?? address?.city_district ?? "").trim(),
+      sector: String(sector).trim(),
+      city: String(address?.city ?? address?.town ?? address?.village ?? address?.county ?? "").trim(),
+      state: String(address?.state ?? "").trim(),
+      country: String(address?.country ?? "India").trim(),
+      pincode: String(address?.postcode ?? "").trim(),
     };
   } catch {
     return null;
   }
 }
-

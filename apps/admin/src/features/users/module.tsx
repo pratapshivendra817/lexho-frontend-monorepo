@@ -32,12 +32,7 @@ export const usersRoutes: AdminRouteConfig[] = [
   },
 ];
 
-export const usersNavItems: AdminNavItem[] = [
-  {
-    path: "/users",
-    label: "Users",
-  },
-];
+export const usersNavItems: AdminNavItem[] = [];
 
 export const usersRouteMeta: AdminRouteMeta[] = [
   {

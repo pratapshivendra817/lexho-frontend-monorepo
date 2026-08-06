@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Client } from "@stomp/stompjs";
 
+import { appConfig } from "@/config";
 import { getAccessToken } from "@/utils/authSession";
 
 type AdminNotificationSocketOptions = {
@@ -8,12 +9,32 @@ type AdminNotificationSocketOptions = {
   onMessage?: (data?: unknown) => void;
 };
 
-const DEFAULT_BROKER_URL = "ws://localhost:8082/ws/admin/notifications";
+const DEFAULT_BROKER_PATH = "/ws/admin/notifications";
+const DEFAULT_DEV_BROKER_URL = "ws://localhost:8082/ws/admin/notifications";
 const DEFAULT_TOPIC = "/topic/admin/notifications";
 const IS_DEV = import.meta.env.DEV;
 
 function resolveBrokerUrl() {
-  return import.meta.env.VITE_ADMIN_NOTIFICATIONS_WS_URL || DEFAULT_BROKER_URL;
+  const configuredBrokerUrl = import.meta.env.VITE_ADMIN_NOTIFICATIONS_WS_URL?.trim();
+  if (configuredBrokerUrl) {
+    return configuredBrokerUrl;
+  }
+
+  const apiBaseUrl = appConfig.apiBaseUrl?.trim();
+  if (apiBaseUrl) {
+    try {
+      const brokerUrl = new URL(apiBaseUrl, window.location.origin);
+      brokerUrl.protocol = brokerUrl.protocol === "https:" ? "wss:" : "ws:";
+      brokerUrl.pathname = DEFAULT_BROKER_PATH;
+      brokerUrl.search = "";
+      brokerUrl.hash = "";
+      return brokerUrl.toString();
+    } catch {
+      // Fall back below when the configured base URL is malformed.
+    }
+  }
+
+  return IS_DEV ? DEFAULT_DEV_BROKER_URL : "";
 }
 
 function devLog(message: string, payload?: unknown) {
@@ -45,10 +66,14 @@ export function useAdminNotificationSocket({ enabled = true, onMessage }: AdminN
     }
 
     const brokerURL = resolveBrokerUrl();
-    if (brokerURL !== DEFAULT_BROKER_URL) {
+    if (!brokerURL) {
+      devLog("[admin-notifications-ws] skipped: broker URL unavailable");
+      return undefined;
+    }
+    if (brokerURL !== DEFAULT_DEV_BROKER_URL) {
       devLog(`[admin-notifications-ws] brokerURL from env: ${brokerURL}`);
     } else {
-      devLog(`[admin-notifications-ws] brokerURL: ${DEFAULT_BROKER_URL}`);
+      devLog(`[admin-notifications-ws] brokerURL: ${DEFAULT_DEV_BROKER_URL}`);
     }
 
     if (!clientRef.current) {

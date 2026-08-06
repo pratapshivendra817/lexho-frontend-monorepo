@@ -2,6 +2,9 @@ import { StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIcons";
 import { Text } from "react-native-paper";
 
+
+import { COLORS } from '../theme/colors';
+
 type Props = {
   addressLine?: string;
   onPressChange?: () => void;
@@ -16,7 +19,7 @@ export function Header({ addressLine, onPressChange }: Props) {
           <Text style={styles.address} numberOfLines={1}>
             {addressLine || "Select your address"}
           </Text>
-          <MaterialCommunityIcon name="chevron-down" size={18} color="#0f172a" />
+          <MaterialCommunityIcon name="chevron-down" size={18} color={COLORS.slate900} />
         </TouchableOpacity>
       </View>
     </View>
@@ -25,15 +28,21 @@ export function Header({ addressLine, onPressChange }: Props) {
 
 const styles = StyleSheet.create({
   root: {
-    backgroundColor: "#fff",
+    backgroundColor: COLORS.white,
     borderRadius: 14,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: COLORS.borderSoft,
   },
   left: { gap: 6 },
-  label: { color: "#64748b", fontSize: 12 },
+  label: { color: COLORS.slate500, fontSize: 12 },
   row: { flexDirection: "row", alignItems: "center", gap: 4 },
-  address: { color: "#0f172a", fontWeight: "700", fontSize: 16, flex: 1 },
+  address: { color: COLORS.slate900, fontWeight: "700", fontSize: 16, flex: 1 },
 });
+
+
+
+
+
+

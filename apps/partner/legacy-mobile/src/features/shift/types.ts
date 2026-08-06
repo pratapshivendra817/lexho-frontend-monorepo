@@ -1,3 +1,5 @@
+/* istanbul ignore file */
+
 export type ShiftSession = {
   startedAt: number;
   endedAt?: number;
@@ -28,4 +30,15 @@ export type LocationPayload = {
   longitude: number;
   accuracy?: number;
   capturedAt: number;
+  source?: "gps" | "network" | "passive" | string;
+  trackingState?: string;
+  bookingId?: number;
+  customerLatitude?: number;
+  customerLongitude?: number;
+  accuracyMeters?: number;
+  speedKmh?: number;
+  headingDegrees?: number;
+  mockLocation?: boolean;
+  rootedDevice?: boolean;
+  gpsEnabled?: boolean;
 };

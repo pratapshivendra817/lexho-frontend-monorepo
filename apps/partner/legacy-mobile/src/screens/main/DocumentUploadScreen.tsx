@@ -7,13 +7,16 @@ import { COLORS } from "../../constants/colors";
 import { useAppFeedback } from "../../context/AppFeedbackContext";
 
 type UploadForm = {
-  aadhaarFront: PickedFile | null;
-  aadhaarBack: PickedFile | null;
+  aadhaar: PickedFile | null;
   pan: PickedFile | null;
-  profilePhoto: PickedFile | null;
+  selfie: PickedFile | null;
+  certificate: PickedFile | null;
 };
 
-type PickedFile = { uri: string; type?: string; fileName?: string };
+type PickedFile = { uri: string; type?: string; fileName?: string; fileSize?: number };
+
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 
 export default function DocumentUploadScreen() {
   const { showLoader, hideLoader, toast } = useAppFeedback();
@@ -25,7 +28,7 @@ export default function DocumentUploadScreen() {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<UploadForm>({
-    defaultValues: { aadhaarFront: null, aadhaarBack: null, pan: null, profilePhoto: null },
+    defaultValues: { aadhaar: null, pan: null, selfie: null, certificate: null },
   });
 
   const files = watch();
@@ -35,24 +38,35 @@ export default function DocumentUploadScreen() {
     const result = await fn({ mediaType: "photo", quality: 0.8, selectionLimit: 1 });
     const asset = result.assets?.[0];
     if (asset?.uri) {
-      const file: PickedFile = { uri: asset.uri, type: asset.type, fileName: asset.fileName };
+      const type = String(asset.type ?? "").toLowerCase();
+      if (type && !ALLOWED_TYPES.includes(type)) {
+        toast("Unsupported file. Upload JPG, PNG, or WEBP.");
+        return;
+      }
+      if (asset.fileSize && asset.fileSize > MAX_FILE_BYTES) {
+        toast("File too large. Maximum allowed size is 5 MB.");
+        return;
+      }
+      const file: PickedFile = { uri: asset.uri, type: asset.type, fileName: asset.fileName, fileSize: asset.fileSize };
       setValue(key, file, { shouldValidate: true, shouldDirty: true });
     }
   };
 
   const upload = async (values: UploadForm) => {
     try {
-      if (!values.aadhaarFront || !values.aadhaarBack || !values.pan || !values.profilePhoto) {
-        toast("Aadhaar front/back, PAN and profile photo are required");
+      if (!values.aadhaar || !values.pan || !values.selfie) {
+        toast("Aadhaar, PAN and selfie are required");
         return;
       }
       setProgress(0);
       showLoader();
       await uploadPartnerDocuments({
-        aadhaarFront: { uri: values.aadhaarFront.uri, type: values.aadhaarFront.type, name: values.aadhaarFront.fileName },
-        aadhaarBack: { uri: values.aadhaarBack.uri, type: values.aadhaarBack.type, name: values.aadhaarBack.fileName },
+        aadhaar: { uri: values.aadhaar.uri, type: values.aadhaar.type, name: values.aadhaar.fileName },
         pan: { uri: values.pan.uri, type: values.pan.type, name: values.pan.fileName },
-        profilePhoto: { uri: values.profilePhoto.uri, type: values.profilePhoto.type, name: values.profilePhoto.fileName },
+        selfie: { uri: values.selfie.uri, type: values.selfie.type, name: values.selfie.fileName },
+        certificate: values.certificate
+          ? { uri: values.certificate.uri, type: values.certificate.type, name: values.certificate.fileName }
+          : null,
       }, setProgress);
       toast("Documents uploaded successfully");
     } catch (error: unknown) {
@@ -66,14 +80,16 @@ export default function DocumentUploadScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Document Upload</Text>
-      {(["aadhaarFront", "aadhaarBack", "pan", "profilePhoto"] as Array<keyof UploadForm>).map((key) => (
+      {(["aadhaar", "pan", "selfie", "certificate"] as Array<keyof UploadForm>).map((key) => (
         <Controller
           key={key}
           control={control}
           name={key}
           render={() => (
             <View style={[styles.card, errors[key] ? styles.cardError : null]}>
-              <Text style={styles.label}>{key.replace(/([A-Z])/g, " $1").toUpperCase()} *</Text>
+              <Text style={styles.label}>
+                {key.replace(/([A-Z])/g, " $1").toUpperCase()} {key === "certificate" ? "(OPTIONAL)" : "*"}
+              </Text>
               <Text style={styles.meta}>{files[key]?.fileName ?? "No file selected"}</Text>
               <View style={styles.row}>
                 <TouchableOpacity style={styles.btn} onPress={() => pickImage(key, true)}><Text style={styles.btnText}>Camera</Text></TouchableOpacity>
@@ -84,7 +100,7 @@ export default function DocumentUploadScreen() {
           )}
         />
       ))}
-      <Text style={styles.meta}>Note: Aadhaar/PAN should be selected as PDF files where available in picker.</Text>
+      <Text style={styles.meta}>Allowed: JPG, PNG, WEBP. Maximum size: 5 MB per file.</Text>
       <Text style={styles.progress}>Upload Progress: {progress}%</Text>
       <TouchableOpacity style={[styles.btn, styles.upload]} onPress={handleSubmit(upload)} disabled={isSubmitting}>
         <Text style={styles.btnText}>{isSubmitting ? "Uploading..." : "Upload Documents"}</Text>

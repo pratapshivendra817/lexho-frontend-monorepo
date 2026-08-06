@@ -15,12 +15,46 @@ import { GlobalLoader } from "./src/components/common/GlobalLoader";
 import { ToastMessage } from "./src/components/common/ToastMessage";
 import { OfflineBanner } from "./src/components/common/OfflineBanner";
 import { useNetworkStatus } from "./src/hooks/useNetworkStatus";
+import { initializeCrashlytics } from "./src/services/crashlyticsService";
+import { navigationTrackingRef, handleNavigationStateChange } from "./src/services/screenTrackingService";
+import { useOnlineHoursSync } from "./src/hooks/useOnlineHoursSync";
+import { useSecurityGuard } from "./src/hooks/useSecurityGuard";
+import RootDetectionWarningScreen from "./src/screens/system/RootDetectionWarningScreen";
+import { getOfflineQueueSize, startOfflineQueueAutoRetry } from "./src/services/offlineQueue";
+import { useAppDispatch } from "./src/hooks/useRedux";
+import { offlineActions } from "./src/redux/slices/offlineSlice";
+import { setServerOfflineHandler } from "./src/services/api";
+import "./src/services/partnerActionQueueService";
 
 const queryClient = new QueryClient();
 
 function AppChrome() {
+  const dispatch = useAppDispatch();
   const { loading, toastMessage, toastVisible, dismissToast } = useAppFeedback();
   const isOnline = useNetworkStatus();
+  const securityStatus = useSecurityGuard();
+  useOnlineHoursSync();
+
+  React.useEffect(() => {
+    void initializeCrashlytics();
+    const stopRetry = startOfflineQueueAutoRetry((size) => {
+      dispatch(offlineActions.setQueuedActions(size));
+    });
+    void getOfflineQueueSize().then((size) => dispatch(offlineActions.setQueuedActions(size)));
+    setServerOfflineHandler((message) => dispatch(offlineActions.setLastServerError(message)));
+    return () => {
+      stopRetry?.();
+      setServerOfflineHandler(null);
+    };
+  }, [dispatch]);
+
+  React.useEffect(() => {
+    dispatch(offlineActions.setOfflineStatus(!isOnline));
+  }, [dispatch, isOnline]);
+
+  if (securityStatus?.blocked) {
+    return <RootDetectionWarningScreen />;
+  }
 
   return (
     <>
@@ -42,7 +76,11 @@ function App() {
           <PaperProvider theme={partnerTheme}>
             <AppFeedbackProvider>
               <SafeAreaProvider>
-                <NavigationContainer>
+                <NavigationContainer
+                  ref={navigationTrackingRef}
+                  onReady={() => { void handleNavigationStateChange(); }}
+                  onStateChange={() => { void handleNavigationStateChange(); }}
+                >
                   <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} />
                   <AppChrome />
                 </NavigationContainer>

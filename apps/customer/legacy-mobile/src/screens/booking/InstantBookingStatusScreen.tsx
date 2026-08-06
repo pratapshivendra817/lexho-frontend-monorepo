@@ -1,49 +1,23 @@
 import { useMutation } from "@tanstack/react-query";
 import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIcons";
-import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text } from "react-native-paper";
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { cancelBooking } from "../../api/bookingExtrasApi";
 import { useInstantBookingLifecycle } from "../../hooks/useInstantBookingLifecycle";
-import { useBookingLifecycleNavigation } from "../../hooks/useBookingLifecycleNavigation";
-import { ENABLE_LIVE_TRACKING } from "../../constants/env";
+import { resolveLifecycleTarget, useBookingLifecycleNavigation } from "../../hooks/useBookingLifecycleNavigation";
+import { getBookingMeta } from "../../utils/bookingMeta";
+import { BookingTimeline } from "../../components/booking/BookingTimeline";
+import { getApiErrorCode } from "../../api/client";
+import { trackBookingCancelled } from "../../services/customerAnalyticsEvents";
+import { captureFrontendError } from "../../services/monitoring";
 import { BookingStageShell } from "../../components/booking/BookingStageShell";
 import { StatusBadge } from "../../components/booking/StatusBadge";
 import { bookingTheme } from "../../components/booking/bookingTheme";
+import { COLORS } from '../../theme/colors';
+import { radii, shadows, spacing } from "../../constants/theme";
 
 type InstantBookingStatusRoute = { params?: { bookingId?: string } };
-
-function getStateLabel(assignmentStatus?: string) {
-  const state = String(assignmentStatus ?? "SEARCHING_PARTNER").toUpperCase();
-  if (state === "PARTNER_ASSIGNED") return "Partner assigned";
-  if (state === "PARTNER_ON_THE_WAY") return "Partner on the way";
-  if (state === "ARRIVED") return "Partner arrived";
-  if (state === "INSTANT_FAILED") return "Instant unavailable";
-  return "Searching nearby partners...";
-}
-
-function getMessage(assignmentStatus?: string, message?: string) {
-  const state = String(assignmentStatus ?? "SEARCHING_PARTNER").toUpperCase();
-  if (message) return message;
-  if (state === "PARTNER_ASSIGNED") return "Your partner accepted the booking. Service will start soon.";
-  if (state === "PARTNER_ON_THE_WAY") return "Your partner is on the way.";
-  if (state === "ARRIVED") return "Your partner has arrived.";
-  if (state === "INSTANT_FAILED") return "No partner available right now. Please book a scheduled slot.";
-  return "We are matching your request with nearby qualified partners.";
-}
-
-const FLOW_STEPS = ["BOOKED", "PARTNER_ASSIGNED", "ON_THE_WAY", "IN_PROGRESS", "DONE"] as const;
-
-function resolveStepIndex(status?: string, assignmentStatus?: string) {
-  const a = String(assignmentStatus ?? "").toUpperCase();
-  const s = String(status ?? "").toUpperCase();
-  if (a === "PARTNER_ARRIVED" || a === "ARRIVED") return 2;
-  if (a === "PARTNER_ON_THE_WAY") return 2;
-  if (s === "IN_PROGRESS" || a === "IN_PROGRESS") return 3;
-  if (s === "COMPLETED" || a === "COMPLETED") return 4;
-  if (a === "PARTNER_ASSIGNED" || s === "PARTNER_ASSIGNED") return 1;
-  return 0;
-}
 
 function toReadableDateTime(value?: string) {
   const raw = String(value ?? "").trim();
@@ -55,13 +29,10 @@ function toReadableDateTime(value?: string) {
 
 export function InstantBookingStatusScreen({ route, navigation }: { route: InstantBookingStatusRoute; navigation: any }) {
   const bookingId = String(route?.params?.bookingId ?? "").trim();
-  const mountedAtRef = useRef(Date.now());
-  const sawSearchingRef = useRef(false);
 
   const bookingQuery = useInstantBookingLifecycle(bookingId);
   const details = bookingQuery.data;
-  const assignment = String(details?.assignmentStatus ?? "SEARCHING_PARTNER").toUpperCase();
-  const currentStep = resolveStepIndex(details?.status, details?.assignmentStatus);
+  const meta = getBookingMeta(details);
   const statusForBadge = String(details?.assignmentStatus ?? details?.status ?? "SEARCHING_PARTNER").toUpperCase();
   const partnerPhone = String(details?.partnerPhone ?? "").trim();
   const partnerName = String(details?.partnerName ?? "").trim() || "Partner";
@@ -75,27 +46,26 @@ export function InstantBookingStatusScreen({ route, navigation }: { route: Insta
       return cancelBooking(id);
     },
     onSuccess: () => {
+      void trackBookingCancelled({ booking_id: String(details?.id ?? bookingId), source: "instant_status" });
       Alert.alert("Cancelled", "Booking cancelled successfully.");
       void bookingQuery.refetch();
     },
     onError: (e: any) => {
+      captureFrontendError(e, {
+        screenName: "InstantBookingStatus",
+        userAction: "cancel_booking",
+        apiEndpoint: `/api/bookings/cancel/${String(details?.id ?? bookingId)}`,
+        errorCode: getApiErrorCode(e) || "CANCEL_BOOKING_FAILED",
+      });
       Alert.alert("Cancel failed", String(e?.message ?? "Unable to cancel booking."));
     },
   });
 
-  useEffect(() => {
-    if (assignment === "SEARCHING_PARTNER") sawSearchingRef.current = true;
-  }, [assignment]);
-
   const detailsForNavigation = useMemo(() => {
-    const elapsedMs = Date.now() - mountedAtRef.current;
-    const shouldHold =
-      sawSearchingRef.current &&
-      (assignment === "PARTNER_ASSIGNED" || assignment === "ASSIGNED" || assignment === "ACCEPTED") &&
-      elapsedMs < 30000;
+    const shouldHold = false;
     if (!shouldHold || !details) return details;
     return { ...details, assignmentStatus: "SEARCHING_PARTNER" as any };
-  }, [assignment, details]);
+  }, [details]);
 
   useBookingLifecycleNavigation({
     bookingId,
@@ -103,23 +73,11 @@ export function InstantBookingStatusScreen({ route, navigation }: { route: Insta
     navigation,
     currentRouteName: "InstantBookingStatus",
   });
-  const title = getStateLabel(assignment);
-  const message = getMessage(assignment, details?.message);
+  const message = details?.message ?? "We are matching your request with nearby qualified partners.";
 
   return (
     <BookingStageShell title="My Booking" subtitle={message}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.filterRow}>
-          {["CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"].map((item) => {
-            const active = statusForBadge.includes(item) || assignment.includes(item);
-            return (
-              <View key={item} style={[styles.filterChip, active && styles.filterChipActive]}>
-                <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{item.replace("_", " ")}</Text>
-              </View>
-            );
-          })}
-        </View>
-
         <View style={styles.heroCard}>
           <View style={styles.heroTop}>
             <StatusBadge status={statusForBadge} />
@@ -127,21 +85,19 @@ export function InstantBookingStatusScreen({ route, navigation }: { route: Insta
               <MaterialCommunityIcon
                 name={bookingQuery.wsConnected ? "access-point-network" : "sync"}
                 size={12}
-                color={bookingQuery.wsConnected ? "#166534" : "#334155"}
+                color={bookingQuery.wsConnected ? COLORS.goldSoft : COLORS.goldSoft}
               />
               <Text style={styles.modePillText}>{bookingQuery.wsConnected ? "Realtime WS" : "Polling"}</Text>
             </View>
           </View>
 
-          {assignment === "SEARCHING_PARTNER" ? <ActivityIndicator style={styles.loader} /> : null}
-
           <Text style={styles.serviceName}>{details?.serviceName ?? "Service Booking"}</Text>
           <View style={styles.metaLine}>
-            <MaterialCommunityIcon name="calendar-clock-outline" size={14} color="#475569" />
+            <MaterialCommunityIcon name="calendar-clock-outline" size={14} color={COLORS.goldSoft} />
             <Text style={styles.row}>{toReadableDateTime(details?.scheduledAt ?? details?.promisedStartTime)}</Text>
           </View>
           <View style={styles.metaLine}>
-            <MaterialCommunityIcon name="map-marker-outline" size={14} color="#475569" />
+            <MaterialCommunityIcon name="map-marker-outline" size={14} color={COLORS.goldSoft} />
             <Text style={styles.row}>{details?.fullAddress ?? details?.address ?? "-"}</Text>
           </View>
 
@@ -159,12 +115,13 @@ export function InstantBookingStatusScreen({ route, navigation }: { route: Insta
                 <Text style={styles.row}>ETA {details?.etaMinutes != null ? `${details.etaMinutes} mins` : "N/A"}</Text>
                 {partnerRating > 0 ? (
                   <View style={styles.ratingPill}>
-                    <MaterialCommunityIcon name="star" size={12} color="#A16207" />
+                    <MaterialCommunityIcon name="star" size={12} color={COLORS.warning} />
                     <Text style={styles.ratingText}>{partnerRating.toFixed(1)}</Text>
                   </View>
                 ) : null}
               </View>
             </View>
+            {meta.canCallPartner ? (
             <View style={styles.actionRow}>
               <Pressable
                 style={styles.actionBtn}
@@ -173,7 +130,7 @@ export function InstantBookingStatusScreen({ route, navigation }: { route: Insta
                   await Linking.openURL(`tel:${partnerPhone}`);
                 }}
               >
-                <MaterialCommunityIcon name="phone" size={18} color="#065F46" />
+                <MaterialCommunityIcon name="phone" size={18} color={COLORS.goldSoft} />
               </Pressable>
               <Pressable
                 style={styles.actionBtn}
@@ -184,44 +141,32 @@ export function InstantBookingStatusScreen({ route, navigation }: { route: Insta
                   await Linking.openURL(url);
                 }}
               >
-                <MaterialCommunityIcon name="chat-outline" size={18} color="#1E293B" />
+                <MaterialCommunityIcon name="chat-outline" size={18} color={COLORS.goldSoft} />
               </Pressable>
             </View>
+            ) : null}
           </View>
         </View>
 
         <View style={styles.progressWrap}>
-          {FLOW_STEPS.map((step, index) => {
-            const active = index <= currentStep;
-            return (
-              <View key={step} style={styles.stepItem}>
-                <View style={[styles.stepDot, active && styles.stepDotActive]} />
-                <Text style={[styles.stepLabel, active && styles.stepLabelActive]}>{step.replaceAll("_", " ")}</Text>
-              </View>
-            );
-          })}
+          <BookingTimeline history={details?.statusHistory} compact />
         </View>
 
-        {assignment === "PARTNER_ASSIGNED" ? (
+        {meta.canTrackPartner ? (
           <Pressable
             style={styles.primaryBtn}
-            onPress={() =>
-              ENABLE_LIVE_TRACKING
-                ? navigation.navigate("LiveTracking", { bookingId: details?.id ?? bookingId })
-                : navigation.navigate("Main", { screen: "Bookings" })
-            }
+            onPress={async () => {
+              const latest = await bookingQuery.refetch();
+              const target = resolveLifecycleTarget((latest.data ?? details) as any);
+              navigation.navigate(target.name ?? "BookingDetail", { bookingId: String(details?.id ?? bookingId) });
+            }}
           >
             <Text style={styles.primaryBtnText}>Track Booking</Text>
           </Pressable>
         ) : null}
 
-        {assignment === "INSTANT_FAILED" ? (
-          <Pressable style={styles.primaryBtn} onPress={() => navigation.navigate("CartCrud")}>
-            <Text style={styles.primaryBtnText}>Book Scheduled Slot</Text>
-          </Pressable>
-        ) : null}
-
         <View style={styles.bottomActions}>
+          {meta.canCancel ? (
           <Pressable
             style={[styles.secondaryBtn, cancelMutation.isPending && styles.disabledBtn]}
             onPress={() => {
@@ -231,10 +176,19 @@ export function InstantBookingStatusScreen({ route, navigation }: { route: Insta
           >
             <Text style={styles.secondaryBtnText}>{cancelMutation.isPending ? "Cancelling..." : "Cancel"}</Text>
           </Pressable>
+          ) : null}
+          {meta.canReschedule ? (
           <Pressable style={styles.secondaryBtn} onPress={() => navigation.navigate("CartCrud")}>
             <Text style={styles.secondaryBtnText}>Reschedule</Text>
           </Pressable>
+          ) : null}
         </View>
+
+        {meta.canRaiseIssue ? (
+          <Pressable style={styles.secondaryBtn} onPress={() => navigation.navigate("Support")}>
+            <Text style={styles.secondaryBtnText}>Raise Issue</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable style={styles.secondaryBtn} onPress={() => bookingQuery.refetch()}>
           <Text style={styles.secondaryBtnText}>Refresh Status</Text>
@@ -247,31 +201,15 @@ export function InstantBookingStatusScreen({ route, navigation }: { route: Insta
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { gap: 12, paddingBottom: 20 },
-  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  filterChip: {
-    borderWidth: 1,
-    borderColor: bookingTheme.colors.secondaryBtnBorder,
-    borderRadius: bookingTheme.radius.button,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: "#FFFFFF",
-  },
-  filterChipActive: { borderColor: "#059669", backgroundColor: "#DCFCE7" },
-  filterChipText: { color: bookingTheme.colors.secondaryBtnText, fontSize: 11, fontWeight: "800" },
-  filterChipTextActive: { color: "#065F46" },
+  scrollContent: { gap: spacing.md, paddingBottom: spacing.xl },
   heroCard: {
     borderWidth: 1,
-    borderColor: "#D7E2F0",
-    borderRadius: 18,
-    backgroundColor: "#FFFFFF",
-    padding: 14,
+    borderColor: COLORS.goldSoft,
+    borderRadius: radii.lg,
+    backgroundColor: COLORS.navyDark,
+    padding: spacing.md + 2,
     gap: 9,
-    shadowColor: "#0F172A",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    ...shadows.sm,
   },
   heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   modePill: {
@@ -279,12 +217,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 4,
     alignItems: "center",
-    borderRadius: bookingTheme.radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.xs + 1,
+    borderWidth: 1,
+    borderColor: COLORS.goldSoft,
   },
-  modePillWs: { backgroundColor: "#DCFCE7" },
-  modePillPoll: { backgroundColor: "#E2E8F0" },
+  modePillWs: { backgroundColor: "rgba(217,164,65,0.12)" },
+  modePillPoll: { backgroundColor: "rgba(217,164,65,0.08)" },
   modePillText: { color: bookingTheme.colors.textPrimary, fontSize: 11, fontWeight: "800", letterSpacing: 0.2 },
   loader: { marginTop: 6 },
   card: { gap: 8 },
@@ -292,9 +232,18 @@ const styles = StyleSheet.create({
   serviceName: { color: bookingTheme.colors.textPrimary, fontSize: 18, fontWeight: "900" },
   metaLine: { flexDirection: "row", alignItems: "center", gap: 6 },
   partnerRow: { marginTop: 8, flexDirection: "row", alignItems: "center", gap: 10 },
-  partnerAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#E0F2FE", alignItems: "center", justifyContent: "center" },
-  partnerAvatarImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#E2E8F0" },
-  partnerAvatarText: { color: "#0F172A", fontSize: 18, fontWeight: "900" },
+  partnerAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(217,164,65,0.12)",
+    borderWidth: 1,
+    borderColor: COLORS.goldSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  partnerAvatarImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(217,164,65,0.12)", borderWidth: 1, borderColor: COLORS.goldSoft },
+  partnerAvatarText: { color: COLORS.goldSoft, fontSize: 18, fontWeight: "900" },
   partnerInfo: { flex: 1, gap: 2 },
   partnerMetaRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   partnerName: { color: bookingTheme.colors.textPrimary, fontSize: 14, fontWeight: "900" },
@@ -302,49 +251,65 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    borderRadius: 999,
-    backgroundColor: "#FEF3C7",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    borderRadius: radii.pill,
+    backgroundColor: "rgba(217,164,65,0.12)",
+    borderWidth: 1,
+    borderColor: COLORS.goldSoft,
+    paddingHorizontal: spacing.sm - 2,
+    paddingVertical: spacing.xs - 2,
   },
-  ratingText: { color: "#92400E", fontSize: 11, fontWeight: "800" },
+  ratingText: { color: COLORS.warning, fontSize: 11, fontWeight: "800" },
   actionRow: { flexDirection: "row", gap: 8 },
-  actionBtn: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: bookingTheme.colors.secondaryBtnBorder, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF" },
+  actionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: bookingTheme.colors.secondaryBtnBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.navyDark,
+  },
   progressWrap: {
     marginTop: 2,
     borderWidth: 1,
-    borderColor: "#DCE5F2",
-    borderRadius: 14,
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 8,
-    paddingVertical: 12,
+    borderColor: COLORS.goldSoft,
+    borderRadius: radii.md,
+    backgroundColor: COLORS.navyDark,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 6,
+    ...shadows.sm,
   },
   stepItem: { alignItems: "center", flex: 1, gap: 5 },
-  stepDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#CBD5E1" },
-  stepDotActive: { backgroundColor: "#16A34A" },
-  stepLabel: { color: "#64748B", fontSize: 9, fontWeight: "700", textAlign: "center" },
-  stepLabelActive: { color: "#166534" },
-  primaryBtn: {
-    backgroundColor: bookingTheme.colors.primaryBtn,
-    borderRadius: bookingTheme.radius.button,
-    paddingVertical: 13,
-    alignItems: "center",
-    marginTop: 6,
-  },
+  stepDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: COLORS.slate300 },
+  stepDotActive: { backgroundColor: COLORS.green600 },
+  stepLabel: { color: COLORS.slate500, fontSize: 9, fontWeight: "700", textAlign: "center" },
+  stepLabelActive: { color: COLORS.green700 },
+  primaryBtn: { backgroundColor: bookingTheme.colors.primaryBtn, borderRadius: radii.md, paddingVertical: spacing.md + 1, alignItems: "center", marginTop: 6, ...shadows.sm },
   primaryBtnText: { color: bookingTheme.colors.primaryBtnText, fontSize: 14, fontWeight: "900", letterSpacing: 0.2 },
   secondaryBtn: {
     borderWidth: 1,
     borderColor: bookingTheme.colors.secondaryBtnBorder,
-    borderRadius: bookingTheme.radius.button,
-    paddingVertical: 12,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.md + 2,
+    paddingHorizontal: spacing.md + 2,
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    backgroundColor: COLORS.navyDark,
+    minHeight: 50,
   },
   secondaryBtnText: { color: bookingTheme.colors.secondaryBtnText, fontSize: 13, fontWeight: "800" },
-  bottomActions: { flexDirection: "row", gap: 8 },
+  bottomActions: { flexDirection: "row", gap: 10 },
   disabledBtn: { opacity: 0.7 },
   error: { color: bookingTheme.colors.danger, fontWeight: "800" },
 });
+
+
+
+
+
+
+

@@ -10,6 +10,8 @@ import {
   uploadCustomerProfileImage,
 } from "../api/customerProfileApi";
 import type { CustomerAddress, CustomerProfile, CustomerProfileContent, ImageUploadPayload, ProfileUpdatePayload } from "../modules/profile/types";
+import { networkService, isNetworkError } from "../services/networkService";
+import { offlineQueue } from "../services/offlineQueue";
 
 type Status = "idle" | "loading" | "success" | "error";
 
@@ -60,7 +62,29 @@ export const refreshProfileBundleThunk = createAsyncThunk("customerProfile/refre
 export const updateCustomerProfileThunk = createAsyncThunk(
   "customerProfile/update",
   async (payload: ProfileUpdatePayload) => {
-    return await updateCustomerProfile(payload);
+    try {
+      if (!(await networkService.getCurrentState())) {
+        await offlineQueue.enqueue({
+          type: "profile:update",
+          endpoint: "/api/customer/profile",
+          method: "put",
+          payload: payload as Record<string, unknown>,
+        });
+        throw new Error("You are offline. Profile update has been queued.");
+      }
+      return await updateCustomerProfile(payload);
+    } catch (error) {
+      if (isNetworkError(error)) {
+        await offlineQueue.enqueue({
+          type: "profile:update",
+          endpoint: "/api/customer/profile",
+          method: "put",
+          payload: payload as Record<string, unknown>,
+        });
+        throw new Error("Network unavailable. Profile update has been queued.");
+      }
+      throw error;
+    }
   },
 );
 
@@ -171,3 +195,5 @@ const customerProfileSlice = createSlice({
 
 export const { setProfileOptimistic, resetProfileError } = customerProfileSlice.actions;
 export default customerProfileSlice.reducer;
+
+

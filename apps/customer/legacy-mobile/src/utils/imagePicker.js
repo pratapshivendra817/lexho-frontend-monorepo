@@ -108,3 +108,5 @@ export async function pickFromCamera() {
 export async function pickFromGallery() {
   return await openPicker("gallery");
 }
+
+

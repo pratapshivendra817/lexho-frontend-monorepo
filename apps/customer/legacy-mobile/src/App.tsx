@@ -10,12 +10,25 @@ import { AppNavigator } from "./navigation/AppNavigator";
 import { store } from "./redux/store";
 import { useAppSelector } from "./redux/hooks";
 import { useAuthBootstrap } from "./hooks/useAuthBootstrap";
-import { useColorScheme } from "react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { initializePushNotifications, setupPushNotificationListeners } from "./services/notificationsService";
-import { saveSession } from "./utils/storage";
-import { ENABLE_LIVE_TRACKING } from "./constants/env";
+import { setAnalyticsUser, trackAnalyticsEvent } from "./services/firebaseAnalytics";
+import { initializeCrashlytics, logCrashlyticsMessage, recordNonFatalError, setCrashlyticsUser } from "./services/firebaseCrashlytics";
+import { trackAppOpen } from "./services/customerAnalyticsEvents";
+import { clearPendingPaymentBookingId, getPendingPaymentBookingId, saveSession } from "./utils/storage";
 import { useCustomerNotificationSocket } from "./hooks/useCustomerNotificationSocket";
+import { useThemeMode } from "./hooks/useThemeMode";
+import { getTheme } from './theme/theme';
+import { getBookingDetails } from "./api/bookingExtrasApi";
+import { resolveLifecycleTarget } from "./hooks/useBookingLifecycleNavigation";
+import { captureFrontendError, trackBusinessEvent } from "./services/monitoring";
+import { useCallSocket } from "./modules/calling";
+import { getActiveRouteName, resetTrackedScreen, trackNavigationScreen } from "./services/screenTrackingService";
+import { networkService } from "./services/networkService";
+import { clearNotificationHints } from "./redux/notificationSlice";
+
+
+import { COLORS } from './theme/colors';
 
 const queryClient = new QueryClient();
 const navigationRef = createNavigationContainerRef<any>();
@@ -23,12 +36,16 @@ const navigationRef = createNavigationContainerRef<any>();
 function handlePushNavigation(payload: any) {
   if (!navigationRef.isReady()) return;
   const data = payload?.data ?? {};
-  const bookingId = String(data?.bookingId ?? data?.id ?? "").trim();
-  const redirectType = String(data?.redirectType ?? data?.type ?? "").trim().toUpperCase();
+  const redirectType = String(data?.redirectType ?? data?.referenceType ?? data?.notificationType ?? data?.type ?? "").trim().toUpperCase();
+  const redirectValue = String(data?.redirectValue ?? data?.referenceId ?? "").trim();
+  const bookingId = String(data?.bookingId ?? data?.booking_id ?? redirectValue ?? data?.id ?? "").trim();
 
   if (redirectType === "NOTIFICATIONS") return navigationRef.navigate("Notifications");
+  if (redirectType === "PROMOTION" || redirectType === "PROMOTIONAL_OFFER") return navigationRef.navigate("Coupon");
+  if (redirectType === "SUBSCRIPTION" || redirectType === "SUBSCRIPTION_REMINDER") return navigationRef.navigate("Main", { screen: "Bookings" });
   if (redirectType === "PAYMENT" || redirectType === "PAYMENTSTATUS") {
-    return navigationRef.navigate("PaymentStatus", bookingId ? { bookingId } : undefined);
+    const paymentId = String(data?.paymentId ?? data?.payment_id ?? redirectValue ?? bookingId).trim();
+    return navigationRef.navigate("PaymentStatus", paymentId ? { bookingId: paymentId } : undefined);
   }
   if (redirectType === "INSTANT_BOOKING" || redirectType === "SEARCHING_PARTNER") {
     return navigationRef.navigate("InstantBookingStatus", bookingId ? { bookingId } : undefined);
@@ -37,9 +54,21 @@ function handlePushNavigation(payload: any) {
     return navigationRef.navigate("ScheduledBookingStatus", bookingId ? { bookingId } : undefined);
   }
   if (redirectType === "TRACKING") {
-    if (ENABLE_LIVE_TRACKING) {
-      return navigationRef.navigate("LiveTracking", bookingId ? { bookingId } : undefined);
-    }
+    return navigationRef.navigate("LiveTracking", bookingId ? { bookingId } : undefined);
+  }
+  if (redirectType === "SUPPORT" || redirectType === "TICKET") {
+    return navigationRef.navigate("Support");
+  }
+  if (
+    redirectType === "BOOKING_DETAIL" ||
+    redirectType === "BOOKING" ||
+    redirectType === "BOOKING_CONFIRMED" ||
+    redirectType === "PROFESSIONAL_ASSIGNED" ||
+    redirectType === "PROFESSIONAL_ON_THE_WAY" ||
+    redirectType === "SERVICE_STARTED" ||
+    redirectType === "SERVICE_COMPLETED"
+  ) {
+    if (bookingId) return navigationRef.navigate("BookingDetail", { bookingId });
     return navigationRef.navigate("Main", { screen: "Bookings" });
   }
   if (bookingId) {
@@ -50,17 +79,97 @@ function handlePushNavigation(payload: any) {
 
 function Bootstrap() {
   useAuthBootstrap();
+  const dispatch = store.dispatch;
   const token = useAppSelector((s) => s.auth.token);
   const refreshToken = useAppSelector((s) => s.auth.refreshToken);
   const user = useAppSelector((s) => s.auth.user);
   const hydrated = useAppSelector((s) => s.auth.hydrated);
-  const mode = useColorScheme();
+  const { mode } = useThemeMode();
   const [pushBannerVisible, setPushBannerVisible] = useState(false);
   const [pushBannerText, setPushBannerText] = useState("");
+  const isOffline = useAppSelector((s) => s.offline.isOffline);
   const userId = String(user?.id ?? "").trim();
+  const appTheme = useMemo(() => getTheme({ app: "customer", mode }), [mode]);
+  const paperTheme = useMemo(() => {
+    const base = mode === "dark" ? MD3DarkTheme : MD3LightTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: appTheme.colors.primary,
+        background: appTheme.colors.bgSecondary,
+        surface: appTheme.colors.bgCard,
+        onSurface: appTheme.colors.textPrimary,
+        outline: appTheme.colors.border,
+        error: appTheme.colors.error,
+      },
+    };
+  }, [appTheme.colors, mode]);
   const icon = ({ color, name, size }: { color: string; name: string; size: number }) => (
     <MaterialCommunityIcon color={color} name={name} size={size} />
   );
+
+  useCallSocket(Boolean(token && userId), ({ callId, bookingId }) => {
+    if (navigationRef.isReady()) navigationRef.navigate("IncomingCall", { callId, bookingId });
+  });
+
+  useEffect(() => {
+    const stopNetworkService = networkService.start(store);
+    return () => {
+      stopNetworkService?.();
+      networkService.stop();
+    };
+  }, []);
+
+  useEffect(() => {
+    void trackAppOpen({
+      platform: "android",
+      source: "bootstrap",
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!token || !navigationRef.isReady()) return;
+    let cancelled = false;
+    (async () => {
+      const pendingBookingId = await getPendingPaymentBookingId();
+      if (!pendingBookingId || cancelled) return;
+      try {
+        const booking = await getBookingDetails(pendingBookingId);
+        if (cancelled) return;
+        const paymentStatus = String(booking?.paymentStatus ?? "").toUpperCase();
+        if (paymentStatus === "SUCCESS") {
+          await clearPendingPaymentBookingId();
+          trackBusinessEvent("payment_recovered_success", {
+            screenName: "Bootstrap",
+            userAction: "payment_recovery",
+            booking_id: pendingBookingId,
+          });
+          const target = resolveLifecycleTarget(booking);
+          navigationRef.navigate(target.name ?? "BookingDetail", { bookingId: pendingBookingId });
+          return;
+        }
+        if ((paymentStatus === "FAILED" || paymentStatus === "EXPIRED") && booking?.retryPaymentAllowed === true) {
+          trackBusinessEvent("payment_recovered_retry_required", {
+            screenName: "Bootstrap",
+            userAction: "payment_recovery",
+            booking_id: pendingBookingId,
+          });
+          navigationRef.navigate("PaymentStatus", { bookingId: pendingBookingId });
+        }
+      } catch (error) {
+        captureFrontendError(error, {
+          screenName: "Bootstrap",
+          userAction: "payment_recovery",
+          apiEndpoint: `/api/bookings/details/${pendingBookingId}`,
+          errorCode: "PAYMENT_RECOVERY_FAILED",
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   useCustomerNotificationSocket({
     enabled: Boolean(token && userId),
@@ -98,6 +207,7 @@ function Bootstrap() {
         queryClient.invalidateQueries({ queryKey: ["notifications", "unread-count"] }).catch(() => null);
       },
       onNotificationOpened: (payload) => {
+        dispatch(clearNotificationHints());
         queryClient.invalidateQueries({ queryKey: ["notifications"] }).catch(() => null);
         queryClient.invalidateQueries({ queryKey: ["notifications", "unread-count"] }).catch(() => null);
         handlePushNavigation(payload);
@@ -117,7 +227,17 @@ function Bootstrap() {
       if (!active) return;
       if (token) {
         await saveSession(token, refreshToken ?? undefined, user ?? undefined);
+        await setAnalyticsUser(user?.id);
+        await setCrashlyticsUser(user?.id);
+        await initializeCrashlytics(user?.id);
+        await trackAnalyticsEvent("customer_session_active", {
+          has_refresh_token: Boolean(refreshToken),
+          user_id_present: Boolean(user?.id),
+        });
         await initializePushNotifications();
+      } else {
+        await setAnalyticsUser(null);
+        await setCrashlyticsUser(null);
       }
     })().catch(() => null);
     return () => {
@@ -128,9 +248,25 @@ function Bootstrap() {
   return (
     <PaperProvider
       settings={{ icon }}
-      theme={mode === "dark" ? MD3DarkTheme : MD3LightTheme}
+      theme={paperTheme}
     >
-      <AppNavigator darkMode={mode === "dark"} navigationRef={navigationRef} />
+      {isOffline ? (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineText}>You are offline. Pending actions will retry automatically.</Text>
+        </View>
+      ) : null}
+      <AppNavigator
+        darkMode={mode === "dark"}
+        navigationRef={navigationRef}
+        onReady={() => {
+          resetTrackedScreen();
+          void trackNavigationScreen(navigationRef.getCurrentRoute?.()?.name, dispatch);
+        }}
+        onStateChange={(state: any) => {
+          const routeName = getActiveRouteName(state);
+          void trackNavigationScreen(routeName, dispatch);
+        }}
+      />
       <Snackbar
         visible={pushBannerVisible}
         onDismiss={() => setPushBannerVisible(false)}
@@ -163,6 +299,10 @@ class RootErrorBoundary extends React.Component<
     // Keep it logged in development to quickly identify root-cause instead of silent white screen.
     // eslint-disable-next-line no-console
     console.error("Root render crash", error);
+    void logCrashlyticsMessage("Root render crash");
+    void recordNonFatalError(error, {
+      area: "root_error_boundary",
+    });
   }
 
   render() {
@@ -193,14 +333,24 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  offlineBanner: {
+    backgroundColor: COLORS.goldSoft,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  offlineText: {
+    color: COLORS.navyDark,
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center",
+  },
   errorRoot: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: 16,
-    backgroundColor: "#FFF1F2",
+    backgroundColor: COLORS.offWhite,
   },
-  errorTitle: { color: "#9F1239", fontSize: 18, fontWeight: "700", marginBottom: 8 },
-  errorText: { color: "#881337", textAlign: "center" },
+  errorTitle: { color: COLORS.error, fontSize: 18, fontWeight: "700", marginBottom: 8 },
+  errorText: { color: COLORS.red700, textAlign: "center" },
 });
-

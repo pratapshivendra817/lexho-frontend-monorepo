@@ -1,6 +1,9 @@
 import { memo } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
 
+
+import { COLORS } from '../../../theme/colors';
+
 type Props = {
   label: string;
   onPress: () => void;
@@ -19,7 +22,7 @@ export const CustomButton = memo(function CustomButton({ label, onPress, loading
       accessibilityRole="button"
       accessibilityLabel={label}
     >
-      {loading ? <ActivityIndicator color={variant === "ghost" ? "#047857" : "#FFFFFF"} /> : <Text style={[styles.label, variant === "ghost" && styles.ghostLabel]}>{label}</Text>}
+      {loading ? <ActivityIndicator color={variant === "ghost" ? COLORS.navyDark : COLORS.white} /> : <Text style={[styles.label, variant === "ghost" && styles.ghostLabel]}>{label}</Text>}
     </Pressable>
   );
 });
@@ -32,10 +35,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
   },
-  primary: { backgroundColor: "#0F9D58", borderColor: "#0F9D58" },
-  ghost: { backgroundColor: "#ECFDF3", borderColor: "#A7F3D0" },
-  danger: { backgroundColor: "#DC2626", borderColor: "#DC2626" },
+  primary: { backgroundColor: COLORS.navy, borderColor: COLORS.navy },
+  ghost: { backgroundColor: COLORS.goldSoft, borderColor: COLORS.goldSoft },
+  danger: { backgroundColor: COLORS.danger, borderColor: COLORS.danger },
   disabled: { opacity: 0.65 },
-  label: { color: "#FFFFFF", fontWeight: "800", fontSize: 15 },
-  ghostLabel: { color: "#047857" },
+  label: { color: COLORS.white, fontWeight: "800", fontSize: 15 },
+  ghostLabel: { color: COLORS.navyDark },
 });
+
+
+
+
+
+

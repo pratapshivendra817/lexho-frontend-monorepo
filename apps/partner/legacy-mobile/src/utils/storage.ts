@@ -5,6 +5,7 @@ const REFRESH_TOKEN_KEY = "partner_refresh_token";
 const PROFILE_KEY = "admin_profile";
 const DEVICE_ID_KEY = "partner_device_id";
 const PROVIDER_ID_KEY = "partner_provider_id";
+let fallbackDeviceIdSequence = 0;
 
 export type StoredAdminProfile = {
   email: string;
@@ -79,7 +80,20 @@ export const getOrCreateDeviceId = async (): Promise<string> => {
   if (existing && existing.trim().length > 0) {
     return existing;
   }
-  const created = `partner-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const cryptoApi = globalThis.crypto as
+    | { randomUUID?: () => string; getRandomValues?: (values: Uint8Array) => Uint8Array }
+    | undefined;
+  let suffix: string;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    suffix = cryptoApi.randomUUID();
+  } else if (typeof cryptoApi?.getRandomValues === "function") {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(8));
+    suffix = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  } else {
+    fallbackDeviceIdSequence += 1;
+    suffix = `${Date.now()}-${fallbackDeviceIdSequence}`;
+  }
+  const created = `partner-${suffix}`;
   await AsyncStorage.setItem(DEVICE_ID_KEY, created);
   return created;
 };

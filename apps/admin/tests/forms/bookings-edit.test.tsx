@@ -84,6 +84,52 @@ describe("EditBookingPage", () => {
       );
     });
   });
+
+  it("applies fallback defaults from booking details and shows validation errors", async () => {
+    const user = userEvent.setup();
+
+    mocks.useBookingDetailsQuery.mockReturnValue({
+      data: {
+        id: "bk-13",
+        status: "PENDING",
+        service: "Cooking",
+        serviceType: "COOK",
+        bookingDate: "",
+        bookingTime: "",
+        notes: undefined,
+        customer: { name: "Aman" },
+        partner: { id: "", name: "Ravi" },
+        payment: { amount: 0 },
+        timeline: [],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderWithPartners(<EditBookingPage />, {
+      route: "/bookings/edit/bk-13",
+      path: "/bookings/edit/:id",
+    });
+
+    expect(screen.getByLabelText("Booking Date")).toHaveValue("");
+    expect(screen.getByLabelText("Booking Time")).toHaveValue("");
+    expect(screen.getByLabelText("Partner ID")).toHaveValue(0);
+    expect(screen.getByLabelText("Amount")).toHaveValue(0);
+    expect(screen.getByLabelText("Notes")).toHaveValue("");
+
+    await user.clear(screen.getByLabelText("Partner ID"));
+    await user.type(screen.getByLabelText("Partner ID"), "-1");
+    await user.clear(screen.getByLabelText("Amount"));
+    await user.type(screen.getByLabelText("Amount"), "0");
+    await user.click(screen.getByRole("button", { name: /Save changes/i }));
+
+    expect(await screen.findByText("Booking date is required")).toBeInTheDocument();
+    expect(screen.getByText("Booking time is required")).toBeInTheDocument();
+    expect(screen.getByText("Partner id should be positive")).toBeInTheDocument();
+    expect(screen.getByText("Amount should be positive")).toBeInTheDocument();
+    expect(mocks.updateMutate).not.toHaveBeenCalled();
+  });
 });
 
 

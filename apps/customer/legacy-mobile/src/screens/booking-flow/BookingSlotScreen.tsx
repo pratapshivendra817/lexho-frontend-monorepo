@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Button, Text, TextInput } from "react-native-paper";
+import { COLORS } from '../../theme/colors';
 
 export function BookingSlotScreen({ route, navigation }: any) {
   const serviceId = Number(route?.params?.serviceId ?? 0);
@@ -30,7 +31,12 @@ export function BookingSlotScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#fff", padding: 16, gap: 12 },
-  title: { fontSize: 22, fontWeight: "700", color: "#0f172a" },
-  sub: { color: "#475569" },
+  root: { flex: 1, backgroundColor: COLORS.white, padding: 16, gap: 12 },
+  title: { fontSize: 22, fontWeight: "700", color: COLORS.slate900 },
+  sub: { color: COLORS.slate600 },
 });
+
+
+
+
+

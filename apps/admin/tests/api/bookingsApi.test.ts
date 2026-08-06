@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   getMock: vi.fn(),
   putMock: vi.fn(),
   deleteMock: vi.fn(),
+  postMock: vi.fn(),
+  patchMock: vi.fn(),
 }));
 
 vi.mock("@/api/axios", () => ({
@@ -11,6 +13,8 @@ vi.mock("@/api/axios", () => ({
     get: mocks.getMock,
     put: mocks.putMock,
     delete: mocks.deleteMock,
+    post: mocks.postMock,
+    patch: mocks.patchMock,
   },
 }));
 
@@ -19,7 +23,9 @@ import {
   getBookingById,
   getBookings,
   getBookingStats,
+  manualDispatchOrder,
   softDeleteBooking,
+  updateOrderLifecycle,
   updateBooking,
 } from "@/features/bookings/api/bookingsApi";
 
@@ -162,6 +168,68 @@ describe("bookingsApi", () => {
     });
     expect(mocks.putMock).toHaveBeenCalledWith("/api/admin/bookings/bk-77/cancel");
     expect(mocks.deleteMock).toHaveBeenCalledWith("/api/admin/bookings/bk-77");
+  });
+
+  it("returns null for empty detail payload and hits dispatch lifecycle endpoints", async () => {
+    mocks.getMock.mockResolvedValueOnce({ data: null });
+    mocks.getMock.mockResolvedValueOnce({
+      data: {
+        items: [
+          {
+            bookingId: "legacy-1",
+            customer: { name: "A" },
+            serviceName: "Svc",
+            service: { type: "weird", name: "Svc" },
+            partner: { name: "P" },
+            date: "2026-06-01",
+            totalAmount: "99",
+            status: "other",
+          },
+        ],
+        totalPages: "3",
+      },
+    });
+    mocks.postMock.mockResolvedValue({});
+    mocks.patchMock.mockResolvedValue({});
+
+    const details = await getBookingById("missing-booking");
+    const list = await getBookings({
+      page: 2,
+      size: 10,
+      sortBy: "createdAt",
+      sortDir: "desc",
+      status: "",
+      serviceType: "",
+      search: "",
+      startDate: "",
+      endDate: "",
+    });
+    await manualDispatchOrder("order-99");
+    await updateOrderLifecycle("order-99", "ARRIVED");
+
+    expect(details).toBeNull();
+    expect(list).toEqual({
+      content: [
+        {
+          id: "legacy-1",
+          customerName: "A",
+          service: "Svc",
+          serviceType: "OTHER",
+          partnerName: "P",
+          bookingDate: "2026-06-01",
+          amount: 99,
+          status: "PENDING",
+          createdAt: "",
+        },
+      ],
+      totalElements: 1,
+      totalPages: 3,
+      pageNumber: 2,
+    });
+    expect(mocks.postMock).toHaveBeenCalledWith("/api/admin/dispatch/orders/order-99");
+    expect(mocks.patchMock).toHaveBeenCalledWith("/api/admin/dispatch/orders/order-99/lifecycle", {
+      lifecycle: "ARRIVED",
+    });
   });
 });
 

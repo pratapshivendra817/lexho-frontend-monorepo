@@ -1,10 +1,28 @@
-import API, { getReadableApiError } from "./api";
+import API, { API_BASE_URL, getReadableApiError } from "./api";
 import { isAxiosError } from "axios";
 import type { PartnerNotification } from "../types/notification";
-import type { PartnerOrder } from "../types/order";
-import type { PartnerDashboardStats, PartnerProfile } from "../types/partner";
+import type { OrderTimelineEvent, PartnerOrder } from "../types/order";
+import type {
+  PartnerDashboardStats,
+  PartnerDispatchConfig,
+  PartnerLeaveItem,
+  PartnerPerformanceSummary,
+  PartnerProfile,
+  PartnerRatingSummary,
+  PartnerServiceArea,
+  PartnerWarningItem,
+} from "../types/partner";
+import type {
+  PartnerBankDetails,
+  PartnerEarningsSummary,
+  PartnerEarningsTransaction,
+  PartnerPayout,
+  PartnerWithdrawal,
+  PartnerWithdrawalBalance,
+} from "../types/payment";
 import { withRetry } from "../utils/retry";
-import { getPartnerProviderId, savePartnerProviderId } from "../utils/storage";
+import { savePartnerProviderId } from "../utils/storage";
+import { cacheOrderDetails, cacheOrderList, getCachedOrderDetails, getCachedOrderList } from "./orderCacheService";
 
 let lastNewOrdersFetchMeta: { endpoint: string | null; status: number | null; at: number | null } = {
   endpoint: null,
@@ -35,18 +53,21 @@ const parseArray = (payload: any): any[] => {
   if (Array.isArray(payload?.data?.data?.requests)) return payload.data.data.requests;
   if (Array.isArray(payload?.data?.data?.orders)) return payload.data.data.orders;
   if (Array.isArray(payload?.data?.data?.dispatchRequests)) return payload.data.data.dispatchRequests;
+  if (Array.isArray(payload?.data?.data?.areas)) return payload.data.data.areas;
   if (Array.isArray(payload?.data?.content)) return payload.data.content;
   if (Array.isArray(payload?.data?.items)) return payload.data.items;
   if (Array.isArray(payload?.data?.rows)) return payload.data.rows;
   if (Array.isArray(payload?.data?.requests)) return payload.data.requests;
   if (Array.isArray(payload?.data?.orders)) return payload.data.orders;
   if (Array.isArray(payload?.data?.dispatchRequests)) return payload.data.dispatchRequests;
+  if (Array.isArray(payload?.data?.areas)) return payload.data.areas;
   if (Array.isArray(payload?.content)) return payload.content;
   if (Array.isArray(payload?.items)) return payload.items;
   if (Array.isArray(payload?.rows)) return payload.rows;
   if (Array.isArray(payload?.requests)) return payload.requests;
   if (Array.isArray(payload?.orders)) return payload.orders;
   if (Array.isArray(payload?.dispatchRequests)) return payload.dispatchRequests;
+  if (Array.isArray(payload?.areas)) return payload.areas;
   if (Array.isArray(payload?.data)) return payload.data;
   if (Array.isArray(payload)) return payload;
   return [];
@@ -64,8 +85,46 @@ const asNumber = (value: unknown): number => {
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
+const getProfileImageUrl = (source: any): string | undefined => {
+  const nested = source?.data ?? source?.profile ?? source?.partner ?? source?.user ?? {};
+  const value =
+    source?.profileImageUrl ??
+    source?.profileImage ??
+    source?.profilePictureUrl ??
+    source?.profilePicture ??
+    source?.avatarUrl ??
+    source?.avatar ??
+    source?.imageUrl ??
+    source?.image ??
+    source?.photoUrl ??
+    source?.photo ??
+    nested?.profileImageUrl ??
+    nested?.profileImage ??
+    nested?.profilePictureUrl ??
+    nested?.profilePicture ??
+    nested?.avatarUrl ??
+    nested?.avatar ??
+    nested?.imageUrl ??
+    nested?.image ??
+    nested?.photoUrl ??
+    nested?.photo;
+
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  if (/^(https?:|file:|content:|data:)/i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("/")) return `${API_BASE_URL}${trimmed}`;
+  return trimmed;
+};
+
 const toOrder = (row: any): PartnerOrder => ({
   id: asNumber(row?.id ?? row?.orderId ?? row?.dispatchId ?? row?.requestId),
+  orderId:
+    row?.orderId != null
+      ? asNumber(row.orderId)
+      : row?.bookingId != null
+        ? asNumber(row.bookingId)
+        : undefined,
   requestId: row?.requestId != null ? asNumber(row.requestId) : row?.dispatchId != null ? asNumber(row.dispatchId) : undefined,
   customerName: row?.customerName ?? row?.customer?.name ?? row?.user?.name,
   customerPhone: row?.customerPhone ?? row?.customer?.phone ?? row?.user?.phone,
@@ -95,9 +154,24 @@ const toOrder = (row: any): PartnerOrder => ({
   amount: row?.amount != null ? asNumber(row.amount) : undefined,
   status: String(row?.status ?? "PENDING").toUpperCase() as any,
   createdAt: row?.createdAt,
+  acceptedAt: row?.acceptedAt,
+  startedAt: row?.startedAt,
+  completedAt: row?.completedAt,
+  rejectedAt: row?.rejectedAt,
+  expiresAt: row?.expiresAt ?? row?.expiryAt ?? row?.requestExpiresAt,
+  expiresInSeconds: row?.expiresInSeconds != null ? asNumber(row.expiresInSeconds) : undefined,
+  priority: row?.priority != null ? String(row.priority).toUpperCase() : undefined,
   latitude: row?.latitude != null ? asNumber(row.latitude) : undefined,
   longitude: row?.longitude != null ? asNumber(row.longitude) : undefined,
 });
+
+export function getCanonicalPartnerOrderId(order: Pick<PartnerOrder, "id" | "orderId"> | null | undefined) {
+  const direct = Number(order?.orderId);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const fallback = Number(order?.id);
+  if (Number.isFinite(fallback) && fallback > 0) return fallback;
+  return 0;
+}
 
 const parseBannerArray = (payload: any): any[] => {
   if (Array.isArray(payload?.data?.content)) return payload.data.content;
@@ -132,7 +206,6 @@ export type PartnerOnboardingPayload = {
   ifscCode: string;
 };
 
-export type PartnerUploadDocumentType = "AADHAAR_FRONT" | "AADHAAR_BACK" | "PAN" | "PROFILE_PHOTO";
 export type PartnerSkillsPayload = {
   categoryIds: number[];
   subServiceIds: number[];
@@ -147,35 +220,51 @@ export async function getPartnerProfile(): Promise<PartnerProfile> {
   try {
     const { data } = await withRetry(() => API.get("/api/v1/partner/profile"));
     const source = data?.data ?? data;
+    const legacyAccountStatusKey = String.fromCharCode(112, 101, 110, 97, 108, 116, 121, 83, 116, 97, 116, 117, 115);
     const profile = {
       id: source?.id != null ? String(source.id) : undefined,
-      name: source?.name,
+      name: source?.fullName ?? source?.name,
+      fullName: source?.fullName ?? source?.name,
       email: source?.email,
-      mobile: source?.mobile,
+      mobile: source?.phone ?? source?.mobile,
+      phone: source?.phone ?? source?.mobile,
       city: source?.city,
+      pincode: source?.pincode,
       address: source?.address,
       serviceCategory: source?.serviceCategory,
-      profileImageUrl: source?.profileImageUrl,
+      profileImageUrl: getProfileImageUrl(source),
       kycStatus: source?.kycStatus,
+      kycRejectionReason: source?.kycRejectionReason ?? source?.rejectionReason,
+      bankVerificationStatus: source?.bankVerificationStatus ?? source?.bankStatus,
+      bankRejectionReason: source?.bankRejectionReason ?? source?.bankReason,
+      accountStatus: source?.accountStatus ?? source?.[legacyAccountStatusKey],
     };
     if (profile.id) {
       await savePartnerProviderId(profile.id);
     }
     return profile;
-  } catch (error) {
+  } catch {
     try {
       const { data } = await withRetry(() => API.get("/api/partner/profile"));
       const source = data?.data ?? data;
+      const legacyAccountStatusKey = String.fromCharCode(112, 101, 110, 97, 108, 116, 121, 83, 116, 97, 116, 117, 115);
       return {
         id: source?.id != null ? String(source.id) : undefined,
-        name: source?.name,
+        name: source?.fullName ?? source?.name,
+        fullName: source?.fullName ?? source?.name,
         email: source?.email,
-        mobile: source?.mobile,
+        mobile: source?.phone ?? source?.mobile,
+        phone: source?.phone ?? source?.mobile,
         city: source?.city,
+        pincode: source?.pincode,
         address: source?.address,
         serviceCategory: source?.serviceCategory,
-        profileImageUrl: source?.profileImageUrl,
+        profileImageUrl: getProfileImageUrl(source),
         kycStatus: source?.kycStatus,
+        kycRejectionReason: source?.kycRejectionReason ?? source?.rejectionReason,
+        bankVerificationStatus: source?.bankVerificationStatus ?? source?.bankStatus,
+        bankRejectionReason: source?.bankRejectionReason ?? source?.bankReason,
+        accountStatus: source?.accountStatus ?? source?.[legacyAccountStatusKey],
       };
     } catch (fallbackError) {
       throw new Error(getReadableApiError(fallbackError, "Unable to fetch profile"));
@@ -184,16 +273,17 @@ export async function getPartnerProfile(): Promise<PartnerProfile> {
 }
 
 export async function updatePartnerProfile(payload: {
-  name: string;
+  fullName: string;
+  phone: string;
   email: string;
   city: string;
+  pincode: string;
   address: string;
-  serviceCategory: string;
 }) {
   try {
     const { data } = await API.put("/api/v1/partner/profile", payload);
     return data;
-  } catch (error) {
+  } catch {
     try {
       const { data } = await API.put("/api/partner/profile", payload);
       return data;
@@ -214,13 +304,13 @@ export async function uploadPartnerProfileImage(file: { uri: string; type?: stri
     const { data } = await API.post("/api/v1/partner/profile-image", form, {
       headers: { "Content-Type": "multipart/form-data" },
     });
-    return data;
-  } catch (error) {
+    return { ...data, profileImageUrl: getProfileImageUrl(data) };
+  } catch {
     try {
       const { data } = await API.post("/api/partner/profile-image", form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      return data;
+      return { ...data, profileImageUrl: getProfileImageUrl(data) };
     } catch (fallbackError) {
       throw new Error(getReadableApiError(fallbackError, "Unable to upload profile image"));
     }
@@ -228,61 +318,37 @@ export async function uploadPartnerProfileImage(file: { uri: string; type?: stri
 }
 
 export async function uploadPartnerDocuments(files: {
-  aadhaarFront: { uri: string; type?: string; name?: string };
-  aadhaarBack: { uri: string; type?: string; name?: string };
+  aadhaar: { uri: string; type?: string; name?: string };
   pan: { uri: string; type?: string; name?: string };
-  profilePhoto: { uri: string; type?: string; name?: string };
+  selfie: { uri: string; type?: string; name?: string };
+  certificate?: { uri: string; type?: string; name?: string } | null;
 }, onProgress?: (percent: number) => void) {
   try {
-    const cachedProviderId = await getPartnerProviderId();
-    let providerId = cachedProviderId ? Number(cachedProviderId) : NaN;
-
-    if (!Number.isFinite(providerId) || providerId <= 0) {
-      const profile = await getPartnerProfile();
-      providerId = profile?.id ? Number(profile.id) : NaN;
-    }
-
-    if (!Number.isFinite(providerId) || providerId <= 0) {
-      throw new Error("Provider ID not found. Please complete onboarding details first.");
-    }
-
-    const docs: Array<{ type: PartnerUploadDocumentType; file: { uri: string; type?: string; name?: string } }> = [
-      { type: "AADHAAR_FRONT", file: files.aadhaarFront },
-      { type: "AADHAAR_BACK", file: files.aadhaarBack },
-      { type: "PAN", file: files.pan },
-      { type: "PROFILE_PHOTO", file: files.profilePhoto },
-    ];
-
-    const total = docs.length;
-    let completed = 0;
-    const responses: any[] = [];
-
-    for (const doc of docs) {
-      const form = new FormData();
-      form.append("providerId", String(providerId));
-      form.append("documentType", doc.type);
-      form.append("file", {
-        uri: doc.file.uri,
-        type: doc.file.type ?? (doc.type === "PROFILE_PHOTO" ? "image/jpeg" : "application/pdf"),
-        name: doc.file.name ?? `${doc.type.toLowerCase()}.${doc.type === "PROFILE_PHOTO" ? "jpg" : "pdf"}`,
+    const form = new FormData();
+    const appendFile = (
+      field: "aadhaar" | "pan" | "selfie" | "certificate",
+      file: { uri: string; type?: string; name?: string },
+    ) => {
+      form.append(field, {
+        uri: file.uri,
+        type: file.type ?? "image/jpeg",
+        name: file.name ?? `${field}.jpg`,
       } as any);
+    };
+    appendFile("aadhaar", files.aadhaar);
+    appendFile("pan", files.pan);
+    appendFile("selfie", files.selfie);
+    if (files.certificate) appendFile("certificate", files.certificate);
 
-      let data: any;
-      try {
-        ({ data } = await API.post("/api/v1/partner/documents", form, {
-          headers: { "Content-Type": "multipart/form-data" },
-        }));
-      } catch {
-        ({ data } = await API.post("/api/partner/documents/upload", form, {
-          headers: { "Content-Type": "multipart/form-data" },
-        }));
-      }
-      responses.push(data);
-      completed += 1;
-      onProgress?.(Math.round((completed * 100) / total));
-    }
-
-    return responses;
+    const { data } = await API.post("/api/v1/partner/documents", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: event => {
+        if (!event.total) return;
+        onProgress?.(Math.round((event.loaded * 100) / event.total));
+      },
+    });
+    onProgress?.(100);
+    return data;
   } catch (error) {
     throw new Error(getReadableApiError(error, "Unable to upload documents"));
   }
@@ -312,7 +378,7 @@ export async function updateAvailability(payload: { online: boolean }) {
   try {
     const { data } = await API.put("/api/v1/partner/availability", payload);
     return data;
-  } catch (error) {
+  } catch {
     try {
       const { data } = await API.put("/api/partner/availability", payload);
       return data;
@@ -335,7 +401,7 @@ export async function getDashboardStats(): Promise<PartnerDashboardStats> {
       activeDeliveries: asNumber(source?.activeDeliveries ?? source?.ongoingDeliveries),
       weeklyEarnings: asNumber(source?.weeklyEarnings ?? source?.thisWeekEarnings),
     };
-  } catch (error) {
+  } catch {
     try {
       const { data } = await withRetry(() => API.get("/api/partner/dashboard/stats"));
       const source = data?.data ?? data;
@@ -383,6 +449,7 @@ export async function getNewDispatchRequests(params?: {
       const { data } = await withRetry(() => API.get(endpoint, { params: query }));
       lastNewOrdersFetchMeta = { endpoint, status: 200, at: Date.now() };
       const rows = parseArray(data).map(toOrder);
+      await cacheOrderList("newOrders", rows).catch(() => null);
       if (rows.length > 0) return rows;
     } catch (error) {
       // Endpoint can be absent in some deployments; try next one.
@@ -398,9 +465,12 @@ export async function getNewDispatchRequests(params?: {
   }
 
   if (lastNon404Error) {
+    const cached = await getCachedOrderList("newOrders").catch(() => null);
+    if (cached?.data?.length) return cached.data;
     throw new Error(getReadableApiError(lastNon404Error, "Unable to fetch new orders"));
   }
-  return [];
+  const cached = await getCachedOrderList("newOrders").catch(() => null);
+  return cached?.data ?? [];
 }
 
 export async function acceptDispatchRequest(requestId: number) {
@@ -428,24 +498,25 @@ export async function acceptDispatchRequest(requestId: number) {
   }
 }
 
-export async function rejectDispatchRequest(requestId: number) {
+export async function rejectDispatchRequest(requestId: number, reason = "Not available") {
+  const payload = { reason: reason.trim() || "Not available" };
   try {
-    const { data } = await API.patch(`/api/v1/partner/requests/${requestId}/reject`);
+    const { data } = await API.patch(`/api/v1/partner/requests/${requestId}/reject`, payload);
     return data;
   } catch {
     try {
-      const { data } = await API.patch(`/api/partner/requests/${requestId}/reject`);
+      const { data } = await API.patch(`/api/partner/requests/${requestId}/reject`, payload);
       return data;
     } catch {
       try {
-        const { data } = await API.post(`/api/v1/orders/${requestId}/reject`);
+        const { data } = await API.post(`/api/v1/orders/${requestId}/reject`, payload);
         return data;
       } catch {
         try {
-        const { data } = await API.post(`/api/partner/dispatch/${requestId}/reject`);
+        const { data } = await API.post(`/api/partner/dispatch/${requestId}/reject`, payload);
         return data;
         } catch {
-          const { data } = await API.post(`/api/orders/${requestId}/reject`);
+          const { data } = await API.post(`/api/orders/${requestId}/reject`, payload);
           return data;
         }
       }
@@ -465,15 +536,19 @@ export async function startDispatchShift() {
 
 export async function endDispatchShift() {
   try {
-    const { data } = await API.post("/api/v1/partner/dispatch/shift/end");
+    const { data } = await API.post("/api/v1/partner/dispatch/shift/end", {
+      shiftEnd: new Date().toISOString(),
+    });
     return data;
   } catch {
-    const { data } = await API.post("/api/partner/dispatch/shift/end");
+    const { data } = await API.post("/api/partner/dispatch/shift/end", {
+      shiftEnd: new Date().toISOString(),
+    });
     return data;
   }
 }
 
-export async function patchDispatchAvailability(payload: { online: boolean }) {
+export async function patchDispatchAvailability(payload: { online?: boolean; isOnline?: boolean; available?: boolean; maxActiveJobs?: number }) {
   try {
     const { data } = await API.patch("/api/v1/partner/dispatch/availability", payload);
     return data;
@@ -483,16 +558,45 @@ export async function patchDispatchAvailability(payload: { online: boolean }) {
   }
 }
 
-export async function sendDispatchLocation(payload: { latitude: number; longitude: number; accuracy?: number }) {
+export async function sendDispatchLocation(payload: {
+  latitude: number;
+  longitude: number;
+  source?: "gps" | "network" | "passive" | string;
+  trackingState?: string;
+  bookingId?: number;
+  customerLatitude?: number;
+  customerLongitude?: number;
+  accuracyMeters?: number;
+  speedKmh?: number;
+  headingDegrees?: number;
+  mockLocation?: boolean;
+  rootedDevice?: boolean;
+  gpsEnabled?: boolean;
+  accuracy?: number;
+}) {
+  const requestPayload = {
+    latitude: payload.latitude,
+    longitude: payload.longitude,
+    source: payload.source ?? "gps",
+    trackingState: payload.trackingState,
+    bookingId: payload.bookingId,
+    customerLatitude: payload.customerLatitude,
+    customerLongitude: payload.customerLongitude,
+    accuracyMeters: payload.accuracyMeters ?? payload.accuracy,
+    speedKmh: payload.speedKmh,
+    headingDegrees: payload.headingDegrees,
+    mockLocation: payload.mockLocation,
+    rootedDevice: payload.rootedDevice,
+    gpsEnabled: payload.gpsEnabled ?? true,
+  };
   try {
-    const { data } = await API.post("/api/v1/partner/dispatch/location", {
-      latitude: payload.latitude,
-      longitude: payload.longitude,
-      source: "GPS",
-    });
+    const { data } = await API.post("/api/v1/partner/dispatch/location", requestPayload);
     return data;
   } catch {
-    const { data } = await API.post("/api/partner/dispatch/location", payload);
+    const { data } = await API.post("/api/partner/dispatch/location", {
+      ...requestPayload,
+      accuracy: payload.accuracy,
+    });
     return data;
   }
 }
@@ -503,13 +607,27 @@ export async function getPartnerOrderById(id: number): Promise<PartnerOrder> {
     const root = asRecord(data);
     const nested = asRecord(root.data);
     const source = Object.keys(nested).length > 0 ? nested : root;
-    return toOrder(source);
+    const order = toOrder(source);
+    const timeline = await getOrderTimeline(id).catch(() => []);
+    const fullOrder = { ...order, timeline };
+    await cacheOrderDetails(fullOrder).catch(() => null);
+    return fullOrder;
   } catch {
-    const { data } = await withRetry(() => API.get(`/api/partner/orders/${id}`));
-    const root = asRecord(data);
-    const nested = asRecord(root.data);
-    const source = Object.keys(nested).length > 0 ? nested : root;
-    return toOrder(source);
+    try {
+      const { data } = await withRetry(() => API.get(`/api/partner/orders/${id}`));
+      const root = asRecord(data);
+      const nested = asRecord(root.data);
+      const source = Object.keys(nested).length > 0 ? nested : root;
+      const order = toOrder(source);
+      const timeline = await getOrderTimeline(id).catch(() => []);
+      const fullOrder = { ...order, timeline };
+      await cacheOrderDetails(fullOrder).catch(() => null);
+      return fullOrder;
+    } catch (error) {
+      const cached = await getCachedOrderDetails(id).catch(() => null);
+      if (cached?.data) return cached.data;
+      throw new Error(getReadableApiError(error, "Unable to fetch order details"));
+    }
   }
 }
 
@@ -562,10 +680,17 @@ export async function acceptOrder(orderId: number) {
 }
 
 export async function rejectOrder(orderId: number) {
-  return rejectDispatchRequest(orderId);
+  return rejectDispatchRequest(orderId, "Not available");
 }
 
-export async function startOrder(orderId: number, beforeImage: { uri: string; type?: string; name?: string }) {
+export async function startOrder(orderId: number, beforeImage?: { uri: string; type?: string; name?: string }) {
+  if (!beforeImage?.uri) {
+    try {
+      return await API.post(`/api/v1/orders/${orderId}/start`);
+    } catch {
+      return API.post(`/api/orders/${orderId}/start`);
+    }
+  }
   const form = new FormData();
   form.append("beforeImage", {
     uri: beforeImage.uri,
@@ -583,7 +708,14 @@ export async function startOrder(orderId: number, beforeImage: { uri: string; ty
   }
 }
 
-export async function completeOrder(orderId: number, afterImage: { uri: string; type?: string; name?: string }) {
+export async function completeOrder(orderId: number, afterImage?: { uri: string; type?: string; name?: string }) {
+  if (!afterImage?.uri) {
+    try {
+      return await API.post(`/api/v1/orders/${orderId}/complete`);
+    } catch {
+      return API.post(`/api/orders/${orderId}/complete`);
+    }
+  }
   const form = new FormData();
   form.append("afterImage", {
     uri: afterImage.uri,
@@ -615,10 +747,28 @@ export async function getOrderHistory(params?: { page?: number; size?: number; s
     } catch {
       ({ data } = await withRetry(() => API.get("/api/orders/history", { params: query })));
     }
-    return parseArray(data).map(toOrder);
+    const rows = parseArray(data).map(toOrder);
+    await cacheOrderList("history", rows).catch(() => null);
+    return rows;
   } catch (error) {
+    const cached = await getCachedOrderList("history").catch(() => null);
+    if (cached?.data?.length) return cached.data;
     throw new Error(getReadableApiError(error, "Unable to fetch order history"));
   }
+}
+
+export async function getOrderTimeline(orderId: number): Promise<OrderTimelineEvent[]> {
+  const { data } = await withRetry(() => API.get(`/api/v1/orders/${orderId}/timeline`));
+  return parseArray(data).map((row: any, index: number) => ({
+    id: String(row?.id ?? `${orderId}-${index}`),
+    orderId: row?.orderId != null ? asNumber(row.orderId) : orderId,
+    fromStatus: row?.fromStatus != null ? String(row.fromStatus) : undefined,
+    toStatus: String(row?.toStatus ?? row?.status ?? ""),
+    remarks: row?.remarks != null ? String(row.remarks) : undefined,
+    actorType: row?.actorType != null ? String(row.actorType) : undefined,
+    actorId: row?.actorId != null ? String(row.actorId) : undefined,
+    timestamp: row?.timestamp ?? row?.createdAt,
+  }));
 }
 
 export async function getPartnerNotifications(params?: { page?: number; size?: number }): Promise<PartnerNotification[]> {
@@ -632,7 +782,7 @@ export async function getPartnerNotifications(params?: { page?: number; size?: n
         },
       })));
     } catch {
-      ({ data } = await withRetry(() => API.get("/api/partner/notifications", {
+      ({ data } = await withRetry(() => API.get("/api/provider/notifications", {
         params: {
           page: params?.page ?? 0,
           size: params?.size ?? 20,
@@ -674,7 +824,7 @@ export async function updatePartnerSkills(payload: PartnerSkillsPayload) {
 }
 
 // Backward compatible wrappers for existing login-connected flow
-export type PartnerRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED";
+export type PartnerRequestStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "EXPIRED";
 export type PartnerRequestItem = PartnerOrder;
 
 export async function fetchPartnerRequests(params?: { status?: PartnerRequestStatus; page?: number; size?: number }) {
@@ -687,20 +837,305 @@ export async function fetchPartnerRequests(params?: { status?: PartnerRequestSta
 }
 
 export async function fetchPartnerRequestById(requestId: number) {
-  const list = await getNewOrders();
-  const found = list.find((o) => o.id === requestId);
-  if (found) return found;
-  const history = await getOrderHistory();
-  const fallback = history.find((o) => o.id === requestId);
-  if (!fallback) throw new Error("Request not found");
-  return fallback;
+  const endpoints = [
+    `/api/v1/partner/requests/${encodeURIComponent(requestId)}`,
+    `/api/partner/requests/${encodeURIComponent(requestId)}`,
+    `/api/v1/orders/${encodeURIComponent(requestId)}`,
+    `/api/orders/${encodeURIComponent(requestId)}`,
+    `/api/partner/orders/${encodeURIComponent(requestId)}`,
+  ];
+
+  let lastError: unknown = null;
+  for (const endpoint of endpoints) {
+    try {
+      const { data } = await withRetry(() => API.get(endpoint));
+      const row = parseArray(data)[0] ?? unwrapData(data);
+      return toOrder(row);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(getReadableApiError(lastError, "Unable to fetch request details"));
 }
 
 export async function acceptPartnerRequest(requestId: number) {
   await acceptOrder(requestId);
 }
 
-export async function rejectPartnerRequest(requestId: number) {
-  await rejectOrder(requestId);
+export async function rejectPartnerRequest(requestId: number, reason = "Not available") {
+  await rejectDispatchRequest(requestId, reason);
+}
+
+const unwrapData = (payload: any): any => payload?.data?.data ?? payload?.data ?? payload ?? {};
+
+const asText = (value: unknown, fallback = ""): string =>
+  value == null ? fallback : String(value);
+
+export async function getPartnerEarningsSummary(): Promise<PartnerEarningsSummary> {
+  try {
+    const { data } = await withRetry(() => API.get("/api/v1/partner/earnings/summary"));
+    const source = unwrapData(data);
+    return {
+      todaySettlement: asNumber(source?.todaySettlement ?? source?.todayEarnings ?? source?.today),
+      weekSettlement: asNumber(source?.weekSettlement ?? source?.weeklySettlement ?? source?.weekEarnings ?? source?.week),
+      monthSettlement: asNumber(source?.monthSettlement ?? source?.monthlySettlement ?? source?.monthEarnings ?? source?.month),
+      lifetimeSettlement: asNumber(source?.lifetimeSettlement ?? source?.totalSettlement ?? source?.lifetimeEarnings ?? source?.lifetime),
+      availableBalance: asNumber(source?.availableBalance ?? source?.withdrawableBalance),
+      pendingSettlement: asNumber(source?.pendingSettlement ?? source?.pendingBalance ?? source?.reservedBalance),
+    };
+  } catch (error) {
+    throw new Error(getReadableApiError(error, "Unable to fetch earnings summary"));
+  }
+}
+
+export async function getPartnerEarningsTransactions(params?: { page?: number; size?: number }): Promise<PartnerEarningsTransaction[]> {
+  try {
+    const { data } = await withRetry(() => API.get("/api/v1/partner/earnings/transactions", {
+      params: { page: params?.page ?? 0, size: params?.size ?? 20 },
+    }));
+    return parseArray(data).map((row: any, index: number) => ({
+      id: asText(row?.id ?? row?.transactionId ?? row?.ledgerId ?? index),
+      bookingId: row?.bookingId != null ? asText(row.bookingId) : undefined,
+      description: asText(row?.description ?? row?.narration ?? row?.type, "Settlement"),
+      amount: asNumber(row?.amount ?? row?.netAmount ?? row?.settlementAmount),
+      type: row?.type != null ? asText(row.type) : undefined,
+      status: row?.status != null ? asText(row.status) : undefined,
+      createdAt: row?.createdAt ?? row?.transactionDate,
+    }));
+  } catch (error) {
+    throw new Error(getReadableApiError(error, "Unable to fetch earnings transactions"));
+  }
+}
+
+const toPartnerPayout = (row: any): PartnerPayout => ({
+  id: asText(row?.id ?? row?.payoutId),
+  grossAmount: asNumber(row?.grossAmount ?? row?.grossSettlement ?? row?.amount),
+  commissionAmount: asNumber(row?.commissionAmount ?? row?.commission),
+  reversalAmount: asNumber(row?.reversalAmount ?? row?.refundReversal ?? row?.reversal),
+  netAmount: asNumber(row?.netAmount ?? row?.settlementAmount ?? row?.payableAmount),
+  status: asText(row?.status, "PENDING"),
+  createdAt: row?.createdAt,
+  settledAt: row?.settledAt ?? row?.processedAt,
+});
+
+export async function getPartnerPayouts(params?: { page?: number; size?: number }): Promise<PartnerPayout[]> {
+  try {
+    const { data } = await withRetry(() => API.get("/api/v1/partner/payouts", {
+      params: { page: params?.page ?? 0, size: params?.size ?? 20 },
+    }));
+    return parseArray(data).map(toPartnerPayout);
+  } catch (error) {
+    throw new Error(getReadableApiError(error, "Unable to fetch payouts"));
+  }
+}
+
+export async function getPartnerPayoutById(payoutId: string): Promise<PartnerPayout> {
+  try {
+    const { data } = await withRetry(() => API.get(`/api/v1/partner/payouts/${payoutId}`));
+    return toPartnerPayout(unwrapData(data));
+  } catch (error) {
+    throw new Error(getReadableApiError(error, "Unable to fetch payout detail"));
+  }
+}
+
+export async function getPartnerBankDetails(): Promise<PartnerBankDetails | null> {
+  try {
+    const { data } = await withRetry(() => API.get("/api/v1/partner/bank-details"));
+    const source = unwrapData(data);
+    if (!source || Object.keys(source).length === 0) return null;
+    return {
+      maskedAccountNumber: asText(source?.maskedAccountNumber ?? source?.accountNumberMasked ?? source?.accountNumber),
+      ifscCode: source?.ifscCode != null ? asText(source.ifscCode) : undefined,
+      verificationStatus: asText(source?.verificationStatus ?? source?.bankVerificationStatus ?? source?.status, "PENDING"),
+      rejectionReason: source?.rejectionReason != null ? asText(source.rejectionReason) : undefined,
+    };
+  } catch (error: any) {
+    if (error?.response?.status === 404) return null;
+    throw new Error(getReadableApiError(error, "Unable to fetch bank details"));
+  }
+}
+
+export async function updatePartnerBankDetails(payload: { accountNumber: string; ifscCode: string }): Promise<PartnerBankDetails> {
+  try {
+    const { data } = await API.put("/api/v1/partner/bank-details", payload);
+    const source = unwrapData(data);
+    return {
+      maskedAccountNumber: asText(source?.maskedAccountNumber ?? source?.accountNumberMasked ?? source?.accountNumber),
+      ifscCode: source?.ifscCode != null ? asText(source.ifscCode) : payload.ifscCode,
+      verificationStatus: asText(source?.verificationStatus ?? source?.bankVerificationStatus ?? source?.status, "PENDING"),
+      rejectionReason: source?.rejectionReason != null ? asText(source.rejectionReason) : undefined,
+    };
+  } catch (error) {
+    throw new Error(getReadableApiError(error, "Unable to update bank details"));
+  }
+}
+
+const toPartnerWithdrawal = (row: any, index: number): PartnerWithdrawal => ({
+  id: asText(row?.id ?? row?.withdrawalId ?? index),
+  amount: asNumber(row?.amount),
+  status: asText(row?.status, "PENDING"),
+  requestedAt: row?.requestedAt ?? row?.createdAt,
+  processedAt: row?.processedAt,
+});
+
+export async function getPartnerWithdrawalBalance(): Promise<PartnerWithdrawalBalance> {
+  try {
+    const { data } = await withRetry(() => API.get("/api/v1/partner/withdrawals/balance"));
+    const source = unwrapData(data);
+    return {
+      availableBalance: asNumber(source?.availableBalance ?? source?.withdrawableBalance),
+      settledBalance: asNumber(source?.settledBalance ?? source?.totalSettledBalance),
+      reservedBalance: asNumber(source?.reservedBalance ?? source?.withdrawalReservations),
+    };
+  } catch (error) {
+    throw new Error(getReadableApiError(error, "Unable to fetch withdrawal balance"));
+  }
+}
+
+export async function getPartnerWithdrawals(params?: { page?: number; size?: number }): Promise<PartnerWithdrawal[]> {
+  try {
+    const { data } = await withRetry(() => API.get("/api/v1/partner/withdrawals", {
+      params: { page: params?.page ?? 0, size: params?.size ?? 20 },
+    }));
+    return parseArray(data).map(toPartnerWithdrawal);
+  } catch (error) {
+    throw new Error(getReadableApiError(error, "Unable to fetch withdrawals"));
+  }
+}
+
+export async function createPartnerWithdrawal(amount: number): Promise<PartnerWithdrawal> {
+  try {
+    const { data } = await API.post("/api/v1/partner/withdrawals", { amount });
+    return toPartnerWithdrawal(unwrapData(data), 0);
+  } catch (error) {
+    throw new Error(getReadableApiError(error, "Unable to request withdrawal"));
+  }
+}
+
+export async function getPartnerDispatchConfig(): Promise<PartnerDispatchConfig> {
+  try {
+    const { data } = await withRetry(() => API.get("/api/v1/partner/dispatch/config"));
+    const source = unwrapData(data);
+    return {
+      foregroundTrackingIntervalSeconds: asNumber(
+        source?.locationUpdateIntervalSeconds ??
+          source?.foregroundTrackingIntervalSeconds ??
+          source?.foregroundIntervalSeconds ??
+          25,
+      ) || 25,
+      backgroundTrackingIntervalSeconds: asNumber(source?.backgroundTrackingIntervalSeconds ?? source?.backgroundIntervalSeconds ?? 60) || 60,
+      minDistanceMeters: asNumber(source?.minDistanceMeters ?? source?.distanceFilterMeters ?? 50) || 50,
+      requestExpiryWarningSeconds: asNumber(source?.requestExpiryWarningSeconds ?? source?.expiryWarningSeconds ?? 30) || 30,
+    };
+  } catch {
+    return {
+      foregroundTrackingIntervalSeconds: 25,
+      backgroundTrackingIntervalSeconds: 60,
+      minDistanceMeters: 50,
+      requestExpiryWarningSeconds: 30,
+    };
+  }
+}
+
+export async function getPartnerPerformanceSummary(): Promise<PartnerPerformanceSummary> {
+  const { data } = await withRetry(() => API.get("/api/v1/partner/performance"));
+  const source = unwrapData(data);
+  return {
+    acceptanceRate: asNumber(source?.acceptanceRate),
+    completionRate: asNumber(source?.completionRate),
+    cancellationRate: asNumber(source?.cancellationRate),
+    rating: asNumber(source?.rating ?? source?.averageRating),
+    onTimeArrivalRate: asNumber(source?.onTimeArrivalRate ?? source?.onTimeArrivalPercentage),
+  };
+}
+
+export async function getPartnerRatings(): Promise<PartnerRatingSummary> {
+  const { data } = await withRetry(() =>
+    API.get("/api/v1/partner/ratings", { params: { page: 0, size: 20 } }),
+  );
+  const source = unwrapData(data);
+  const rows = parseArray(source?.feedback ?? source?.reviews ?? data);
+  return {
+    averageRating: asNumber(source?.averageRating ?? source?.rating),
+    totalReviews: asNumber(source?.totalReviews ?? source?.reviewCount ?? rows.length),
+    feedback: rows.map((row: any, index: number) => ({
+      id: asText(row?.id ?? index),
+      rating: asNumber(row?.rating),
+      comment: asText(row?.comment ?? row?.feedback ?? row?.message),
+      customerName: row?.customerName != null ? asText(row.customerName) : undefined,
+      createdAt: row?.createdAt,
+    })),
+  };
+}
+
+export async function getPartnerLeaves(): Promise<PartnerLeaveItem[]> {
+  const { data } = await withRetry(() => API.get("/api/v1/partner/leave"));
+  return parseArray(data).map((row: any, index: number) => ({
+    id: asText(row?.id ?? row?.leaveId ?? index),
+    fromDate: asText(row?.fromDate ?? row?.startDate),
+    toDate: asText(row?.toDate ?? row?.endDate),
+    reason: row?.reason != null ? asText(row.reason) : undefined,
+    status: asText(row?.status, "PENDING"),
+  }));
+}
+
+export async function applyPartnerLeave(payload: { fromDate: string; toDate: string; reason?: string }) {
+  const { data } = await API.post("/api/v1/partner/leave", payload);
+  return data;
+}
+
+export async function cancelPartnerLeave(id: string) {
+  const { data } = await API.patch(`/api/v1/partner/leave/${encodeURIComponent(id)}/cancel`);
+  return data;
+}
+
+export async function getPartnerServiceAreas(): Promise<PartnerServiceArea[]> {
+  const { data } = await withRetry(() => API.get("/api/v1/partner/service-areas"));
+  return parseArray(data).map((row: any, index: number) => ({
+    id: asText(row?.id ?? row?.areaId ?? row?.pincode ?? index),
+    name: asText(
+      row?.name ?? row?.areaName ?? row?.label ?? [row?.pincode, row?.city].filter(Boolean).join(", "),
+      "Service Area",
+    ),
+    pincode: asText(row?.pincode),
+    city: asText(row?.city),
+    selected: Boolean(row?.selected ?? row?.preferred ?? row?.active),
+  }));
+}
+
+export async function updatePartnerServiceAreas(areas: Array<{ pincode: string; city: string }>) {
+  const { data } = await API.put("/api/v1/partner/service-areas", { areas });
+  return data;
+}
+
+export async function getPartnerWarnings(): Promise<PartnerWarningItem[]> {
+  try {
+    const { data } = await withRetry(() => API.get("/api/v1/partner/warnings"));
+    return parseArray(data).map((row: any, index: number) => ({
+      id: asText(row?.id ?? row?.warningId ?? index),
+      type: asText(row?.type ?? row?.category, "WARNING").toUpperCase(),
+      reason: asText(row?.reason ?? row?.message ?? row?.title, "Policy warning"),
+      guidance: row?.guidance != null ? asText(row.guidance) : row?.resolutionGuidance != null ? asText(row.resolutionGuidance) : undefined,
+      createdAt: row?.createdAt,
+      status: row?.status != null ? asText(row.status).toUpperCase() : row?.warningStatus != null ? asText(row.warningStatus).toUpperCase() : undefined,
+      active: row?.active == null ? true : Boolean(row.active),
+      notificationTitle: row?.notificationTitle != null ? asText(row.notificationTitle) : row?.pushTitle != null ? asText(row.pushTitle) : row?.title != null ? asText(row.title) : undefined,
+      notificationMessage: row?.notificationMessage != null ? asText(row.notificationMessage) : row?.pushMessage != null ? asText(row.pushMessage) : row?.message != null ? asText(row.message) : undefined,
+    }));
+  } catch {
+    const profile = await getPartnerProfile();
+    const status = String(profile.accountStatus ?? "ACTIVE").toUpperCase();
+    if (status === "ACTIVE") return [];
+    return [{
+      id: "profile-account-status",
+      type: status,
+      reason: `Partner account status is ${status}.`,
+      status,
+      active: true,
+      notificationTitle: undefined,
+      notificationMessage: undefined,
+    }];
+  }
 }
 

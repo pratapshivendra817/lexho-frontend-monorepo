@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { sendOtp } from "../../services/authService";
 import { isValidMobile } from "../../utils/validation";
 import { COLORS } from "../../constants/colors";
+import { trackAuthenticationEvent } from "../../services/firebaseAnalytics";
 
 export default function MobileNumberScreen({ navigation }: any) {
   const [mobile, setMobile] = useState("");
@@ -28,6 +29,7 @@ export default function MobileNumberScreen({ navigation }: any) {
     if (!isValidMobile(cleanMobile)) {
       const message = "Enter a valid 10-digit mobile number.";
       setErrorMessage(message);
+      void trackAuthenticationEvent(false, { stage: "send_otp_validation" });
       Alert.alert("Invalid mobile number", message);
       return;
     }
@@ -35,15 +37,6 @@ export default function MobileNumberScreen({ navigation }: any) {
     try {
       setLoading(true);
       const response = await sendOtp(cleanMobile);
-      if (__DEV__) {
-        const otp =
-          response?.otp ??
-          response?.data?.otp ??
-          response?.code ??
-          response?.data?.code;
-        // eslint-disable-next-line no-console
-        console.log(`[PARTNER DEV OTP] ${cleanMobile}: ${otp ?? "OTP not present in response"}`);
-      }
 
       navigation.navigate("OTP", {
         mobile: cleanMobile,
@@ -52,6 +45,7 @@ export default function MobileNumberScreen({ navigation }: any) {
     } catch (e: any) {
       const message = e?.message || "Unable to send OTP. Please try again.";
       setErrorMessage(message);
+      void trackAuthenticationEvent(false, { stage: "send_otp", message });
       Alert.alert("Unable to send OTP", message);
     } finally {
       setLoading(false);

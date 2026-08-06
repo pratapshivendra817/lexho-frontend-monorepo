@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIcons";
 import { Text } from "react-native-paper";
 import { palette, spacing } from "../../constants/theme";
 import type { SlotOption } from "../../types/contracts";
+
+
+import { COLORS } from '../../theme/colors';
 
 type TimePickerProps = {
   value: string | null;
@@ -112,6 +115,15 @@ function toLocalDateTimeString(date: Date) {
   return `${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`;
 }
 
+function isPastDateKey(dateKey: string) {
+  const parsed = new Date(`${dateKey}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const keyStart = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()).getTime();
+  return keyStart < todayStart;
+}
+
 export function TimePicker({
   value,
   onChange,
@@ -129,6 +141,7 @@ export function TimePicker({
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slotLoadError, setSlotLoadError] = useState<string | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
+  const slotCacheRef = useRef<Record<string, SlotOption[]>>({});
 
   const dateTabs = useMemo(
     () =>
@@ -148,14 +161,26 @@ export function TimePicker({
     if (!value) return;
     const parsed = parseScheduledValue(value);
     if (!parsed) return;
-    setSelectedDate(toLocalDateInput(parsed));
+    const nextDateKey = toLocalDateInput(parsed);
+    setSelectedDate(isPastDateKey(nextDateKey) ? toLocalDateInput(new Date()) : nextDateKey);
     setSelectedSlot(`${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`);
   }, [value]);
 
   useEffect(() => {
+    if (isPastDateKey(selectedDate)) {
+      setSelectedDate(toLocalDateInput(new Date()));
+      return;
+    }
     let active = true;
     if (!loadSlots || !selectedDate) {
       setSlots([]);
+      setSlotLoadError(null);
+      return;
+    }
+    const cached = slotCacheRef.current[selectedDate];
+    if (Array.isArray(cached) && cached.length > 0) {
+      setSlots(cached);
+      setLoadingSlots(false);
       setSlotLoadError(null);
       return;
     }
@@ -164,7 +189,9 @@ export function TimePicker({
     loadSlots(selectedDate)
       .then((rows) => {
         if (!active) return;
-        setSlots(Array.isArray(rows) ? rows.filter(Boolean) : []);
+        const normalized = Array.isArray(rows) ? rows.filter(Boolean) : [];
+        slotCacheRef.current[selectedDate] = normalized;
+        setSlots(normalized);
       })
       .catch(() => {
         if (!active) return;
@@ -243,7 +270,7 @@ export function TimePicker({
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Select start time of service</Text>
               <Pressable onPress={() => setOpen(false)} style={styles.closeBtn}>
-                <MaterialCommunityIcon name="close" size={22} color={palette.iconSoft} />
+                <MaterialCommunityIcon name="close" size={22} color={COLORS.goldSoft} />
               </Pressable>
             </View>
 
@@ -282,6 +309,7 @@ export function TimePicker({
                   <Pressable
                     style={styles.retryBtn}
                     onPress={() => {
+                      delete slotCacheRef.current[selectedDate];
                       setReloadNonce((v) => v + 1);
                       setSlotLoadError(null);
                     }}
@@ -299,6 +327,8 @@ export function TimePicker({
                     const start = normalizeTo24Hour(toStartTime(rawSlot));
                     if (!start) return null;
                     const active = selectedSlot === start;
+                    const etaValue = Number(slotRow?.etaMinutes);
+                    const showEta = Number.isFinite(etaValue) && etaValue > 0 && etaValue <= 120;
                     return (
                       <Pressable
                         key={`${selectedDate}-${rawSlot}`}
@@ -308,7 +338,7 @@ export function TimePicker({
                         accessibilityLabel={`Select slot ${format12Hour(start)}`}
                       >
                         <Text style={[styles.slotText, active && styles.slotTextActive]}>{format12Hour(start)}</Text>
-                        {slotRow?.etaMinutes != null ? <Text style={styles.slotMeta}>{`ETA ${slotRow.etaMinutes}m`}</Text> : null}
+                        {showEta ? <Text style={styles.slotMeta}>{`ETA ${etaValue}m`}</Text> : null}
                         {slotRow?.instantEligible ? <Text style={styles.instantBadge}>Instant</Text> : null}
                       </Pressable>
                     );
@@ -344,19 +374,23 @@ const styles = StyleSheet.create({
   wrap: { gap: 8 },
   launchBtn: {
     borderWidth: 1,
-    borderColor: palette.borderSoft,
+    borderColor: COLORS.goldSoft,
     borderRadius: 12,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: palette.card,
+    backgroundColor: COLORS.navyDark,
   },
-  launchText: { color: palette.text, fontWeight: "700" },
+  launchText: { color: COLORS.white, fontWeight: "700" },
   backdrop: { flex: 1, backgroundColor: palette.overlayDark40, justifyContent: "flex-end" },
   backdropTapArea: { flex: 1 },
   sheet: {
-    backgroundColor: palette.card,
+    backgroundColor: COLORS.navyDark,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
+    borderTopWidth: 1.5,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: COLORS.goldSoft,
     overflow: "hidden",
     maxHeight: "82%",
   },
@@ -368,22 +402,24 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: palette.border,
+    borderBottomColor: "rgba(224,169,75,0.35)",
   },
-  sheetTitle: { fontSize: 18, color: palette.text, fontWeight: "900" },
+  sheetTitle: { fontSize: 18, color: COLORS.white, fontWeight: "900" },
   closeBtn: {
     width: 34,
     height: 34,
     borderRadius: 17,
+    borderWidth: 1,
+    borderColor: COLORS.goldSoft,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: palette.surfaceAlt,
+    backgroundColor: "rgba(224,169,75,0.14)",
   },
   dateTabs: {
     flexDirection: "row",
     borderBottomWidth: 1,
-    borderBottomColor: palette.border,
-    backgroundColor: palette.bg,
+    borderBottomColor: "rgba(224,169,75,0.35)",
+    backgroundColor: COLORS.navyDark,
   },
   dateTab: {
     flex: 1,
@@ -392,18 +428,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 3,
     borderBottomColor: "transparent",
   },
-  dateTabActive: { borderBottomColor: palette.successAlt },
-  dateTabLabel: { fontSize: 15, color: palette.muted, fontWeight: "900" },
-  dateTabLabelActive: { color: palette.text },
-  dateTabHint: { fontSize: 11, color: palette.muted, marginTop: 2, fontWeight: "700" },
-  dateTabHintActive: { color: palette.successAlt },
+  dateTabActive: { borderBottomColor: COLORS.goldSoft },
+  dateTabLabel: { fontSize: 15, color: COLORS.neutral100, fontWeight: "900" },
+  dateTabLabelActive: { color: COLORS.goldSoft },
+  dateTabHint: { fontSize: 11, color: COLORS.slate300, marginTop: 2, fontWeight: "700" },
+  dateTabHintActive: { color: COLORS.goldSoft },
   livePreviewBar: {
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 4,
   },
   livePreviewText: {
-    color: palette.text,
+    color: COLORS.neutral100,
     fontSize: 13,
     fontWeight: "700",
   },
@@ -423,8 +459,8 @@ const styles = StyleSheet.create({
     width: "31%",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.card,
+    borderColor: COLORS.goldSoft,
+    backgroundColor: "#001a4d",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 15,
@@ -435,47 +471,47 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   slotBtnActive: {
-    borderColor: palette.success,
-    backgroundColor: palette.successSoft,
+    borderColor: COLORS.goldSoft,
+    backgroundColor: "rgba(224,169,75,0.24)",
     shadowOpacity: 0.1,
     elevation: 2,
   },
-  slotText: { color: palette.muted, fontWeight: "800", fontSize: 16 },
-  slotTextActive: { color: palette.successText },
-  slotMeta: { color: palette.muted, fontSize: 10, fontWeight: "700", marginTop: 4 },
+  slotText: { color: COLORS.white, fontWeight: "800", fontSize: 16 },
+  slotTextActive: { color: COLORS.goldSoft },
+  slotMeta: { color: COLORS.neutral100, fontSize: 10, fontWeight: "700", marginTop: 4 },
   instantBadge: {
     marginTop: 5,
-    color: palette.successText,
+    color: COLORS.navyDark,
     fontSize: 10,
     fontWeight: "800",
-    backgroundColor: palette.successSoft,
+    backgroundColor: COLORS.goldSoft,
     borderRadius: 999,
     paddingHorizontal: 7,
     paddingVertical: 2,
     overflow: "hidden",
   },
-  stateText: { width: "100%", textAlign: "center", color: palette.muted, fontWeight: "600", paddingVertical: 20 },
+  stateText: { width: "100%", textAlign: "center", color: COLORS.neutral100, fontWeight: "600", paddingVertical: 20 },
   stateWrap: { width: "100%", alignItems: "center", paddingVertical: 10 },
   retryBtn: {
     marginTop: 4,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: palette.borderSoft,
+    borderColor: COLORS.goldSoft,
     paddingHorizontal: 12,
     paddingVertical: 7,
-    backgroundColor: palette.card,
+    backgroundColor: "#001a4d",
   },
-  retryText: { color: palette.primaryDark, fontWeight: "800", fontSize: 12 },
+  retryText: { color: COLORS.goldSoft, fontWeight: "800", fontSize: 12 },
   infoBar: {
-    backgroundColor: palette.successTint,
+    backgroundColor: "rgba(224,169,75,0.18)",
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  infoText: { color: palette.text, fontSize: 12, fontWeight: "700", textAlign: "center" },
+  infoText: { color: COLORS.white, fontSize: 12, fontWeight: "700", textAlign: "center" },
   confirmBtn: {
     margin: 16,
     borderRadius: 16,
-    backgroundColor: palette.success,
+    backgroundColor: COLORS.goldSoft,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 15,
@@ -486,8 +522,13 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   confirmBtnDisabled: {
-    backgroundColor: "#D1D5DB",
+    backgroundColor: COLORS.gray,
   },
-  confirmText: { color: palette.white, fontSize: 18, fontWeight: "900" },
+  confirmText: { color: COLORS.navyDark, fontSize: 18, fontWeight: "900" },
   error: { color: palette.danger, fontSize: 11, fontWeight: "600" },
 });
+
+
+
+
+

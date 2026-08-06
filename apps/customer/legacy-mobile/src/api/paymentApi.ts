@@ -1,14 +1,79 @@
-import { api, parseApiError } from "./client";
-import type { InitiatePaymentRequest } from "../types/contracts";
+import { api, parseApiError, toApiError } from "./client";
+import type { PaymentMode } from "../types/contracts";
 
-export async function initiatePayment(payload: InitiatePaymentRequest) {
-  try { const { data } = await api.post("/api/payments/initiate", payload); return data; }
-  catch (error) { throw new Error(parseApiError(error, "Payment initiation failed")); }
+export type CreatePaymentOrderRequest = { bookingId: string };
+
+export type CreatePaymentOrderResponse = {
+  keyId: string;
+  razorpayOrderId: string;
+  amountInPaise: number;
+  currency: "INR" | string;
+};
+
+export type VerifyPaymentRequest = {
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+};
+
+export type ReportPaymentFailureRequest = {
+  bookingId?: string;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  errorCode?: string;
+  errorDescription?: string;
+  errorReason?: string;
+  raw?: unknown;
+};
+
+export async function createPaymentOrder(payload: CreatePaymentOrderRequest, idempotencyKey: string): Promise<CreatePaymentOrderResponse> {
+  try {
+    const numericBookingId = Number(payload.bookingId);
+    const { data } = await api.post("/api/payments/create-order", { bookingId: Number.isFinite(numericBookingId) ? numericBookingId : payload.bookingId }, {
+      headers: { "Idempotency-Key": idempotencyKey },
+    });
+    const root = data?.data && typeof data.data === "object" ? data.data : data;
+    return root as CreatePaymentOrderResponse;
+  } catch (error) {
+    throw toApiError(error, "Payment order creation failed");
+  }
+}
+
+export async function verifyPayment(payload: VerifyPaymentRequest) {
+  try {
+    const { data } = await api.post("/api/payments/verify", payload);
+    return data;
+  } catch (error) {
+    throw toApiError(error, "Payment verification failed");
+  }
+}
+
+export async function reportPaymentFailure(payload: ReportPaymentFailureRequest) {
+  const body = {
+    bookingId: payload.bookingId,
+    razorpayOrderId: payload.razorpayOrderId,
+    razorpayPaymentId: payload.razorpayPaymentId,
+    errorCode: payload.errorCode,
+    errorDescription: payload.errorDescription,
+    errorReason: payload.errorReason,
+    raw: payload.raw,
+  };
+  const attempts = ["/api/payments/failure", "/api/payments/payment-failed", "/api/payment/failure"];
+  let lastError: unknown;
+  for (const url of attempts) {
+    try {
+      const { data } = await api.post(url, body);
+      return data;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw toApiError(lastError, "Payment failure report failed");
 }
 
 export type PaymentOption = {
   id: string;
-  mode: string;
+  mode: PaymentMode | "NETBANKING" | string;
   label: string;
   description?: string;
 };
@@ -66,5 +131,5 @@ export async function getPaymentOptions(params: { bookingId?: string; cartId?: n
     }
   }
 
-  throw new Error(parseApiError(lastError, "Payment options unavailable"));
+  throw toApiError(lastError, "Payment options unavailable");
 }

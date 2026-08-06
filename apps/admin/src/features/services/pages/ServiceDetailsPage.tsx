@@ -15,6 +15,31 @@ type ItemModalState = {
   value: string;
 };
 
+const MAX_DETAIL_ITEM_LENGTH = 255;
+
+const normalizeLines = (value: string): string[] =>
+  value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+const toDetailItems = (type: ServiceDetailType, value: string): string[] => {
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+
+  if (type === "FAQ") {
+    const flattened = trimmed.replace(/\s+/g, " ").trim();
+    const questionSplit = flattened
+      .split(/(?=\bQ?\d{1,2}[.)]\s*)/i)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (questionSplit.length > 1) return questionSplit;
+    return normalizeLines(trimmed);
+  }
+
+  return normalizeLines(trimmed);
+};
+
 const defaultModalState: ItemModalState = {
   open: false,
   mode: "create",
@@ -37,9 +62,9 @@ export default function ServiceDetailsPage() {
   });
 
   const addMutation = useMutation({
-    mutationFn: (payload: { type: ServiceDetailType; itemName: string }) => {
+    mutationFn: (payload: { type: ServiceDetailType; itemNames: string[] }) => {
       if (!id) throw new Error("Service id missing");
-      return addServiceDetails(id, { type: payload.type, items: [payload.itemName] });
+      return addServiceDetails(id, { type: payload.type, items: payload.itemNames });
     },
     onSuccess: async () => {
       toast.success("Detail added");
@@ -77,6 +102,7 @@ export default function ServiceDetailsPage() {
 
   const service = serviceQuery.data;
   const details = service?.details ?? [];
+  const draftItems = useMemo(() => toDetailItems(modal.type, modal.value), [modal.type, modal.value]);
   const includedItems = useMemo(() => details.filter((row) => row.type === "INCLUDED"), [details]);
   const excludedItems = useMemo(() => details.filter((row) => row.type === "EXCLUDED"), [details]);
   const faqItems = useMemo(() => details.filter((row) => row.type === "FAQ"), [details]);
@@ -91,16 +117,21 @@ export default function ServiceDetailsPage() {
   };
 
   const submitModal = () => {
-    const value = modal.value.trim();
-    if (!value) {
+    const items = draftItems;
+    if (items.length === 0) {
       toast.error("Item text cannot be empty");
       return;
     }
-    if (modal.mode === "edit" && modal.detail) {
-      updateMutation.mutate({ detailId: modal.detail.id, type: modal.type, itemName: value });
+    const overLimit = items.filter((item) => item.length > MAX_DETAIL_ITEM_LENGTH);
+    if (overLimit.length > 0) {
+      toast.error(`Each item must be 1-${MAX_DETAIL_ITEM_LENGTH} characters`);
       return;
     }
-    addMutation.mutate({ type: modal.type, itemName: value });
+    if (modal.mode === "edit" && modal.detail) {
+      updateMutation.mutate({ detailId: modal.detail.id, type: modal.type, itemName: items[0] });
+      return;
+    }
+    addMutation.mutate({ type: modal.type, itemNames: items });
   };
 
   const renderSection = (title: string, type: ServiceDetailType, rows: ServiceDetailItem[]) => (
@@ -205,14 +236,29 @@ export default function ServiceDetailsPage() {
             </select>
           </label>
           <label className="grid gap-1 text-sm">
-            <span>Item</span>
-            <input
+            <span>Item{modal.type === "FAQ" ? "s" : ""}</span>
+            <textarea
               value={modal.value}
               onChange={(event) => setModal((prev) => ({ ...prev, value: event.target.value }))}
-              placeholder="Enter item text"
+              placeholder={modal.type === "FAQ" ? "Paste one or many FAQs (Q1, Q2...) or one per line" : "Enter one item per line"}
               className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
+              rows={modal.type === "FAQ" ? 6 : 4}
             />
+            <span className="text-xs text-[var(--color-muted)]">Each item must be 1-{MAX_DETAIL_ITEM_LENGTH} characters.</span>
           </label>
+          {modal.mode === "create" && draftItems.length > 0 ? (
+            <div className="grid gap-2 rounded-lg border border-[var(--color-border)] p-3">
+              <p className="text-xs text-[var(--color-muted)]">Preview ({draftItems.length} item{draftItems.length > 1 ? "s" : ""})</p>
+              <ul className="max-h-40 space-y-1 overflow-auto text-xs">
+                {draftItems.map((item, index) => (
+                  <li key={`${item}-${index}`} className="rounded border border-[var(--color-border)] px-2 py-1 text-[var(--color-text)]">
+                    {index + 1}. {item}
+                    <span className="ml-2 text-[var(--color-muted)]">({item.length}/{MAX_DETAIL_ITEM_LENGTH})</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </form>
       </ModalFormLayout>
     </div>

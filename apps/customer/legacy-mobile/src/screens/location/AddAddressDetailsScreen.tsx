@@ -9,6 +9,9 @@ import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { saveAddressThunk, updateAddressThunk } from "../../redux/locationSlice";
 import { resolveUserIdFromAuth } from "../../utils/authUser";
 
+
+import { COLORS } from '../../theme/colors';
+
 function toReadableError(error: any, fallback: string) {
   const text = String(error?.message ?? fallback);
   if (text.toLowerCase().includes("request conflicts with existing data")) {
@@ -29,6 +32,14 @@ const schema = z.object({
 
 type Form = z.infer<typeof schema>;
 
+function firstText(...values: unknown[]) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
 export function AddAddressDetailsScreen({ route, navigation }: any) {
   const dispatch = useAppDispatch();
   const authUserId = useAppSelector((s) => s.auth.user?.id ?? 0);
@@ -39,6 +50,7 @@ export function AddAddressDetailsScreen({ route, navigation }: any) {
   const existing = route?.params?.address;
   const pickedLocation = route?.params?.pickedLocation;
   const pickedAddressLine = route?.params?.pickedAddressLine;
+  const pickedAddressMeta = route?.params?.pickedAddressMeta ?? {};
   const isEdit = Boolean(existing?.id);
   const { control, setValue, handleSubmit, formState: { errors } } = useForm<Form>({
     mode: "onChange",
@@ -48,7 +60,7 @@ export function AddAddressDetailsScreen({ route, navigation }: any) {
       flatNo: String(existing?.flatNo ?? ""),
       floor: String(existing?.floor ?? ""),
       buildingName: String(existing?.buildingName ?? ""),
-      landmark: String(existing?.landmark ?? ""),
+      landmark: firstText(pickedAddressMeta?.landmark, existing?.landmark),
       addressLine: String(pickedAddressLine ?? existing?.addressLine ?? currentAddress?.addressLine ?? ""),
       mobile: String(existing?.mobile ?? authMobile ?? ""),
     },
@@ -62,6 +74,11 @@ export function AddAddressDetailsScreen({ route, navigation }: any) {
       const lng = Number(existing?.longitude ?? currentAddress?.longitude ?? 0);
       const effectiveLat = Number(pickedLocation?.latitude ?? lat ?? 0);
       const effectiveLng = Number(pickedLocation?.longitude ?? lng ?? 0);
+      const effectiveCity = firstText(pickedAddressMeta?.city, existing?.city, currentAddress?.city);
+      const effectiveState = firstText(pickedAddressMeta?.state, existing?.state, currentAddress?.state);
+      const effectiveCountry = firstText(pickedAddressMeta?.country, existing?.country, currentAddress?.country, "India");
+      const effectivePincode = firstText(pickedAddressMeta?.pincode, existing?.pincode, currentAddress?.pincode);
+      const effectiveArea = firstText(pickedAddressMeta?.area, pickedAddressMeta?.sector, payload.addressLine);
       if (isEdit) {
         await dispatch(
           updateAddressThunk({
@@ -74,15 +91,15 @@ export function AddAddressDetailsScreen({ route, navigation }: any) {
             floor: payload.floor ?? "",
             buildingName: payload.buildingName,
             landmark: payload.landmark ?? "",
-            area: payload.addressLine,
-            sector: "",
+            area: effectiveArea,
+            sector: firstText(pickedAddressMeta?.sector),
             latitude: effectiveLat,
             longitude: effectiveLng,
             addressLine: payload.addressLine,
-            city: String(existing?.city ?? currentAddress?.city ?? ""),
-            state: String(existing?.state ?? currentAddress?.state ?? ""),
-            country: String(existing?.country ?? currentAddress?.country ?? "India"),
-            pincode: String(existing?.pincode ?? currentAddress?.pincode ?? ""),
+            city: effectiveCity,
+            state: effectiveState,
+            country: effectiveCountry,
+            pincode: effectivePincode,
             mobile: payload.mobile,
           }),
         ).unwrap();
@@ -97,15 +114,15 @@ export function AddAddressDetailsScreen({ route, navigation }: any) {
             floor: payload.floor ?? "",
             buildingName: payload.buildingName,
             landmark: payload.landmark ?? "",
-            area: payload.addressLine,
-            sector: "",
+            area: effectiveArea,
+            sector: firstText(pickedAddressMeta?.sector),
             addressLine: payload.addressLine,
             latitude: effectiveLat,
             longitude: effectiveLng,
-            city: String(currentAddress?.city ?? ""),
-            state: String(currentAddress?.state ?? ""),
-            country: String(currentAddress?.country ?? "India"),
-            pincode: String(currentAddress?.pincode ?? ""),
+            city: effectiveCity,
+            state: effectiveState,
+            country: effectiveCountry,
+            pincode: effectivePincode,
             mobile: payload.mobile,
           }),
         ).unwrap();
@@ -118,42 +135,56 @@ export function AddAddressDetailsScreen({ route, navigation }: any) {
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.toggleRow}>
-          <Button mode={typeValue === "HOME" ? "contained" : "outlined"} buttonColor="#16A34A" onPress={() => setValue("type", "HOME", { shouldValidate: true })}>
+          <Button
+            mode={typeValue === "HOME" ? "contained" : "outlined"}
+            buttonColor={COLORS.goldSoft}
+            textColor={typeValue === "HOME" ? COLORS.navyDark : COLORS.goldSoft}
+            style={styles.typeBtn}
+            onPress={() => setValue("type", "HOME", { shouldValidate: true })}
+          >
             Home
           </Button>
-          <Button mode={typeValue === "OTHER" ? "contained" : "outlined"} buttonColor="#16A34A" onPress={() => setValue("type", "OTHER", { shouldValidate: true })}>
+          <Button
+            mode={typeValue === "OTHER" ? "contained" : "outlined"}
+            buttonColor={COLORS.goldSoft}
+            textColor={typeValue === "OTHER" ? COLORS.navyDark : COLORS.goldSoft}
+            style={styles.typeBtn}
+            onPress={() => setValue("type", "OTHER", { shouldValidate: true })}
+          >
             Other
           </Button>
         </View>
 
         <Controller control={control} name="flatNo" render={({ field: { value, onChange } }) => (
-          <TextInput mode="flat" label="Flat/House No" value={value} onChangeText={onChange} />
+          <TextInput mode="outlined" label="Flat/House No" value={value} onChangeText={onChange} textColor={COLORS.white} outlineColor={COLORS.goldSoft} activeOutlineColor={COLORS.goldSoft} theme={{ colors: { onSurfaceVariant: COLORS.white, primary: COLORS.goldSoft } }} style={styles.fieldInput} />
         )} />
         {errors.flatNo ? <Text style={styles.error}>{errors.flatNo.message}</Text> : null}
 
         <Controller control={control} name="floor" render={({ field: { value, onChange } }) => (
-          <TextInput mode="flat" label="Floor" value={value} onChangeText={onChange} />
+          <TextInput mode="outlined" label="Floor" value={value} onChangeText={onChange} textColor={COLORS.white} outlineColor={COLORS.goldSoft} activeOutlineColor={COLORS.goldSoft} theme={{ colors: { onSurfaceVariant: COLORS.white, primary: COLORS.goldSoft } }} style={styles.fieldInput} />
         )} />
         <Controller control={control} name="buildingName" render={({ field: { value, onChange } }) => (
-          <TextInput mode="flat" label="Apartment/Building Name" value={value} onChangeText={onChange} />
+          <TextInput mode="outlined" label="Apartment/Building Name" value={value} onChangeText={onChange} textColor={COLORS.white} outlineColor={COLORS.goldSoft} activeOutlineColor={COLORS.goldSoft} theme={{ colors: { onSurfaceVariant: COLORS.white, primary: COLORS.goldSoft } }} style={styles.fieldInput} />
         )} />
         {errors.buildingName ? <Text style={styles.error}>{errors.buildingName.message}</Text> : null}
 
         <Controller control={control} name="landmark" render={({ field: { value, onChange } }) => (
-          <TextInput mode="flat" label="Landmark" value={value} onChangeText={onChange} />
+          <TextInput mode="outlined" label="Landmark" value={value} onChangeText={onChange} textColor={COLORS.white} outlineColor={COLORS.goldSoft} activeOutlineColor={COLORS.goldSoft} theme={{ colors: { onSurfaceVariant: COLORS.white, primary: COLORS.goldSoft } }} style={styles.fieldInput} />
         )} />
         <Controller control={control} name="addressLine" render={({ field: { value, onChange } }) => (
-          <TextInput mode="flat" label="Area/Sector/Locality" value={value} onChangeText={onChange} />
+          <TextInput mode="outlined" label="Area/Sector/Locality" value={value} onChangeText={onChange} textColor={COLORS.white} outlineColor={COLORS.goldSoft} activeOutlineColor={COLORS.goldSoft} theme={{ colors: { onSurfaceVariant: COLORS.white, primary: COLORS.goldSoft } }} style={styles.fieldInput} />
         )} />
         {errors.addressLine ? <Text style={styles.error}>{errors.addressLine.message}</Text> : null}
 
         <Controller control={control} name="mobile" render={({ field: { value, onChange } }) => (
-          <TextInput mode="flat" label="Receiver Phone Number" keyboardType="phone-pad" value={value} onChangeText={onChange} maxLength={10} />
+          <TextInput mode="outlined" label="Receiver Phone Number" keyboardType="phone-pad" value={value} onChangeText={onChange} maxLength={10} textColor={COLORS.white} outlineColor={COLORS.goldSoft} activeOutlineColor={COLORS.goldSoft} theme={{ colors: { onSurfaceVariant: COLORS.white, primary: COLORS.goldSoft } }} style={styles.fieldInput} />
         )} />
         {errors.mobile ? <Text style={styles.error}>{errors.mobile.message}</Text> : null}
 
         <Button
           mode="outlined"
+          textColor={COLORS.goldSoft}
+          style={styles.mapBtn}
           onPress={() =>
             navigation.navigate("MapAddressPicker", {
               address: existing,
@@ -166,15 +197,11 @@ export function AddAddressDetailsScreen({ route, navigation }: any) {
         >
           Pick Location On Map
         </Button>
-        <Text style={styles.meta}>
-          Selected: {Number(pickedLocation?.latitude ?? existing?.latitude ?? currentAddress?.latitude ?? 0).toFixed(6)},{" "}
-          {Number(pickedLocation?.longitude ?? existing?.longitude ?? currentAddress?.longitude ?? 0).toFixed(6)}
-        </Text>
 
         <Button
           mode="contained"
-          buttonColor="#0F766E"
-          textColor="#FFFFFF"
+          buttonColor={COLORS.goldSoft}
+          textColor={COLORS.navyDark}
           style={styles.saveButton}
           disabled={mutation.isPending}
           loading={mutation.isPending}
@@ -191,19 +218,30 @@ export function AddAddressDetailsScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F8FFFA" },
-  content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 16, gap: 10 },
+  root: { flex: 1, backgroundColor: COLORS.navyDark },
+  content: { flexGrow: 1, backgroundColor: COLORS.navyDark, paddingTop: 10, paddingBottom: 16, gap: 10 },
   toggleRow: { flexDirection: "row", gap: 10 },
+  typeBtn: { borderWidth: 1, borderColor: COLORS.goldSoft, backgroundColor: COLORS.navyDark },
+  fieldInput: { backgroundColor: COLORS.navyDark },
+  mapBtn: { borderWidth: 1, borderColor: COLORS.goldSoft, backgroundColor: COLORS.navyDark },
   saveButton: {
     marginTop: 8,
+    borderWidth: 1,
+    borderColor: COLORS.goldSoft,
     borderRadius: 14,
     paddingVertical: 6,
-    shadowColor: "#0F766E",
+    shadowColor: COLORS.goldSoft,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 4,
   },
-  meta: { color: "#334155", fontSize: 12 },
-  error: { color: "#DC2626" },
+  error: { color: COLORS.danger },
 });
+
+
+
+
+
+
+

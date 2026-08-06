@@ -8,6 +8,11 @@ import type { Review } from "@/types/review";
 import type { Service } from "@/types/service";
 import type { Ticket, TicketPriority, TicketStatus } from "@/types/ticket";
 import type { User } from "@/types/user";
+import type {
+  AdminBookingLiveTrackingSnapshot,
+  AdminBookingNavigation,
+} from "@/features/live-dispatch/types";
+import { normalizeCoordinate, parseRouteCoordinates } from "@/features/live-dispatch/utils";
 
 import { api } from "./axios";
 
@@ -29,31 +34,6 @@ export type DashboardRevenuePoint = {
 export type DashboardServicePoint = {
   name: string;
   value: number;
-};
-
-export type AdminBookingLiveEvent = {
-  id: number;
-  bookingId: number;
-  eventType: string;
-  eventPayload: string;
-  createdAt: string;
-};
-
-export type AdminBookingLiveTracking = {
-  bookingId: number;
-  status: string;
-  paymentStatus: string;
-  scheduledAt: string;
-  partnerId: number | null;
-  partnerLocation: {
-    partnerId: number;
-    latitude: number;
-    longitude: number;
-    pincode?: string;
-    source?: string;
-    updatedAt?: string;
-  } | null;
-  events: AdminBookingLiveEvent[];
 };
 
 export type AdminPaymentReconciliation = {
@@ -119,6 +99,81 @@ function pickObject<T>(payload: unknown, keys: string[]): T | null {
   }
 
   return payload as T;
+}
+
+function asString(value: unknown) {
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+function normalizeNavigation(data: unknown, bookingId: string | number): AdminBookingNavigation | null {
+  const source = pickObject<Record<string, unknown>>(data, ["data", "item", "result"]) ?? (data as Record<string, unknown> | null);
+  if (!source) return null;
+
+  const partnerLocationRecord = (source.partnerLocation ?? {}) as Record<string, unknown>;
+  const customerLocationRecord = (source.customerLocation ?? {}) as Record<string, unknown>;
+
+  return {
+    bookingId: asString(source.bookingId ?? bookingId),
+    status: asString(source.status ?? source.navigationStatus) || "UNKNOWN",
+    etaMinutes: toNumber(source.etaMinutes ?? source.eta ?? source.durationMinutes) || null,
+    distanceMeters: toNumber(source.distanceMeters ?? source.distance ?? source.remainingDistanceMeters) || null,
+    distanceText: asString(source.distanceText ?? source.distanceLabel) || undefined,
+    routePolyline: asString(source.routePolyline ?? source.polyline) || undefined,
+    routeCoordinates: parseRouteCoordinates(
+      source.routeCoordinates ??
+        source.routePolyline ??
+        source.polyline ??
+        source.route ??
+        (source.navigation as any)?.routePolyline,
+    ),
+    partnerLocation: normalizeCoordinate(
+      source.partnerLatitude ?? partnerLocationRecord.latitude,
+      source.partnerLongitude ?? partnerLocationRecord.longitude,
+    ),
+    customerLocation: normalizeCoordinate(
+      source.customerLatitude ?? customerLocationRecord.latitude,
+      source.customerLongitude ?? customerLocationRecord.longitude,
+    ),
+    updatedAt: asString(source.updatedAt ?? source.lastUpdatedAt) || undefined,
+  };
+}
+
+function normalizeLiveTracking(data: unknown, bookingId: string | number): AdminBookingLiveTrackingSnapshot | null {
+  const source = pickObject<Record<string, unknown>>(data, ["data", "item", "result"]) ?? (data as Record<string, unknown> | null);
+  if (!source) return null;
+  const partnerLocationRecord = (source.partnerLocation ?? {}) as Record<string, unknown>;
+  const events = Array.isArray(source.events) ? source.events : [];
+
+  return {
+    bookingId: asString(source.bookingId ?? bookingId),
+    status: asString(source.status),
+    paymentStatus: asString(source.paymentStatus) || undefined,
+    scheduledAt: asString(source.scheduledAt) || undefined,
+    partnerId: asString(source.partnerId ?? partnerLocationRecord.partnerId) || null,
+    partnerLocation: (() => {
+      const coordinate = normalizeCoordinate(
+        partnerLocationRecord.latitude,
+        partnerLocationRecord.longitude,
+      );
+      if (!coordinate) return null;
+      return {
+        ...coordinate,
+        pincode: asString(partnerLocationRecord.pincode) || undefined,
+        source: asString(partnerLocationRecord.source) || undefined,
+        updatedAt: asString(partnerLocationRecord.updatedAt) || undefined,
+      };
+    })(),
+    events: events.map((event) => {
+      const row = event as Record<string, unknown>;
+      return {
+        id: asString(row.id),
+        bookingId: asString(row.bookingId ?? bookingId),
+        eventType: asString(row.eventType),
+        eventPayload: asString(row.eventPayload),
+        createdAt: asString(row.createdAt) || undefined,
+      };
+    }),
+  };
 }
 
 export async function fetchDashboardStats() {
@@ -282,33 +337,57 @@ export async function fetchPayouts() {
   return pickArray<Payout>(data, ["data", "content", "payouts", "items", "results"]);
 }
 
+export async function fetchBookingNavigation(bookingId: string | number) {
+  try {
+    const { data } = await api.get(`/api/v1/admin/booking-management/${bookingId}/navigation`);
+    return normalizeNavigation(data, bookingId);
+  } catch (error: any) {
+    const status = Number(error?.response?.status ?? 0);
+    if (status !== 404 && status !== 405) throw error;
+    const fallback = await api.get(`/api/v1/admin/bookings/${bookingId}/navigation`);
+    return normalizeNavigation(fallback.data, bookingId);
+  }
+}
+
 export async function fetchBookingLiveTracking(bookingId: string | number) {
-  const { data } = await api.get(`/api/v1/admin/bookings/${bookingId}/tracking/live`);
-  const item = pickObject<AdminBookingLiveTracking>(data, ["data", "item", "result"]);
-  return item;
+  try {
+    const { data } = await api.get(`/api/v1/admin/booking-management/${bookingId}/tracking/live`);
+    return normalizeLiveTracking(data, bookingId);
+  } catch (error: any) {
+    const status = Number(error?.response?.status ?? 0);
+    if (status !== 404 && status !== 405) throw error;
+    const fallback = await api.get(`/api/v1/admin/bookings/${bookingId}/tracking/live`);
+    return normalizeLiveTracking(fallback.data, bookingId);
+  }
 }
 
 export async function updateBookingPartnerLocation(
   bookingId: string | number,
   payload: { latitude: number; longitude: number; pincode?: string },
 ) {
-  await api.patch(`/api/v1/admin/bookings/${bookingId}/tracking/partner-location`, payload);
+  try {
+    await api.patch(`/api/v1/admin/booking-management/${bookingId}/tracking/partner-location`, payload);
+  } catch (error: any) {
+    const status = Number(error?.response?.status ?? 0);
+    if (status !== 404 && status !== 405) throw error;
+    await api.patch(`/api/v1/admin/bookings/${bookingId}/tracking/partner-location`, payload);
+  }
 }
 
 export async function fetchPaymentReconciliation(bookingId: string | number) {
-  const { data } = await api.get(`/api/v1/admin/bookings/${bookingId}/payment/reconciliation`);
+  const { data } = await api.get(`/api/v1/admin/booking-management/${bookingId}/payment/reconciliation`);
   return pickObject<AdminPaymentReconciliation>(data, ["data", "item", "result"]);
 }
 
-export async function updatePaymentStatus(bookingId: string | number, paymentStatus: string) {
-  await api.patch(`/api/v1/admin/bookings/${bookingId}/payment/status`, { paymentStatus });
+export async function updatePaymentStatus(bookingId: string | number, paymentStatus: string, reason: string) {
+  await api.patch(`/api/v1/admin/booking-management/${bookingId}/payment/status`, { paymentStatus, reason });
 }
 
 export async function upsertBookingPayout(
   bookingId: string | number,
   payload: { providerId: number; amount: number; status: string },
 ) {
-  await api.put(`/api/v1/admin/bookings/${bookingId}/payment/payout`, payload);
+  await api.put(`/api/v1/admin/booking-management/${bookingId}/payment/payout`, payload);
 }
 
 export async function fetchActivityLogs() {
@@ -317,11 +396,12 @@ export async function fetchActivityLogs() {
 }
 
 export async function fetchSupportTickets() {
-  const { data } = await api.get("/api/admin/support/tickets");
+  const { data } = await api.get("/api/v1/admin/support/customer/tickets");
   return pickArray<Ticket>(data, ["data", "content", "tickets", "items", "results"]);
 }
 
 export async function fetchSupportTicketsWithFilters(params?: {
+  requesterType?: "CUSTOMER" | "PARTNER";
   page?: number;
   limit?: number;
   search?: string;
@@ -329,7 +409,16 @@ export async function fetchSupportTicketsWithFilters(params?: {
   categoryId?: string;
   priority?: TicketPriority | "";
 }) {
-  const { data } = await api.get("/api/admin/support/tickets", { params });
+  const requesterType = params?.requesterType === "PARTNER" ? "partner" : "customer";
+  const queryParams = {
+    page: params?.page,
+    limit: params?.limit,
+    search: params?.search,
+    status: params?.status,
+    categoryId: params?.categoryId,
+    priority: params?.priority,
+  };
+  const { data } = await api.get(`/api/v1/admin/support/${requesterType}/tickets`, { params: queryParams });
   const tickets = pickArray<Ticket>(data, ["data", "content", "tickets", "items", "results"]);
   const root = (data && typeof data === "object" ? (data as UnknownRecord) : {}) as UnknownRecord;
   const total = typeof root.total === "number" ? root.total : tickets.length;
@@ -337,16 +426,16 @@ export async function fetchSupportTicketsWithFilters(params?: {
 }
 
 export async function fetchSupportTicketById(id: string | number) {
-  const { data } = await api.get(`/api/admin/support/tickets/${id}`);
+  const { data } = await api.get(`/api/v1/admin/support/tickets/${id}`);
   return pickObject<Ticket>(data, ["data", "ticket", "item", "result"]);
 }
 
 export async function updateSupportTicketStatus(id: string | number, status: TicketStatus) {
-  await api.patch(`/api/admin/support/tickets/${id}/status`, { status });
+  await api.patch(`/api/v1/admin/support/tickets/${id}/status`, { status });
 }
 
 export async function replySupportTicket(id: string | number, message: string) {
-  await api.post(`/api/admin/support/tickets/${id}/reply`, { message });
+  await api.post(`/api/v1/admin/support/tickets/${id}/reply`, { message });
 }
 
 export type SupportFaqCategoryPayload = {

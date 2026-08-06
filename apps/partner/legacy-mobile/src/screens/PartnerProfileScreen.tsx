@@ -29,6 +29,8 @@ export default function PartnerProfileScreen({ onLogout }: Props) {
     setLoggingOut(true);
     try {
       await onLogout();
+    } catch {
+      // Keep the user on the screen and restore the button if logout fails.
     } finally {
       setLoggingOut(false);
     }
@@ -38,9 +40,9 @@ export default function PartnerProfileScreen({ onLogout }: Props) {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <Text style={styles.title}>Partner Profile</Text>
-        <Text style={styles.subtitle}>{email || "Logged in partner"}</Text>
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} disabled={loggingOut}>
-          {loggingOut ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.logoutText}>Logout</Text>}
+        <Text testID="partner-profile-email" style={styles.subtitle}>{email || "Logged in partner"}</Text>
+        <TouchableOpacity testID="partner-profile-logout-button" style={styles.logoutBtn} onPress={handleLogout} disabled={loggingOut}>
+          {loggingOut ? <ActivityIndicator testID="partner-profile-logout-spinner" color={COLORS.white} /> : <Text style={styles.logoutText}>Logout</Text>}
         </TouchableOpacity>
       </View>
     </SafeAreaView>

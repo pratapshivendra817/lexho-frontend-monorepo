@@ -9,6 +9,8 @@ import { z } from "zod";
 import { createSupportTicket, getSupportFaqCategories, getSupportHistory } from "../../api/supportApi";
 import { EmptyStateCard } from "../../components/common/EmptyStateCard";
 import { SkeletonList } from "../../components/common/SkeletonList";
+import { palette, radii, shadows, spacing } from "../../constants/theme";
+import { COLORS } from '../../theme/colors';
 
 const schema = z.object({
   subject: z.string().min(3, "Subject required"),
@@ -109,7 +111,10 @@ export function SupportTicketsScreen({ navigation }: any) {
 
   const history = useQuery<any>({ queryKey: ["support-history"], queryFn: getSupportHistory });
   const faqQuery = useQuery({ queryKey: ["support-faq-categories"], queryFn: getSupportFaqCategories });
-  const remoteFaqData = Array.isArray(faqQuery.data) ? faqQuery.data : [];
+  const remoteFaqData = useMemo(
+    () => (Array.isArray(faqQuery.data) ? faqQuery.data : []),
+    [faqQuery.data],
+  );
   const create = useMutation({
     mutationFn: (values: Form) => createSupportTicket(values),
     onSuccess: () => {
@@ -187,7 +192,7 @@ export function SupportTicketsScreen({ navigation }: any) {
             <Card key={faq.id} style={styles.faqCard} mode="contained">
               <Pressable style={styles.faqBtn} onPress={() => setExpandedFaq(isExpanded ? null : faq.id)}>
                 <Text style={styles.faqQuestion}>{faq.question}</Text>
-                <MaterialCommunityIcon name={isExpanded ? "chevron-up" : "chevron-down"} size={24} color="#8B919A" />
+                <MaterialCommunityIcon name={isExpanded ? "chevron-up" : "chevron-down"} size={24} color={COLORS.goldSoft} />
               </Pressable>
               {isExpanded ? <Text style={styles.faqAnswer}>{faq.answer}</Text> : null}
             </Card>
@@ -205,23 +210,62 @@ export function SupportTicketsScreen({ navigation }: any) {
         <Card style={styles.chatCard} mode="contained">
           <Pressable style={styles.chatBtn} onPress={() => setOpenForm((prev) => !prev)}>
             <View style={styles.chatLeft}>
-              <MaterialCommunityIcon name="message-text-outline" size={24} color="#E6007A" />
+              <MaterialCommunityIcon name="message-text-outline" size={24} color={COLORS.gold} />
               <Text style={styles.chatText}>Chat with us</Text>
             </View>
-            <MaterialCommunityIcon name={openForm ? "chevron-up" : "chevron-right"} size={24} color="#B3B8C2" />
+            <MaterialCommunityIcon name={openForm ? "chevron-up" : "chevron-right"} size={24} color={COLORS.goldSoft} />
           </Pressable>
         </Card>
       </View>
 
       {openForm ? (
         <Card style={styles.card}>
-          <Card.Title title="Create Support Ticket" />
+          <Card.Title title="Create Support Ticket" titleStyle={styles.formTitle} />
           <Card.Content style={styles.form}>
-            <Controller control={control} name="subject" render={({ field: { value, onChange } }) => <TextInput mode="outlined" label="Subject" value={value} onChangeText={onChange} />} />
+            <Controller
+              control={control}
+              name="subject"
+              render={({ field: { value, onChange } }) => (
+                <TextInput
+                  mode="outlined"
+                  label="Subject"
+                  value={value}
+                  onChangeText={onChange}
+                  textColor={COLORS.white}
+                  outlineColor={COLORS.goldSoft}
+                  activeOutlineColor={COLORS.goldSoft}
+                  theme={{ colors: { onSurfaceVariant: COLORS.white, primary: COLORS.goldSoft } }}
+                />
+              )}
+            />
             {errors.subject ? <Text style={styles.err}>{errors.subject.message}</Text> : null}
-            <Controller control={control} name="message" render={({ field: { value, onChange } }) => <TextInput mode="outlined" label="Message" multiline value={value} onChangeText={onChange} />} />
+            <Controller
+              control={control}
+              name="message"
+              render={({ field: { value, onChange } }) => (
+                <TextInput
+                  mode="outlined"
+                  label="Message"
+                  multiline
+                  value={value}
+                  onChangeText={onChange}
+                  textColor={COLORS.white}
+                  outlineColor={COLORS.goldSoft}
+                  activeOutlineColor={COLORS.goldSoft}
+                  theme={{ colors: { onSurfaceVariant: COLORS.white, primary: COLORS.goldSoft } }}
+                />
+              )}
+            />
             {errors.message ? <Text style={styles.err}>{errors.message.message}</Text> : null}
-            <Button mode="contained" onPress={handleSubmit((v) => create.mutate(v))} loading={create.isPending}>Submit</Button>
+            <Button
+              mode="contained"
+              onPress={handleSubmit((v) => create.mutate(v))}
+              loading={create.isPending}
+              buttonColor={COLORS.goldSoft}
+              textColor={COLORS.navyDark}
+            >
+              Submit
+            </Button>
           </Card.Content>
         </Card>
       ) : null}
@@ -239,10 +283,10 @@ export function SupportTicketsScreen({ navigation }: any) {
               <Card style={styles.ticket}>
                 <Card.Content>
                   <Text style={styles.title}>{item?.subject ?? "Support"}</Text>
-                  <Text>{item?.message ?? ""}</Text>
+                  <Text style={styles.ticketMessage}>{item?.message ?? ""}</Text>
                   <Text style={styles.status}>Status: {item?.status ?? "OPEN"}</Text>
                   <TouchableOpacity style={styles.shareBtn} onPress={() => void onShareTicket(item)}>
-                    <MaterialCommunityIcon name="share-variant-outline" size={16} color="#0F172A" />
+                    <MaterialCommunityIcon name="share-variant-outline" size={16} color={COLORS.goldSoft} />
                     <Text style={styles.shareText}>Share</Text>
                   </TouchableOpacity>
                 </Card.Content>
@@ -258,35 +302,37 @@ export function SupportTicketsScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#ECECEE" },
+  root: { flex: 1, backgroundColor: COLORS.navyDark },
   content: { paddingBottom: 24 },
-  tabsWrap: { backgroundColor: "#E5E5E7", borderBottomWidth: 1, borderBottomColor: "#D7D8DC" },
-  tabsContent: { paddingHorizontal: 14, gap: 18 },
-  tabBtn: { paddingVertical: 14, alignItems: "center" },
-  tabText: { color: "#7A8089", fontSize: 16, fontWeight: "500" },
-  tabTextActive: { color: "#E6007A", fontWeight: "700" },
-  tabUnderline: { marginTop: 10, height: 3, width: "100%", borderRadius: 10, backgroundColor: "#E6007A" },
-  faqWrap: { padding: 14, gap: 10 },
-  faqCard: { borderRadius: 20, backgroundColor: "#FFFFFF" },
-  faqBtn: { minHeight: 72, paddingHorizontal: 16, paddingVertical: 14, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "space-between" },
-  faqQuestion: { flex: 1, color: "#1F2430", fontSize: 16, fontWeight: "800", lineHeight: 24 },
-  faqAnswer: { color: "#596170", fontSize: 14, lineHeight: 22, paddingHorizontal: 16, paddingBottom: 16 },
-  helpWrap: { marginTop: 8, paddingTop: 14, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: "#D7D8DC" },
+  tabsWrap: { backgroundColor: COLORS.navyDark, borderBottomWidth: 1, borderBottomColor: COLORS.goldSoft },
+  tabsContent: { paddingHorizontal: spacing.md + 2, gap: spacing.lg + 2 },
+  tabBtn: { paddingVertical: spacing.md + 2, alignItems: "center" },
+  tabText: { color: COLORS.neutral100, fontSize: 16, fontWeight: "500" },
+  tabTextActive: { color: COLORS.goldSoft, fontWeight: "700" },
+  tabUnderline: { marginTop: spacing.sm + 2, height: 3, width: "100%", borderRadius: radii.sm, backgroundColor: COLORS.gold },
+  faqWrap: { paddingVertical: spacing.md + 2, gap: spacing.sm + 2 },
+  faqCard: { borderRadius: radii.lg + 2, backgroundColor: COLORS.navyDark, borderWidth: 1, borderColor: COLORS.goldSoft, ...shadows.sm },
+  faqBtn: { minHeight: 72, paddingHorizontal: spacing.lg, paddingVertical: spacing.md + 2, flexDirection: "row", gap: spacing.sm, alignItems: "center", justifyContent: "space-between" },
+  faqQuestion: { flex: 1, color: COLORS.white, fontSize: 16, fontWeight: "800", lineHeight: 24 },
+  faqAnswer: { color: COLORS.neutral100, fontSize: 14, lineHeight: 22, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  helpWrap: { marginTop: spacing.sm, paddingTop: spacing.md + 2, borderTopWidth: 1, borderTopColor: COLORS.goldSoft },
   helpHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12 },
-  helpTitle: { color: "#1D212A", fontSize: 22, fontWeight: "800" },
-  faqLinkBtn: { borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#F8FAFC" },
-  faqBtnText: { color: "#0F172A", fontSize: 12, fontWeight: "700" },
-  chatCard: { borderRadius: 20, backgroundColor: "#FFFFFF" },
-  chatBtn: { minHeight: 72, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  helpTitle: { color: COLORS.white, fontSize: 22, fontWeight: "800" },
+  faqLinkBtn: { borderWidth: 1, borderColor: COLORS.goldSoft, borderRadius: radii.pill, paddingHorizontal: spacing.sm + 2, paddingVertical: 6, backgroundColor: COLORS.navyDark },
+  faqBtnText: { color: COLORS.goldSoft, fontSize: 12, fontWeight: "700" },
+  chatCard: { borderRadius: radii.lg + 2, backgroundColor: COLORS.navyDark, borderWidth: 1, borderColor: COLORS.goldSoft, ...shadows.sm },
+  chatBtn: { minHeight: 72, paddingHorizontal: spacing.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   chatLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  chatText: { color: "#1D212A", fontSize: 18, fontWeight: "700" },
-  card: { marginTop: 12, marginHorizontal: 14, borderRadius: 16 },
+  chatText: { color: COLORS.white, fontSize: 18, fontWeight: "700" },
+  card: { marginTop: spacing.md, borderRadius: radii.md, borderWidth: 1, borderColor: COLORS.goldSoft, backgroundColor: COLORS.navyDark, ...shadows.sm },
   form: { gap: 8 },
-  historyWrap: { marginTop: 12, paddingHorizontal: 14 },
-  historyTitle: { color: "#1D212A", fontSize: 18, fontWeight: "800", marginBottom: 10 },
-  ticket: { marginBottom: 10, borderRadius: 12 },
-  title: { fontWeight: "700" },
-  status: { marginTop: 4, color: "#475569" },
+  historyWrap: { marginTop: spacing.md },
+  historyTitle: { color: COLORS.white, fontSize: 18, fontWeight: "800", marginBottom: spacing.sm + 2 },
+  ticket: { marginBottom: spacing.sm + 2, borderRadius: radii.sm + 2, borderWidth: 1, borderColor: COLORS.goldSoft, backgroundColor: COLORS.navyDark, ...shadows.sm },
+  title: { fontWeight: "700", color: COLORS.white },
+  ticketMessage: { color: COLORS.neutral100 },
+  status: { marginTop: 4, color: COLORS.neutral100 },
+  formTitle: { color: COLORS.white },
   shareBtn: {
     marginTop: 8,
     alignSelf: "flex-start",
@@ -294,12 +340,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
-    borderRadius: 999,
+    borderColor: COLORS.goldSoft,
+    borderRadius: radii.pill,
     paddingHorizontal: 9,
     paddingVertical: 5,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: COLORS.navyDark,
   },
-  shareText: { color: "#0F172A", fontSize: 12, fontWeight: "700" },
-  err: { color: "#DC2626" },
+  shareText: { color: COLORS.goldSoft, fontSize: 12, fontWeight: "700" },
+  err: { color: palette.danger },
 });
+
+
+
+
+
+

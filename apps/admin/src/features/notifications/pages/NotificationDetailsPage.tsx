@@ -33,6 +33,9 @@ export default function NotificationDetailsPage() {
             <p><strong>Notification Type:</strong> {detailsQuery.data.notificationType || "-"}</p>
             <p><strong>Channel:</strong> {detailsQuery.data.channelType || "-"}</p>
             <p><strong>Status:</strong> <NotificationStatusBadge status={detailsQuery.data.status} /></p>
+            {detailsQuery.data.failureReason ? (
+              <p><strong>Failure Reason:</strong> {detailsQuery.data.failureReason}</p>
+            ) : null}
             <p><strong>City Target:</strong> {detailsQuery.data.city || "-"}</p>
             <p><strong>Service Target:</strong> {detailsQuery.data.service || "-"}</p>
             <p><strong>Created:</strong> {detailsQuery.data.createdAt || "-"}</p>

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { API_BASE_URL } from "../constants/env";
 
 type UseCustomerNotificationSocketOptions = {
   token?: string | null;
@@ -7,8 +8,13 @@ type UseCustomerNotificationSocketOptions = {
   onMessage?: (payload: any) => void;
 };
 
-const WS_URL = "ws://localhost:8082/ws-notifications";
-const RECONNECT_DELAY_MS = 5000;
+const INITIAL_RECONNECT_DELAY_MS = 5000;
+const MAX_RECONNECT_DELAY_MS = 60000;
+const MAX_CONSECUTIVE_RECONNECT_FAILURES = 5;
+
+function buildNotificationWsUrl() {
+  return `${String(API_BASE_URL).replace(/^http/i, "ws").replace(/\/+$/, "")}/ws-notifications`;
+}
 
 function buildStompConnectFrame(token: string) {
   return `CONNECT\naccept-version:1.2\nheart-beat:10000,10000\nAuthorization:Bearer ${token}\n\n\0`;
@@ -49,6 +55,7 @@ export function useCustomerNotificationSocket({
   const shouldConnectRef = useRef(false);
   const isConnectingRef = useRef(false);
   const isSubscribedRef = useRef(false);
+  const reconnectFailuresRef = useRef(0);
   const onMessageRef = useRef(onMessage);
 
   useEffect(() => {
@@ -73,16 +80,13 @@ export function useCustomerNotificationSocket({
       isConnectingRef.current = true;
       isSubscribedRef.current = false;
 
-      const socket = new WebSocket(WS_URL);
+      const wsUrl = buildNotificationWsUrl();
+      const socket = new WebSocket(wsUrl);
       wsRef.current = socket;
-
-      if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.log("[customer-notifications-ws] connecting", { userId: normalizedUserId, wsUrl: WS_URL });
-      }
 
       socket.onopen = () => {
         isConnectingRef.current = false;
+        reconnectFailuresRef.current = 0;
         socket.send(buildStompConnectFrame(String(token)));
       };
 
@@ -91,21 +95,12 @@ export function useCustomerNotificationSocket({
         for (const rawFrame of frames) {
           const frame = parseStompFrame(rawFrame);
           if (frame.command === "CONNECTED") {
-            const destination = `/topic/notifications/${normalizedUserId}`;
             socket.send(buildStompSubscribeFrame(normalizedUserId));
             isSubscribedRef.current = true;
-            if (__DEV__) {
-              // eslint-disable-next-line no-console
-              console.log("[customer-notifications-ws] connected", { userId: normalizedUserId, destination });
-            }
             continue;
           }
 
           if (frame.command === "MESSAGE") {
-            if (__DEV__) {
-              // eslint-disable-next-line no-console
-              console.log("[customer-notifications-ws] incoming", frame.body);
-            }
             try {
               onMessageRef.current?.(JSON.parse(frame.body));
             } catch {
@@ -124,17 +119,19 @@ export function useCustomerNotificationSocket({
         isConnectingRef.current = false;
         isSubscribedRef.current = false;
         wsRef.current = null;
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log("[customer-notifications-ws] close", {
-            code: event?.code,
-            reason: event?.reason,
-          });
-        }
         if (shouldConnectRef.current) {
+          reconnectFailuresRef.current += 1;
+          if (reconnectFailuresRef.current > MAX_CONSECUTIVE_RECONNECT_FAILURES) {
+            shouldConnectRef.current = false;
+            return;
+          }
+          const delayMs = Math.min(
+            INITIAL_RECONNECT_DELAY_MS * 2 ** Math.max(0, reconnectFailuresRef.current - 1),
+            MAX_RECONNECT_DELAY_MS,
+          );
           reconnectTimerRef.current = setTimeout(() => {
             connect();
-          }, RECONNECT_DELAY_MS);
+          }, delayMs);
         }
       };
     };
@@ -151,6 +148,7 @@ export function useCustomerNotificationSocket({
       wsRef.current = null;
       isConnectingRef.current = false;
       isSubscribedRef.current = false;
+      reconnectFailuresRef.current = 0;
       if (socket && socket.readyState === WebSocket.OPEN) {
         try {
           socket.send(buildStompDisconnectFrame());

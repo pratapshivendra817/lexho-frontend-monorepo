@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   exportBookingsToCsv: vi.fn(),
   cancelMutate: vi.fn(),
   deleteMutate: vi.fn(),
+  listRefetch: vi.fn(),
+  statsRefetch: vi.fn(),
 }));
 
 vi.mock("@/features/bookings/hooks/useBookings", () => ({
@@ -50,7 +52,7 @@ describe("BookingsPage", () => {
       },
       isLoading: false,
       isError: false,
-      refetch: vi.fn(),
+      refetch: mocks.listRefetch,
       isFetching: false,
     });
 
@@ -58,7 +60,7 @@ describe("BookingsPage", () => {
       data: { pending: 1, confirmed: 0, completed: 0, cancelled: 0 },
       isLoading: false,
       isError: false,
-      refetch: vi.fn(),
+      refetch: mocks.statsRefetch,
     });
 
     mocks.useBookingMutations.mockReturnValue({
@@ -91,5 +93,23 @@ describe("BookingsPage", () => {
     expect(mocks.exportBookingsToCsv).toHaveBeenCalledWith([
       expect.objectContaining({ id: "bk-1", customerName: "Rahul" }),
     ]);
+  });
+
+  it("supports reset on list filters", async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(<BookingsPage />, {
+      route: "/bookings?page=3&status=CONFIRMED&serviceType=CLEANING&sortBy=amount&sortDir=asc&search=abc&startDate=2026-04-01&endDate=2026-04-30",
+    });
+
+    await user.click(screen.getByRole("button", { name: /Reset/i }));
+    expect(mocks.useBookingsQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        page: 0,
+        size: 10,
+        sortBy: "createdAt",
+        sortDir: "desc",
+      }),
+    );
   });
 });

@@ -6,6 +6,8 @@ const USER_KEY = "@lexho/customer/user";
 const DEVICE_ID_KEY = "@lexho/customer/device-id";
 const LEGACY_TOKEN_KEY = "@customer/auth-token";
 const LEGACY_USER_KEY = "@customer/user";
+const PENDING_PAYMENT_BOOKING_KEY = "@lexho/customer/pending-payment-booking-id";
+let fallbackDeviceIdSequence = 0;
 
 const asString = (value) => (typeof value === "string" ? value : value == null ? "" : String(value));
 
@@ -59,7 +61,18 @@ export async function getOrCreateDeviceId() {
   }
   const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
   if (existing && existing.trim()) return existing;
-  const created = `customer-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const cryptoApi = globalThis.crypto;
+  let suffix;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    suffix = cryptoApi.randomUUID();
+  } else if (typeof cryptoApi?.getRandomValues === "function") {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(8));
+    suffix = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  } else {
+    fallbackDeviceIdSequence += 1;
+    suffix = `${Date.now()}-${fallbackDeviceIdSequence}`;
+  }
+  const created = `customer-${suffix}`;
   await AsyncStorage.setItem(DEVICE_ID_KEY, created);
   return created;
 }
@@ -105,4 +118,23 @@ export async function getToken() {
   if (token) return token;
   return AsyncStorage.getItem(LEGACY_TOKEN_KEY);
 }
+
+export async function savePendingPaymentBookingId(bookingId) {
+  const normalized = asString(bookingId).trim();
+  if (!normalized || typeof AsyncStorage?.setItem !== "function") return;
+  await AsyncStorage.setItem(PENDING_PAYMENT_BOOKING_KEY, normalized);
+}
+
+export async function getPendingPaymentBookingId() {
+  if (typeof AsyncStorage?.getItem !== "function") return null;
+  const value = await AsyncStorage.getItem(PENDING_PAYMENT_BOOKING_KEY);
+  return asString(value).trim() || null;
+}
+
+export async function clearPendingPaymentBookingId() {
+  if (typeof AsyncStorage?.removeItem !== "function") return;
+  await AsyncStorage.removeItem(PENDING_PAYMENT_BOOKING_KEY);
+}
+
+
 

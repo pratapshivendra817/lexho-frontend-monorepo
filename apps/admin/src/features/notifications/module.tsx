@@ -22,12 +22,7 @@ export const notificationsRoutes: AdminRouteConfig[] = [
   },
 ];
 
-export const notificationsNavItems: AdminNavItem[] = [
-  {
-    path: "/notifications",
-    label: "Notifications",
-  },
-];
+export const notificationsNavItems: AdminNavItem[] = [];
 
 export const notificationsRouteMeta: AdminRouteMeta[] = [
   {

@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { COLORS } from "../../constants/colors";
 
 export function OfflineBanner({ visible }: { visible: boolean }) {
   if (!visible) return null;
@@ -12,12 +13,14 @@ export function OfflineBanner({ visible }: { visible: boolean }) {
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: "#7f1d1d",
+    backgroundColor: COLORS.surfaceElevated,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
     paddingVertical: 6,
     paddingHorizontal: 12,
   },
   text: {
-    color: "#fee2e2",
+    color: COLORS.accent,
     textAlign: "center",
     fontSize: 12,
     fontWeight: "700",

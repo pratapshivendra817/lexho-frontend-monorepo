@@ -2,6 +2,7 @@ import { FlatList, StyleSheet, TouchableOpacity, View } from "react-native";
 import { Button, Modal, Portal, Text } from "react-native-paper";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 import type { LocationAddress } from "../../types/location";
+import { COLORS } from '../../theme/colors';
 
 type Props = {
   visible: boolean;
@@ -28,7 +29,7 @@ export function AddressSelectionSheet({
         <View style={styles.header}>
           <Text style={styles.title}>Select Address</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <MaterialCommunityIcons name="close" size={20} color="#0f172a" />
+            <MaterialCommunityIcons name="close" size={20} color={COLORS.slate900} />
           </TouchableOpacity>
         </View>
 
@@ -53,7 +54,7 @@ export function AddressSelectionSheet({
           }}
         />
 
-        <Button mode="contained" buttonColor="#0ea5e9" onPress={onManagePress} style={styles.manageBtn}>
+        <Button mode="contained" buttonColor={COLORS.primary} onPress={onManagePress} style={styles.manageBtn}>
           Manage Addresses
         </Button>
       </Modal>
@@ -63,7 +64,7 @@ export function AddressSelectionSheet({
 
 const styles = StyleSheet.create({
   sheet: {
-    backgroundColor: "#ffffff",
+    backgroundColor: COLORS.white,
     borderRadius: 20,
     marginHorizontal: 14,
     marginTop: "auto",
@@ -72,39 +73,46 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  title: { fontSize: 20, fontWeight: "800", color: "#0f172a" },
+  title: { fontSize: 20, fontWeight: "800", color: COLORS.slate900 },
   closeBtn: {
     width: 30,
     height: 30,
     borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#e2e8f0",
+    backgroundColor: COLORS.borderSoft,
   },
-  subtle: { color: "#64748b", fontSize: 13 },
+  subtle: { color: COLORS.slate500, fontSize: 13 },
   item: {
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: COLORS.borderSoft,
     borderRadius: 14,
     padding: 12,
     gap: 4,
     marginBottom: 10,
   },
   itemSelected: {
-    borderColor: "#38bdf8",
-    backgroundColor: "#f0f9ff",
+    borderColor: COLORS.blue400,
+    backgroundColor: COLORS.offWhite,
   },
   itemLabelWrap: { flexDirection: "row", alignItems: "center", gap: 8 },
-  itemLabel: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
+  itemLabel: { fontSize: 14, fontWeight: "700", color: COLORS.slate900 },
   badge: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#0369a1",
-    backgroundColor: "#e0f2fe",
+    color: COLORS.primary,
+    backgroundColor: COLORS.offWhite,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 999,
   },
-  itemAddress: { fontSize: 12, color: "#475569" },
+  itemAddress: { fontSize: 12, color: COLORS.slate600 },
   manageBtn: { marginTop: 8, borderRadius: 999 },
 });
+
+
+
+
+
+
+

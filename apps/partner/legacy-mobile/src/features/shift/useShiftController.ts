@@ -12,11 +12,14 @@ import {
 import { endShiftApi, fetchShiftHistoryApi, setPartnerAvailabilityApi, startShiftApi } from "./shiftApi";
 import {
   isTrackingActive,
+  setTrackingConfig,
   setLocationSentHandler,
   stopTrackingAndCleanup,
   syncTrackingByCondition,
 } from "./locationTrackingManager";
 import type { ShiftHistoryItem } from "./types";
+import { getPartnerDispatchConfig } from "../../services/partnerService";
+import { PARTNER_ANALYTICS_EVENTS, trackEvent } from "../../services/firebaseAnalytics";
 
 type ShiftControllerState = {
   shiftStarted: boolean;
@@ -53,6 +56,12 @@ export function useShiftController() {
     },
   });
 
+  const dispatchConfigQuery = useQuery({
+    queryKey: ["partner-dispatch-config"],
+    queryFn: getPartnerDispatchConfig,
+    staleTime: 5 * 60 * 1000,
+  });
+
   useEffect(() => {
     (async () => {
       const snapshot = await getShiftState();
@@ -67,6 +76,9 @@ export function useShiftController() {
   }, []);
 
   useEffect(() => {
+    if (dispatchConfigQuery.data) {
+      setTrackingConfig(dispatchConfigQuery.data);
+    }
     saveShiftState({
       shiftStarted: state.shiftStarted,
       online: state.online,
@@ -78,7 +90,7 @@ export function useShiftController() {
       online: state.online,
       locationEnabled: state.locationEnabled,
     }).then(() => setTrackingError("")).catch((error: Error) => setTrackingError(error.message));
-  }, [state]);
+  }, [dispatchConfigQuery.data, state]);
 
   useEffect(() => {
     setLocationSentHandler((timestamp) => setLastLocationSentAt(timestamp));
@@ -88,6 +100,7 @@ export function useShiftController() {
   const startShiftMutation = useMutation({
     mutationFn: startShiftApi,
     onSuccess: () => {
+      void trackEvent(PARTNER_ANALYTICS_EVENTS.shiftStarted);
       setState((prev) =>
         prev.shiftStarted ? prev : { ...prev, shiftStarted: true, startedAt: Date.now(), online: false },
       );
@@ -97,6 +110,7 @@ export function useShiftController() {
   const endShiftMutation = useMutation({
     mutationFn: endShiftApi,
     onSuccess: async () => {
+      void trackEvent(PARTNER_ANALYTICS_EVENTS.shiftEnded);
       const endedAt = Date.now();
       if (state.startedAt) {
         const durationSeconds = Math.max(0, Math.floor((endedAt - state.startedAt) / 1000));
@@ -118,7 +132,10 @@ export function useShiftController() {
 
   const availabilityMutation = useMutation({
     mutationFn: (online: boolean) => setPartnerAvailabilityApi(online),
-    onSuccess: (_data, online) => setState((prev) => ({ ...prev, online })),
+    onSuccess: (_data, online) => {
+      void trackEvent(online ? PARTNER_ANALYTICS_EVENTS.partnerOnline : PARTNER_ANALYTICS_EVENTS.partnerOffline);
+      setState((prev) => ({ ...prev, online }));
+    },
   });
 
   const setLocationEnabled = useCallback(() => {
@@ -166,5 +183,6 @@ export function useShiftController() {
     setOnline,
     setLocationEnabled,
     refetchHistory: historyQuery.refetch,
+    dispatchConfig: dispatchConfigQuery.data,
   };
 }

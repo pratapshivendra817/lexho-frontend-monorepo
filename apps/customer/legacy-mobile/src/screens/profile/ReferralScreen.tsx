@@ -7,6 +7,9 @@ import { z } from "zod";
 import { applyReferral, generateReferral } from "../../api/referralApi";
 
 const schema = z.object({ code: z.string().min(4, "Enter valid referral code") });
+
+import { COLORS } from '../../theme/colors';
+
 type Form = z.infer<typeof schema>;
 
 export function ReferralScreen() {
@@ -32,4 +35,9 @@ export function ReferralScreen() {
   );
 }
 
-const styles = StyleSheet.create({ root: { flex: 1, padding: 16 }, card: { borderRadius: 16 }, form: { gap: 10 }, code: { fontWeight: "700", color: "#0F172A" }, err: { color: "#DC2626" } });
+const styles = StyleSheet.create({ root: { flex: 1, padding: 16 }, card: { borderRadius: 16 }, form: { gap: 10 }, code: { fontWeight: "700", color: COLORS.slate900 }, err: { color: COLORS.danger } });
+
+
+
+
+

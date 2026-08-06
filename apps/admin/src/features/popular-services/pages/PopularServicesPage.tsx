@@ -8,8 +8,10 @@ import {
   createPopularService,
   deletePopularService,
   getCategoryOptions,
+  getDeletedPopularServicesByCategory,
   getPopularServicesByCategory,
   getServicesByCategory,
+  restorePopularService,
 } from "../api/popularServicesApi";
 import { PopularServiceModal } from "../components/PopularServiceModal";
 import { PrimaryButton } from "../components/PrimaryButton";
@@ -39,6 +41,9 @@ export default function PopularServicesPage() {
   const [popularState, setPopularState] = useState<AsyncState<PopularServiceItem[]>>(
     initialListState([]),
   );
+  const [deletedPopularState, setDeletedPopularState] = useState<AsyncState<PopularServiceItem[]>>(
+    initialListState([]),
+  );
 
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -47,10 +52,22 @@ export default function PopularServicesPage() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [removeDraftId, setRemoveDraftId] = useState<string | null>(null);
+  const [deleteReasonDraft, setDeleteReasonDraft] = useState("seasonal cleanup");
+  const [restoreDraftId, setRestoreDraftId] = useState<string | null>(null);
+  const [restorePriorityDraft, setRestorePriorityDraft] = useState<string>("1");
 
   const selectedCategoryName = useMemo(
     () => categoriesState.data.find((item) => item.id === selectedCategoryId)?.name ?? "Selected Category",
     [categoriesState.data, selectedCategoryId],
+  );
+  const validDeletedPopularRows = useMemo(
+    () =>
+      deletedPopularState.data.filter(
+        (item) => Number.isFinite(Number(item.serviceId)) && Number(item.serviceId) > 0,
+      ),
+    [deletedPopularState.data],
   );
 
   const loadCategories = async () => {
@@ -109,6 +126,26 @@ export default function PopularServicesPage() {
     }
   };
 
+  const loadDeletedPopular = async (categoryId: string) => {
+    if (!categoryId) {
+      setDeletedPopularState(initialListState([]));
+      return;
+    }
+
+    setDeletedPopularState((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const data = await getDeletedPopularServicesByCategory(categoryId);
+      const sorted = [...data].sort((first, second) => first.priority - second.priority);
+      setDeletedPopularState({ loading: false, error: null, data: sorted });
+    } catch (error) {
+      setDeletedPopularState({
+        loading: false,
+        error: extractApiError(error, "Unable to load deleted popular services"),
+        data: [],
+      });
+    }
+  };
+
   useEffect(() => {
     void loadCategories();
   }, []);
@@ -117,6 +154,7 @@ export default function PopularServicesPage() {
     if (!selectedCategoryId) return;
     void loadServices(selectedCategoryId);
     void loadPopular(selectedCategoryId);
+    void loadDeletedPopular(selectedCategoryId);
   }, [selectedCategoryId]);
 
   const openMakePopularModal = (item: ServiceItem) => {
@@ -128,14 +166,6 @@ export default function PopularServicesPage() {
     if (!selectedService) return;
     if (!values.categoryId) {
       toast.error("Category is required");
-      return;
-    }
-
-    const duplicatePriority = popularState.data.some(
-      (item) => item.priority === values.priority,
-    );
-    if (duplicatePriority) {
-      toast.error(`Priority ${values.priority} already assigned in this category`);
       return;
     }
 
@@ -157,11 +187,28 @@ export default function PopularServicesPage() {
       toast.error("Invalid service/category id");
       return;
     }
+    const selectedServiceCategoryId = Number(selectedService.categoryId);
+    if (Number.isFinite(selectedServiceCategoryId) && selectedServiceCategoryId > 0 && selectedServiceCategoryId !== payload.categoryId) {
+      toast.error("Selected service does not belong to the chosen category");
+      return;
+    }
 
     setSaving(true);
     try {
-      await createPopularService(payload);
+      const usedPriorities = new Set(
+        popularState.data
+          .map((item) => Number(item.priority))
+          .filter((priority) => Number.isFinite(priority) && priority > 0),
+      );
+      let safePriority = Number(values.priority);
+      if (!Number.isFinite(safePriority) || safePriority <= 0) safePriority = 1;
+      while (usedPriorities.has(safePriority)) safePriority += 1;
+
+      await createPopularService({ ...payload, priority: safePriority });
       toast.success("Service marked as popular");
+      if (safePriority !== values.priority) {
+        toast.success(`Priority auto-adjusted to ${safePriority}`);
+      }
       setModalOpen(false);
       setSelectedService(null);
       if (values.categoryId !== selectedCategoryId) {
@@ -176,16 +223,67 @@ export default function PopularServicesPage() {
     }
   };
 
-  const handleRemovePopular = async (id: string) => {
+  const handleRemovePopular = async (id: string, deleteReason?: string) => {
     setRemovingId(id);
     try {
-      await deletePopularService(id);
+      await deletePopularService(id, String(deleteReason ?? "").trim() || undefined);
       toast.success("Popular service removed");
+      setRemoveDraftId(null);
+      setDeleteReasonDraft("seasonal cleanup");
       await loadPopular(selectedCategoryId);
+      await loadDeletedPopular(selectedCategoryId);
     } catch (error) {
       toast.error(extractApiError(error, "Unable to remove popular service"));
     } finally {
       setRemovingId(null);
+    }
+  };
+
+  const handleRestorePopular = async (id: string, priorityInput?: string) => {
+    const parsed = Number(priorityInput);
+    const priority = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+    setRestoringId(id);
+    try {
+      await restorePopularService(id, priority);
+      toast.success("Popular service restored");
+      setRestoreDraftId(null);
+      setRestorePriorityDraft("1");
+      await loadPopular(selectedCategoryId);
+      await loadDeletedPopular(selectedCategoryId);
+    } catch (error) {
+      const message = extractApiError(error, "Unable to restore popular service");
+      const isInactiveMissing = String(message).toLowerCase().includes("inactive popular service not found");
+      const fallbackRow = deletedPopularState.data.find((item) => item.id === id);
+
+      if (
+        isInactiveMissing &&
+        fallbackRow &&
+        Number.isFinite(Number(fallbackRow.serviceId)) &&
+        Number(fallbackRow.serviceId) > 0 &&
+        Number.isFinite(Number(selectedCategoryId))
+      ) {
+        try {
+          await createPopularService({
+            serviceId: Number(fallbackRow.serviceId),
+            categoryId: Number(selectedCategoryId),
+            priority: priority ?? Math.max(1, Number(fallbackRow.priority) || 1),
+          });
+          toast.success("Popular service restored");
+          setRestoreDraftId(null);
+          setRestorePriorityDraft("1");
+          await loadPopular(selectedCategoryId);
+          await loadDeletedPopular(selectedCategoryId);
+          return;
+        } catch (fallbackError) {
+          toast.error(extractApiError(fallbackError, "Unable to restore popular service"));
+        }
+      } else if (isInactiveMissing) {
+        toast.error("Restore failed: deleted record has invalid service id. Re-add from Services list.");
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setRestoringId(null);
     }
   };
 
@@ -239,6 +337,10 @@ export default function PopularServicesPage() {
           <h2 className="text-lg font-semibold text-[var(--color-text)]">Popular Services Management</h2>
           <p className="text-sm text-[var(--color-muted)]">Create and maintain category-wise popular services</p>
         </div>
+      </div>
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm text-[var(--color-muted)]">
+        Most Booked (cleaning) and Trending Cook lists are managed from this page.
+        Select category, mark service as popular with priority, remove when needed, and drag-drop to reorder.
       </div>
 
       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
@@ -344,17 +446,117 @@ export default function PopularServicesPage() {
                       <p className="text-sm font-medium text-[var(--color-text)]">{item.serviceName || item.serviceId}</p>
                       <p className="text-xs text-[var(--color-muted)]">Priority: {item.priority}</p>
                     </div>
-                    <PrimaryButton
-                      tone="danger"
-                      disabled={removingId === item.id || reordering}
-                      onClick={() => void handleRemovePopular(item.id)}
-                    >
-                      {removingId === item.id ? "Removing..." : "Remove"}
-                    </PrimaryButton>
+                    {removeDraftId === item.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={deleteReasonDraft}
+                          onChange={(event) => setDeleteReasonDraft(event.target.value)}
+                          placeholder="Delete reason"
+                          className="w-40 rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs"
+                        />
+                        <PrimaryButton
+                          tone="danger"
+                          disabled={removingId === item.id || reordering}
+                          onClick={() => void handleRemovePopular(item.id, deleteReasonDraft)}
+                        >
+                          {removingId === item.id ? "Removing..." : "Confirm"}
+                        </PrimaryButton>
+                        <PrimaryButton
+                          tone="neutral"
+                          disabled={removingId === item.id}
+                          onClick={() => {
+                            setRemoveDraftId(null);
+                            setDeleteReasonDraft("seasonal cleanup");
+                          }}
+                        >
+                          Cancel
+                        </PrimaryButton>
+                      </div>
+                    ) : (
+                      <PrimaryButton
+                        tone="danger"
+                        disabled={removingId === item.id || reordering}
+                        onClick={() => {
+                          setRemoveDraftId(item.id);
+                          setDeleteReasonDraft("seasonal cleanup");
+                        }}
+                      >
+                        Remove
+                      </PrimaryButton>
+                    )}
                   </div>
                 ))}
               </div>
             </DataState>
+
+            <div className="pt-2">
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">Deleted Popular Services</h4>
+                <PrimaryButton tone="neutral" onClick={() => void loadDeletedPopular(selectedCategoryId)}>
+                  Refresh
+                </PrimaryButton>
+              </div>
+              <DataState
+                isLoading={deletedPopularState.loading}
+                isError={Boolean(deletedPopularState.error)}
+                isEmpty={validDeletedPopularRows.length === 0}
+                loadingText="Loading deleted popular services..."
+                errorText={deletedPopularState.error ?? "Unable to load deleted popular services"}
+                emptyText="No deleted popular services"
+                onRetry={() => void loadDeletedPopular(selectedCategoryId)}
+              >
+                <div className="space-y-2">
+                  {validDeletedPopularRows.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between rounded-lg border border-[var(--color-border)] p-3">
+                      <div>
+                        <p className="text-sm font-medium text-[var(--color-text)]">{item.serviceName || item.serviceId}</p>
+                        <p className="text-xs text-[var(--color-muted)]">Last Priority: {item.priority || "-"}</p>
+                      </div>
+                      {restoreDraftId === item.id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={1}
+                            value={restorePriorityDraft}
+                            onChange={(event) => setRestorePriorityDraft(event.target.value)}
+                            placeholder="Priority"
+                            className="w-24 rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs"
+                          />
+                          <PrimaryButton
+                            tone="neutral"
+                            disabled={restoringId === item.id || reordering}
+                            onClick={() => void handleRestorePopular(item.id, restorePriorityDraft)}
+                          >
+                            {restoringId === item.id ? "Restoring..." : "Confirm"}
+                          </PrimaryButton>
+                          <PrimaryButton
+                            tone="neutral"
+                            disabled={restoringId === item.id}
+                            onClick={() => {
+                              setRestoreDraftId(null);
+                              setRestorePriorityDraft("1");
+                            }}
+                          >
+                            Cancel
+                          </PrimaryButton>
+                        </div>
+                      ) : (
+                        <PrimaryButton
+                          tone="neutral"
+                          disabled={restoringId === item.id || reordering}
+                          onClick={() => {
+                            setRestoreDraftId(item.id);
+                            setRestorePriorityDraft(String(Math.max(1, item.priority || 1)));
+                          }}
+                        >
+                          Restore
+                        </PrimaryButton>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </DataState>
+            </div>
           </section>
         </div>
       </DataState>
