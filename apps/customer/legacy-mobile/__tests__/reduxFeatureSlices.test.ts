@@ -107,14 +107,11 @@ describe("homeSlice", () => {
   });
 
   it("keeps original banners when every banner is filtered and tolerates partial API failure", async () => {
-    const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
     mockApi.getBanners.mockResolvedValue([{ id: 9, status: "INACTIVE", startsAt: "2999-01-01", endsAt: "2000-01-01" }]);
     mockApi.getCategories.mockRejectedValue(Object.assign(new Error("categories failed"), { response: { status: 500 }, config: { url: "/categories" } }));
     const store = storeFor("home", homeReducer);
     await store.dispatch(fetchHomeData());
     expect(store.getState().home.banners).toEqual([expect.objectContaining({ id: 9 })]);
-    expect(logSpy).toHaveBeenCalled();
-    logSpy.mockRestore();
   });
 
   it("rejects empty or invalid home responses", async () => {

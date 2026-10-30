@@ -1,5 +1,6 @@
 import API, { API_BASE_URL, getReadableApiError } from "./api";
 import { isAxiosError } from "axios";
+import { getPartnerProviderId } from "../utils/storage";
 import type { PartnerNotification } from "../types/notification";
 import type { OrderTimelineEvent, PartnerOrder } from "../types/order";
 import type {
@@ -7,8 +8,8 @@ import type {
   PartnerDispatchConfig,
   PartnerLeaveItem,
   PartnerPerformanceSummary,
-  PartnerProfile,
   PartnerRatingSummary,
+  PartnerScreeningCentre,
   PartnerServiceArea,
   PartnerWarningItem,
 } from "../types/partner";
@@ -32,6 +33,195 @@ let lastNewOrdersFetchMeta: { endpoint: string | null; status: number | null; at
 
 export function getLastNewOrdersFetchMeta() {
   return lastNewOrdersFetchMeta;
+}
+
+export type PartnerOnboardingData = Record<string, unknown>;
+
+type ReactNativeFormFile = {
+  uri: string;
+  name: string;
+  type: string;
+};
+
+export type PartnerOnboardingFiles = {
+  aadhaarFront: unknown;
+  aadhaarBack: unknown;
+  panCard: unknown;
+  selfie: unknown;
+  certificate?: unknown;
+};
+
+export type PartnerServiceCategoryOption = {
+  id: string;
+  name: string;
+};
+
+export async function getPartnerCategories() {
+  const { data } = await API.get("/api/partner/categories", { params: { limit: 100 } });
+  return data;
+}
+
+const categoryRows = (payload: any): any[] => {
+  if (Array.isArray(payload?.data?.data?.content)) return payload.data.data.content;
+  if (Array.isArray(payload?.data?.data?.categories)) return payload.data.data.categories;
+  if (Array.isArray(payload?.data?.data?.serviceTypes)) return payload.data.data.serviceTypes;
+  if (Array.isArray(payload?.data?.data?.services)) return payload.data.data.services;
+  if (Array.isArray(payload?.data?.data?.results)) return payload.data.data.results;
+  if (Array.isArray(payload?.data?.data?.records)) return payload.data.data.records;
+  if (Array.isArray(payload?.data?.data?.items)) return payload.data.data.items;
+  if (Array.isArray(payload?.data?.data?.rows)) return payload.data.data.rows;
+  if (Array.isArray(payload?.data?.data)) return payload.data.data;
+  if (Array.isArray(payload?.data?.content)) return payload.data.content;
+  if (Array.isArray(payload?.data?.categories)) return payload.data.categories;
+  if (Array.isArray(payload?.data?.serviceTypes)) return payload.data.serviceTypes;
+  if (Array.isArray(payload?.data?.services)) return payload.data.services;
+  if (Array.isArray(payload?.data?.results)) return payload.data.results;
+  if (Array.isArray(payload?.data?.records)) return payload.data.records;
+  if (Array.isArray(payload?.data?.items)) return payload.data.items;
+  if (Array.isArray(payload?.data?.rows)) return payload.data.rows;
+  if (Array.isArray(payload?.content)) return payload.content;
+  if (Array.isArray(payload?.categories)) return payload.categories;
+  if (Array.isArray(payload?.serviceTypes)) return payload.serviceTypes;
+  if (Array.isArray(payload?.services)) return payload.services;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (Array.isArray(payload?.records)) return payload.records;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.rows)) return payload.rows;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload)) return payload;
+  return [];
+};
+
+const activeCategory = (value: unknown) => {
+  if (value == null) return true;
+  if (typeof value === "boolean") return value;
+  return ["true", "1", "active", "enabled", "yes"].includes(String(value).trim().toLowerCase());
+};
+
+export async function getActiveServiceCategories(): Promise<PartnerServiceCategoryOption[]> {
+  const paths = [
+    "/api/partner/catalog/categories",
+    "/api/v1/partner/catalog/categories",
+    "/api/partner/categories",
+    "/api/v1/partner/categories",
+    "/api/categories",
+    "/api/customer/categories",
+    "/api/v1/categories",
+    "/api/v1/customer/categories",
+  ];
+  let lastError: unknown = null;
+  for (const path of paths) {
+    try {
+      const { data } = await API.get(path, { params: { page: 0, size: 100 } });
+      const rows = categoryRows(data)
+        .map((row: any) => ({
+          id: String(row?.id ?? row?.categoryId ?? "").trim(),
+          name: String(row?.displayName ?? row?.name ?? row?.categoryName ?? row?.serviceName ?? row?.title ?? row?.label ?? "").trim(),
+          active: activeCategory(row?.active ?? row?.isActive ?? row?.activeStatus ?? row?.enabled ?? row?.status),
+        }))
+        .filter((row) => row.id && row.name && row.active)
+        .map(({ id, name }) => ({ id, name }));
+      if (rows.length > 0) return rows;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new Error(getReadableApiError(lastError, "Unable to load service categories"));
+}
+
+export async function getPartnerOnboarding() {
+  const { data } = await API.get("/api/partner/onboarding");
+  return data;
+}
+
+const DEFAULT_ONBOARDING_FILE_TYPES: Record<keyof PartnerOnboardingFiles, string> = {
+  aadhaarFront: "image/jpeg",
+  aadhaarBack: "image/jpeg",
+  panCard: "image/jpeg",
+  selfie: "image/jpeg",
+  certificate: "image/jpeg",
+};
+
+const DEFAULT_ONBOARDING_FILE_NAMES: Record<keyof PartnerOnboardingFiles, string> = {
+  aadhaarFront: "aadhaar-front.jpg",
+  aadhaarBack: "aadhaar-back.jpg",
+  panCard: "pan-card.jpg",
+  selfie: "selfie.jpg",
+  certificate: "certificate.jpg",
+};
+
+function inferOnboardingFileType(fileName: string, uri: string, fieldName: keyof PartnerOnboardingFiles) {
+  const source = `${fileName} ${uri}`.toLowerCase();
+  if (source.includes(".pdf")) return "application/pdf";
+  if (source.includes(".png")) return "image/png";
+  return DEFAULT_ONBOARDING_FILE_TYPES[fieldName];
+}
+
+function normalizeOnboardingFile(
+  value: unknown,
+  fieldName: keyof PartnerOnboardingFiles,
+): ReactNativeFormFile | null {
+  if (!value || typeof value !== "object") return null;
+  const file = value as Record<string, unknown>;
+  const uri = String(file.uri ?? file.fileCopyUri ?? "").trim();
+  if (!uri) return null;
+
+  return {
+    uri,
+    name: String(file.name ?? DEFAULT_ONBOARDING_FILE_NAMES[fieldName]).trim() || DEFAULT_ONBOARDING_FILE_NAMES[fieldName],
+    type: String(file.type ?? "").trim() || inferOnboardingFileType(
+      String(file.name ?? DEFAULT_ONBOARDING_FILE_NAMES[fieldName]),
+      uri,
+      fieldName,
+    ),
+  };
+}
+
+function appendOnboardingFile(
+  formData: FormData,
+  files: PartnerOnboardingFiles,
+  fieldName: keyof PartnerOnboardingFiles,
+  required = true,
+) {
+  const file = normalizeOnboardingFile(files[fieldName], fieldName);
+  if (!file) {
+    if (required) throw new Error(`${fieldName} document is required`);
+    return;
+  }
+  formData.append(fieldName, file as any);
+}
+
+function buildOnboardingFormData(fields: PartnerOnboardingData, files: PartnerOnboardingFiles) {
+  const formData = new FormData();
+  Object.entries(fields).forEach(([key, value]) => {
+    if (key === "skills" && Array.isArray(value)) {
+      value.slice(0, 2).forEach((skill) => formData.append("skills", String(skill)));
+    } else if (value != null) {
+      formData.append(key, String(value));
+    }
+  });
+  appendOnboardingFile(formData, files, "aadhaarFront");
+  appendOnboardingFile(formData, files, "aadhaarBack");
+  appendOnboardingFile(formData, files, "panCard");
+  appendOnboardingFile(formData, files, "selfie");
+  appendOnboardingFile(formData, files, "certificate", false);
+  return formData;
+}
+
+export async function submitPartnerOnboarding(
+  fields: PartnerOnboardingData,
+  files: PartnerOnboardingFiles,
+) {
+  try {
+    const { data } = await API.post("/api/partner/onboarding", buildOnboardingFormData(fields, files));
+    return data;
+  } catch (error) {
+    if (isAxiosError(error) && error.response?.status && ![404, 405].includes(error.response.status)) {
+      throw error;
+    }
+    const { data } = await API.put("/api/partner/onboarding", buildOnboardingFormData(fields, files));
+    return data;
+  }
 }
 
 const parseArray = (payload: any): any[] => {
@@ -85,85 +275,115 @@ const asNumber = (value: unknown): number => {
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
-const getProfileImageUrl = (source: any): string | undefined => {
-  const nested = source?.data ?? source?.profile ?? source?.partner ?? source?.user ?? {};
-  const value =
-    source?.profileImageUrl ??
-    source?.profileImage ??
-    source?.profilePictureUrl ??
-    source?.profilePicture ??
-    source?.avatarUrl ??
-    source?.avatar ??
-    source?.imageUrl ??
-    source?.image ??
-    source?.photoUrl ??
-    source?.photo ??
-    nested?.profileImageUrl ??
-    nested?.profileImage ??
-    nested?.profilePictureUrl ??
-    nested?.profilePicture ??
-    nested?.avatarUrl ??
-    nested?.avatar ??
-    nested?.imageUrl ??
-    nested?.image ??
-    nested?.photoUrl ??
-    nested?.photo;
+const toOrder = (row: any): PartnerOrder => {
+  const serviceName =
+    row?.serviceName ??
+    row?.service?.serviceName ??
+    row?.service?.name ??
+    row?.serviceDetails?.serviceName ??
+    row?.serviceDetails?.name ??
+    row?.itemName ??
+    row?.subServiceName ??
+    row?.subService ??
+    row?.categoryName;
+  const servicePrice =
+    row?.servicePrice != null ? asNumber(row.servicePrice) :
+    row?.price != null ? asNumber(row.price) :
+    row?.totalPrice != null ? asNumber(row.totalPrice) :
+    row?.totalAmount != null ? asNumber(row.totalAmount) :
+    row?.finalAmount != null ? asNumber(row.finalAmount) :
+    row?.amount != null ? asNumber(row.amount) :
+    undefined;
+  const scheduledAt =
+    row?.scheduledAt ??
+    row?.scheduledDateTime ??
+    (row?.scheduledDate && row?.scheduledTime ? `${row.scheduledDate}T${row.scheduledTime}` : undefined);
+  const scheduledAtText = scheduledAt == null ? "" : String(scheduledAt);
+  const scheduledParts = scheduledAtText.includes("T")
+    ? scheduledAtText.split("T", 2)
+    : scheduledAtText.includes(" ")
+      ? scheduledAtText.split(" ", 2)
+      : [];
 
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return undefined;
-  if (/^(https?:|file:|content:|data:)/i.test(trimmed)) return trimmed;
-  if (trimmed.startsWith("/")) return `${API_BASE_URL}${trimmed}`;
-  return trimmed;
+  return {
+    id: asNumber(row?.id ?? row?.orderId ?? row?.dispatchId ?? row?.requestId ?? row?.bookingId),
+    orderId:
+      row?.orderId != null
+        ? asNumber(row.orderId)
+        : row?.bookingId != null
+          ? asNumber(row.bookingId)
+          : row?.cartId != null
+            ? asNumber(row.cartId)
+            : undefined,
+    requestId: row?.requestId != null ? asNumber(row.requestId) : row?.dispatchId != null ? asNumber(row.dispatchId) : undefined,
+    subscriptionId: row?.subscriptionId != null ? asNumber(row.subscriptionId) : undefined,
+    subscriptionVisitId: row?.subscriptionVisitId != null ? asNumber(row.subscriptionVisitId) : undefined,
+    customerName: row?.customerName ?? row?.customerFullName ?? row?.customer?.name ?? row?.customer?.fullName ?? row?.user?.name ?? row?.user?.fullName ?? row?.customer?.profile?.name,
+    customerPhone: row?.customerPhone ?? row?.customerMobile ?? row?.customer?.phone ?? row?.customer?.mobile ?? row?.user?.phone ?? row?.user?.mobile,
+    address:
+      (typeof row?.address === "object" ? row.address?.fullAddress ?? row.address?.addressLine ?? row.address?.line1 : row?.address) ??
+      row?.fullAddress ??
+      row?.customerAddress ??
+      row?.serviceAddress ??
+      row?.location?.addressLine ??
+      row?.customer?.address?.fullAddress ?? row?.customer?.address,
+    serviceName,
+    serviceType: row?.serviceType ?? row?.category ?? row?.categoryName ?? serviceName,
+    serviceCategory:
+      row?.serviceCategory ??
+      row?.category ??
+      row?.categoryName ??
+      row?.service?.category ??
+      row?.serviceCategoryName ??
+      row?.skillCategory,
+    subService: row?.subService ?? row?.subServiceName ?? serviceName,
+    distance: row?.distance != null ? asNumber(row.distance) : undefined,
+    etaMinutes: row?.etaMinutes != null ? asNumber(row.etaMinutes) : undefined,
+    payout:
+      row?.payout != null
+        ? asNumber(row.payout)
+        : row?.payableAmount != null
+          ? asNumber(row.payableAmount)
+          : row?.netAmount != null
+            ? asNumber(row.netAmount)
+            : row?.settlementAmount != null
+              ? asNumber(row.settlementAmount)
+              : servicePrice != null
+                ? servicePrice
+                : undefined,
+    servicePrice,
+    bookingType: String(row?.bookingType ?? row?.booking_type ?? row?.type ?? ((row?.subscriptionVisitId != null || row?.subscriptionId != null) ? "SUBSCRIPTION" : "")).toUpperCase() as any,
+    assignmentStatus: String(row?.assignmentStatus ?? row?.dispatchStatus ?? "").toUpperCase() || undefined,
+    promisedStartTime:
+      row?.promisedStartTime ?? row?.slaStartTime ?? scheduledAt ?? row?.scheduledTime,
+    scheduledDate: row?.scheduledDate ?? row?.serviceDate ?? row?.bookingDate ?? scheduledParts[0],
+    scheduledTime: row?.scheduledTime ?? row?.serviceTime ?? row?.slotTime ?? scheduledParts[1]?.slice(0, 5),
+    slaMinutes: row?.slaMinutes != null ? asNumber(row.slaMinutes) : undefined,
+    unavailableReason: row?.unavailableReason ?? row?.reasonCode,
+    available: row?.available == null ? true : Boolean(row.available),
+    amount:
+      row?.amount != null
+        ? asNumber(row.amount)
+        : row?.payableAmount != null
+          ? asNumber(row.payableAmount)
+          : row?.netAmount != null
+            ? asNumber(row.netAmount)
+            : row?.settlementAmount != null
+              ? asNumber(row.settlementAmount)
+              : servicePrice,
+    status: String(row?.status ?? row?.bookingStatus ?? "PENDING").toUpperCase() as any,
+    createdAt: row?.createdAt,
+    acceptedAt: row?.acceptedAt,
+    startedAt: row?.startedAt,
+    completedAt: row?.completedAt,
+    rejectedAt: row?.rejectedAt,
+    expiresAt: row?.expiresAt ?? row?.expiryAt ?? row?.requestExpiresAt,
+    expiresInSeconds: row?.expiresInSeconds != null ? asNumber(row.expiresInSeconds) : undefined,
+    priority: row?.priority != null ? String(row.priority).toUpperCase() : undefined,
+    latitude: row?.latitude != null ? asNumber(row.latitude) : row?.address?.latitude != null ? asNumber(row.address.latitude) : undefined,
+    longitude: row?.longitude != null ? asNumber(row.longitude) : row?.address?.longitude != null ? asNumber(row.address.longitude) : undefined,
+  };
 };
-
-const toOrder = (row: any): PartnerOrder => ({
-  id: asNumber(row?.id ?? row?.orderId ?? row?.dispatchId ?? row?.requestId),
-  orderId:
-    row?.orderId != null
-      ? asNumber(row.orderId)
-      : row?.bookingId != null
-        ? asNumber(row.bookingId)
-        : undefined,
-  requestId: row?.requestId != null ? asNumber(row.requestId) : row?.dispatchId != null ? asNumber(row.dispatchId) : undefined,
-  customerName: row?.customerName ?? row?.customer?.name ?? row?.user?.name,
-  customerPhone: row?.customerPhone ?? row?.customer?.phone ?? row?.user?.phone,
-  address:
-    row?.address ??
-    row?.customerAddress ??
-    row?.serviceAddress ??
-    row?.location?.addressLine ??
-    row?.customer?.address,
-  serviceType: row?.serviceType ?? row?.category ?? row?.service?.name ?? row?.serviceName,
-  serviceCategory:
-    row?.serviceCategory ??
-    row?.category ??
-    row?.service?.category ??
-    row?.serviceCategoryName ??
-    row?.skillCategory,
-  subService: row?.subService ?? row?.subServiceName ?? row?.service?.name ?? row?.serviceName,
-  distance: row?.distance != null ? asNumber(row.distance) : undefined,
-  etaMinutes: row?.etaMinutes != null ? asNumber(row.etaMinutes) : undefined,
-  payout: row?.payout != null ? asNumber(row.payout) : row?.amount != null ? asNumber(row.amount) : undefined,
-  bookingType: String(row?.bookingType ?? "").toUpperCase() as any,
-  assignmentStatus: String(row?.assignmentStatus ?? row?.dispatchStatus ?? "").toUpperCase() || undefined,
-  promisedStartTime: row?.promisedStartTime ?? row?.slaStartTime ?? row?.scheduledTime,
-  slaMinutes: row?.slaMinutes != null ? asNumber(row.slaMinutes) : undefined,
-  unavailableReason: row?.unavailableReason ?? row?.reasonCode,
-  available: row?.available == null ? true : Boolean(row.available),
-  amount: row?.amount != null ? asNumber(row.amount) : undefined,
-  status: String(row?.status ?? "PENDING").toUpperCase() as any,
-  createdAt: row?.createdAt,
-  acceptedAt: row?.acceptedAt,
-  startedAt: row?.startedAt,
-  completedAt: row?.completedAt,
-  rejectedAt: row?.rejectedAt,
-  expiresAt: row?.expiresAt ?? row?.expiryAt ?? row?.requestExpiresAt,
-  expiresInSeconds: row?.expiresInSeconds != null ? asNumber(row.expiresInSeconds) : undefined,
-  priority: row?.priority != null ? String(row.priority).toUpperCase() : undefined,
-  latitude: row?.latitude != null ? asNumber(row.latitude) : undefined,
-  longitude: row?.longitude != null ? asNumber(row.longitude) : undefined,
-});
 
 export function getCanonicalPartnerOrderId(order: Pick<PartnerOrder, "id" | "orderId"> | null | undefined) {
   const direct = Number(order?.orderId);
@@ -192,159 +412,111 @@ export type PartnerBannerItem = {
   imageUrl?: string;
 };
 
-export type PartnerOnboardingPayload = {
-  fullName: string;
-  email: string;
-  phoneNumber: string;
-  gender: "MALE" | "FEMALE" | "OTHER";
-  dateOfBirth: string;
-  currentCity: string;
-  currentState: string;
-  currentFullAddress: string;
-  serviceAreas: string[];
-  accountNumber: string;
-  ifscCode: string;
-};
-
 export type PartnerSkillsPayload = {
   categoryIds: number[];
   subServiceIds: number[];
 };
 
-export async function getHealth() {
-  const { data } = await withRetry(() => API.get("/api/health"));
-  return data;
-}
 
-export async function getPartnerProfile(): Promise<PartnerProfile> {
+export type PartnerProfilePayload = {
+  fullName?: string;
+  phone?: string;
+  mobile?: string;
+  email?: string;
+  city?: string;
+  pincode?: string;
+  address?: string;
+};
+
+const toPartnerProfile = (payload: any) => {
+  const source = payload?.data?.data ?? payload?.data ?? payload ?? {};
+  const id = asText(source?.id ?? source?.partnerId ?? source?.providerId);
+  const phone = asText(source?.phone ?? source?.mobile ?? source?.phoneNumber);
+  const rawAccountStatus = asText(source?.accountStatus ?? source?.status ?? source?.penaltyStatus).toUpperCase();
+  const accountStatus = rawAccountStatus && !["ACTIVE", "NORMAL"].includes(rawAccountStatus) ? rawAccountStatus : undefined;
+  return {
+    ...source,
+    id,
+    name: source?.name ?? source?.fullName,
+    fullName: source?.fullName ?? source?.name,
+    phone,
+    mobile: phone,
+    profileImageUrl: source?.profileImageUrl ?? source?.imageUrl ?? source?.avatarUrl,
+    bankVerificationStatus: source?.bankVerificationStatus ?? source?.bankStatus,
+    bankRejectionReason: source?.bankRejectionReason ?? source?.bankReason,
+    accountStatus,
+  };
+};
+
+export async function getPartnerProfile() {
   try {
     const { data } = await withRetry(() => API.get("/api/v1/partner/profile"));
-    const source = data?.data ?? data;
-    const legacyAccountStatusKey = String.fromCharCode(112, 101, 110, 97, 108, 116, 121, 83, 116, 97, 116, 117, 115);
-    const profile = {
-      id: source?.id != null ? String(source.id) : undefined,
-      name: source?.fullName ?? source?.name,
-      fullName: source?.fullName ?? source?.name,
-      email: source?.email,
-      mobile: source?.phone ?? source?.mobile,
-      phone: source?.phone ?? source?.mobile,
-      city: source?.city,
-      pincode: source?.pincode,
-      address: source?.address,
-      serviceCategory: source?.serviceCategory,
-      profileImageUrl: getProfileImageUrl(source),
-      kycStatus: source?.kycStatus,
-      kycRejectionReason: source?.kycRejectionReason ?? source?.rejectionReason,
-      bankVerificationStatus: source?.bankVerificationStatus ?? source?.bankStatus,
-      bankRejectionReason: source?.bankRejectionReason ?? source?.bankReason,
-      accountStatus: source?.accountStatus ?? source?.[legacyAccountStatusKey],
-    };
-    if (profile.id) {
-      await savePartnerProviderId(profile.id);
-    }
+    const profile = toPartnerProfile(data);
+    if (profile.id) await savePartnerProviderId(profile.id).catch(() => undefined);
     return profile;
-  } catch {
+  } catch (primaryError) {
     try {
       const { data } = await withRetry(() => API.get("/api/partner/profile"));
-      const source = data?.data ?? data;
-      const legacyAccountStatusKey = String.fromCharCode(112, 101, 110, 97, 108, 116, 121, 83, 116, 97, 116, 117, 115);
-      return {
-        id: source?.id != null ? String(source.id) : undefined,
-        name: source?.fullName ?? source?.name,
-        fullName: source?.fullName ?? source?.name,
-        email: source?.email,
-        mobile: source?.phone ?? source?.mobile,
-        phone: source?.phone ?? source?.mobile,
-        city: source?.city,
-        pincode: source?.pincode,
-        address: source?.address,
-        serviceCategory: source?.serviceCategory,
-        profileImageUrl: getProfileImageUrl(source),
-        kycStatus: source?.kycStatus,
-        kycRejectionReason: source?.kycRejectionReason ?? source?.rejectionReason,
-        bankVerificationStatus: source?.bankVerificationStatus ?? source?.bankStatus,
-        bankRejectionReason: source?.bankRejectionReason ?? source?.bankReason,
-        accountStatus: source?.accountStatus ?? source?.[legacyAccountStatusKey],
-      };
+      const profile = toPartnerProfile(data);
+      if (profile.id) await savePartnerProviderId(profile.id).catch(() => undefined);
+      return profile;
     } catch (fallbackError) {
-      throw new Error(getReadableApiError(fallbackError, "Unable to fetch profile"));
+      throw new Error(getReadableApiError(fallbackError || primaryError, "Unable to fetch profile"));
     }
   }
 }
 
-export async function updatePartnerProfile(payload: {
-  fullName: string;
-  phone: string;
-  email: string;
-  city: string;
-  pincode: string;
-  address: string;
-}) {
+export async function updatePartnerProfile(payload: PartnerProfilePayload) {
   try {
     const { data } = await API.put("/api/v1/partner/profile", payload);
     return data;
-  } catch {
+  } catch (primaryError) {
     try {
       const { data } = await API.put("/api/partner/profile", payload);
       return data;
     } catch (fallbackError) {
-      throw new Error(getReadableApiError(fallbackError, "Unable to update profile"));
+      throw new Error(getReadableApiError(fallbackError || primaryError, "Unable to update profile"));
     }
   }
+}
+
+function appendProfileFile(form: FormData, file: { uri: string; type?: string; name?: string }) {
+  const uri = String(file?.uri ?? "");
+  const name = String(file?.name ?? uri.split(/[\\/]/).pop() ?? "profile.jpg") || "profile.jpg";
+  const type = String(file?.type ?? (name.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg"));
+  form.append("file", { uri, type, name } as any);
 }
 
 export async function uploadPartnerProfileImage(file: { uri: string; type?: string; name?: string }) {
   const form = new FormData();
-  form.append("file", {
-    uri: file.uri,
-    type: file.type ?? "image/jpeg",
-    name: file.name ?? "profile.jpg",
-  } as any);
+  appendProfileFile(form, file);
+  const config = { headers: { "Content-Type": "multipart/form-data" } };
   try {
-    const { data } = await API.post("/api/v1/partner/profile-image", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    return { ...data, profileImageUrl: getProfileImageUrl(data) };
-  } catch {
+    const { data } = await API.post("/api/v1/partner/profile-image", form, config);
+    return { ...data, profileImageUrl: data?.profileImageUrl ?? data?.imageUrl };
+  } catch (primaryError) {
     try {
-      const { data } = await API.post("/api/partner/profile-image", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      return { ...data, profileImageUrl: getProfileImageUrl(data) };
+      const { data } = await API.post("/api/partner/profile-image", form, config);
+      return { ...data, profileImageUrl: data?.profileImageUrl ?? data?.imageUrl };
     } catch (fallbackError) {
-      throw new Error(getReadableApiError(fallbackError, "Unable to upload profile image"));
+      throw new Error(getReadableApiError(fallbackError || primaryError, "Unable to upload profile image"));
     }
   }
 }
 
-export async function uploadPartnerDocuments(files: {
-  aadhaar: { uri: string; type?: string; name?: string };
-  pan: { uri: string; type?: string; name?: string };
-  selfie: { uri: string; type?: string; name?: string };
-  certificate?: { uri: string; type?: string; name?: string } | null;
-}, onProgress?: (percent: number) => void) {
+export async function uploadPartnerDocuments(files: Record<string, any>, onProgress?: (progress: number) => void) {
+  const form = new FormData();
+  Object.entries(files).forEach(([key, value]) => {
+    if (!value?.uri) return;
+    const name = String(value.name ?? `${key}.jpg`);
+    const type = String(value.type ?? (name.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg"));
+    form.append(key, { uri: value.uri, type, name } as any);
+  });
   try {
-    const form = new FormData();
-    const appendFile = (
-      field: "aadhaar" | "pan" | "selfie" | "certificate",
-      file: { uri: string; type?: string; name?: string },
-    ) => {
-      form.append(field, {
-        uri: file.uri,
-        type: file.type ?? "image/jpeg",
-        name: file.name ?? `${field}.jpg`,
-      } as any);
-    };
-    appendFile("aadhaar", files.aadhaar);
-    appendFile("pan", files.pan);
-    appendFile("selfie", files.selfie);
-    if (files.certificate) appendFile("certificate", files.certificate);
-
     const { data } = await API.post("/api/v1/partner/documents", form, {
       headers: { "Content-Type": "multipart/form-data" },
-      onUploadProgress: event => {
-        if (!event.total) return;
-        onProgress?.(Math.round((event.loaded * 100) / event.total));
+      onUploadProgress: (event: any) => {
+        if (event?.total) onProgress?.(Math.round((event.loaded / event.total) * 100));
       },
     });
     onProgress?.(100);
@@ -354,24 +526,9 @@ export async function uploadPartnerDocuments(files: {
   }
 }
 
-export async function submitPartnerOnboarding(payload: PartnerOnboardingPayload) {
-  try {
-    const { data } = await API.post("/api/partner/onboarding", payload);
-    const providerId =
-      data?.id ??
-      data?.partnerId ??
-      data?.providerId ??
-      data?.data?.id ??
-      data?.data?.partnerId ??
-      data?.data?.providerId ??
-      null;
-    if (providerId != null) {
-      await savePartnerProviderId(String(providerId));
-    }
-    return data;
-  } catch (error) {
-    throw new Error(getReadableApiError(error, "Unable to submit onboarding details"));
-  }
+export async function getHealth() {
+  const { data } = await withRetry(() => API.get("/api/health"));
+  return data;
 }
 
 export async function updateAvailability(payload: { online: boolean }) {
@@ -473,6 +630,27 @@ export async function getNewDispatchRequests(params?: {
   return cached?.data ?? [];
 }
 
+export async function acceptSubscriptionDecision(subscriptionId: number) {
+  try {
+    const { data } = await API.patch(`/api/v1/partner/subscriptions/${subscriptionId}/accept`);
+    return data;
+  } catch {
+    const { data } = await API.patch(`/api/partner/subscriptions/${subscriptionId}/accept`);
+    return data;
+  }
+}
+
+export async function rejectSubscriptionDecision(subscriptionId: number, reason = "Not available") {
+  const payload = { reason: reason.trim() || "Not available" };
+  try {
+    const { data } = await API.patch(`/api/v1/partner/subscriptions/${subscriptionId}/decline`, payload);
+    return data;
+  } catch {
+    const { data } = await API.patch(`/api/partner/subscriptions/${subscriptionId}/decline`, payload);
+    return data;
+  }
+}
+
 export async function acceptDispatchRequest(requestId: number) {
   try {
     const { data } = await API.patch(`/api/v1/partner/requests/${requestId}/accept`);
@@ -483,18 +661,38 @@ export async function acceptDispatchRequest(requestId: number) {
       return data;
     } catch {
       try {
-        const { data } = await API.post(`/api/v1/orders/${requestId}/accept`);
+        const { data } = await API.patch(`/api/v1/partner/subscriptions/${requestId}/accept`);
         return data;
       } catch {
         try {
-        const { data } = await API.post(`/api/partner/dispatch/${requestId}/accept`);
-        return data;
-        } catch {
-          const { data } = await API.post(`/api/orders/${requestId}/accept`);
+          const { data } = await API.patch(`/api/partner/subscriptions/${requestId}/accept`);
           return data;
+        } catch {
+          try {
+            const { data } = await API.post(`/api/v1/orders/${requestId}/accept`);
+            return data;
+          } catch {
+            try {
+              const { data } = await API.post(`/api/partner/dispatch/${requestId}/accept`);
+              return data;
+            } catch {
+              const { data } = await API.post(`/api/orders/${requestId}/accept`);
+              return data;
+            }
+          }
         }
       }
     }
+  }
+}
+
+export async function acceptPartnerOrder(orderId: number) {
+  try {
+    const { data } = await API.post(`/api/v1/orders/${orderId}/accept`);
+    return data;
+  } catch {
+    const { data } = await API.post(`/api/orders/${orderId}/accept`);
+    return data;
   }
 }
 
@@ -509,15 +707,25 @@ export async function rejectDispatchRequest(requestId: number, reason = "Not ava
       return data;
     } catch {
       try {
-        const { data } = await API.post(`/api/v1/orders/${requestId}/reject`, payload);
+        const { data } = await API.patch(`/api/v1/partner/subscriptions/${requestId}/decline`, payload);
         return data;
       } catch {
         try {
-        const { data } = await API.post(`/api/partner/dispatch/${requestId}/reject`, payload);
-        return data;
-        } catch {
-          const { data } = await API.post(`/api/orders/${requestId}/reject`, payload);
+          const { data } = await API.patch(`/api/partner/subscriptions/${requestId}/decline`, payload);
           return data;
+        } catch {
+          try {
+            const { data } = await API.post(`/api/v1/orders/${requestId}/reject`, payload);
+            return data;
+          } catch {
+            try {
+              const { data } = await API.post(`/api/partner/dispatch/${requestId}/reject`, payload);
+              return data;
+            } catch {
+              const { data } = await API.post(`/api/orders/${requestId}/reject`, payload);
+              return data;
+            }
+          }
         }
       }
     }
@@ -676,7 +884,7 @@ export async function getNewOrders(params?: { page?: number; size?: number; sort
 }
 
 export async function acceptOrder(orderId: number) {
-  return acceptDispatchRequest(orderId);
+  return acceptPartnerOrder(orderId);
 }
 
 export async function rejectOrder(orderId: number) {
@@ -705,6 +913,47 @@ export async function startOrder(orderId: number, beforeImage?: { uri: string; t
     return API.post(`/api/orders/${orderId}/start`, form, {
       headers: { "Content-Type": "multipart/form-data" },
     });
+  }
+}
+
+export async function markOrderArrived(orderId: number) {
+  try {
+    try {
+      const { data } = await API.post(`/api/v1/orders/${orderId}/arrive`);
+      return data;
+    } catch {
+      const { data } = await API.post(`/api/orders/${orderId}/arrive`);
+      return data;
+    }
+  } catch (error) {
+    throw new Error(getReadableApiError(error, "Unable to mark arrival"));
+  }
+}
+
+export async function verifyOrderStartPin(orderId: number, pin: string) {
+  try {
+    const { data } = await API.post(`/api/orders/${orderId}/start/verify`, { pin: String(pin).trim() });
+    return data;
+  } catch (error) {
+    throw new Error(getReadableApiError(error, "Unable to verify start PIN"));
+  }
+}
+
+export async function requestOrderCompletePin(orderId: number) {
+  try {
+    const { data } = await API.post(`/api/orders/${orderId}/complete-pin`);
+    return data;
+  } catch (error) {
+    throw new Error(getReadableApiError(error, "Unable to request complete PIN"));
+  }
+}
+
+export async function verifyOrderCompletePin(orderId: number, pin: string) {
+  try {
+    const { data } = await API.post(`/api/orders/${orderId}/complete/verify`, { pin: String(pin).trim() });
+    return data;
+  } catch (error) {
+    throw new Error(getReadableApiError(error, "Unable to verify completion PIN"));
   }
 }
 
@@ -860,7 +1109,7 @@ export async function fetchPartnerRequestById(requestId: number) {
 }
 
 export async function acceptPartnerRequest(requestId: number) {
-  await acceptOrder(requestId);
+  await acceptDispatchRequest(requestId);
 }
 
 export async function rejectPartnerRequest(requestId: number, reason = "Not available") {
@@ -881,7 +1130,7 @@ export async function getPartnerEarningsSummary(): Promise<PartnerEarningsSummar
       weekSettlement: asNumber(source?.weekSettlement ?? source?.weeklySettlement ?? source?.weekEarnings ?? source?.week),
       monthSettlement: asNumber(source?.monthSettlement ?? source?.monthlySettlement ?? source?.monthEarnings ?? source?.month),
       lifetimeSettlement: asNumber(source?.lifetimeSettlement ?? source?.totalSettlement ?? source?.lifetimeEarnings ?? source?.lifetime),
-      availableBalance: asNumber(source?.availableBalance ?? source?.withdrawableBalance),
+      availableBalance: asNumber(source?.availableBalance),
       pendingSettlement: asNumber(source?.pendingSettlement ?? source?.pendingBalance ?? source?.reservedBalance),
     };
   } catch (error) {
@@ -899,6 +1148,8 @@ export async function getPartnerEarningsTransactions(params?: { page?: number; s
       bookingId: row?.bookingId != null ? asText(row.bookingId) : undefined,
       description: asText(row?.description ?? row?.narration ?? row?.type, "Settlement"),
       amount: asNumber(row?.amount ?? row?.netAmount ?? row?.settlementAmount),
+      netAmount: row?.netAmount != null ? asNumber(row.netAmount) : undefined,
+      settlementAmount: row?.settlementAmount != null ? asNumber(row.settlementAmount) : undefined,
       type: row?.type != null ? asText(row.type) : undefined,
       status: row?.status != null ? asText(row.status) : undefined,
       createdAt: row?.createdAt ?? row?.transactionDate,
@@ -910,14 +1161,22 @@ export async function getPartnerEarningsTransactions(params?: { page?: number; s
 
 const toPartnerPayout = (row: any): PartnerPayout => ({
   id: asText(row?.id ?? row?.payoutId),
-  grossAmount: asNumber(row?.grossAmount ?? row?.grossSettlement ?? row?.amount),
-  commissionAmount: asNumber(row?.commissionAmount ?? row?.commission),
-  reversalAmount: asNumber(row?.reversalAmount ?? row?.refundReversal ?? row?.reversal),
-  netAmount: asNumber(row?.netAmount ?? row?.settlementAmount ?? row?.payableAmount),
-  status: asText(row?.status, "PENDING"),
+  settlementAmount: asNumber(row?.settlementAmount ?? row?.netAmount ?? row?.payableAmount ?? row?.amount),
+  status: normalizePayoutStatus(row?.status, row?.settledAt ?? row?.processedAt),
   createdAt: row?.createdAt,
   settledAt: row?.settledAt ?? row?.processedAt,
 });
+
+function normalizePayoutStatus(status: unknown, settledAt: unknown) {
+  const normalized = String(status ?? "").trim().toUpperCase();
+  if (["SETTLED", "PAID", "COMPLETED", "SUCCESS"].includes(normalized)) {
+    return settledAt ? normalized : "PENDING";
+  }
+  if (["PENDING", "PROCESSING", "APPROVED", "INITIATED"].includes(normalized)) {
+    return "PENDING";
+  }
+  return normalized || "PENDING";
+}
 
 export async function getPartnerPayouts(params?: { page?: number; size?: number }): Promise<PartnerPayout[]> {
   try {
@@ -984,7 +1243,7 @@ export async function getPartnerWithdrawalBalance(): Promise<PartnerWithdrawalBa
     const { data } = await withRetry(() => API.get("/api/v1/partner/withdrawals/balance"));
     const source = unwrapData(data);
     return {
-      availableBalance: asNumber(source?.availableBalance ?? source?.withdrawableBalance),
+      availableBalance: asNumber(source?.availableBalance),
       settledBalance: asNumber(source?.settledBalance ?? source?.totalSettledBalance),
       reservedBalance: asNumber(source?.reservedBalance ?? source?.withdrawalReservations),
     };
@@ -1124,18 +1383,59 @@ export async function getPartnerWarnings(): Promise<PartnerWarningItem[]> {
       notificationMessage: row?.notificationMessage != null ? asText(row.notificationMessage) : row?.pushMessage != null ? asText(row.pushMessage) : row?.message != null ? asText(row.message) : undefined,
     }));
   } catch {
-    const profile = await getPartnerProfile();
-    const status = String(profile.accountStatus ?? "ACTIVE").toUpperCase();
-    if (status === "ACTIVE") return [];
-    return [{
-      id: "profile-account-status",
-      type: status,
-      reason: `Partner account status is ${status}.`,
-      status,
-      active: true,
-      notificationTitle: undefined,
-      notificationMessage: undefined,
-    }];
+    try {
+      const profile = await getPartnerProfile();
+      const status = asText(profile?.accountStatus).toUpperCase();
+      if (!status || status === "ACTIVE" || status === "NORMAL") return [];
+      return [{
+        id: "profile-account-status",
+        type: status,
+        reason: `Partner account status is ${status}.`,
+        status,
+        active: true,
+      }];
+    } catch {
+      return [];
+    }
   }
 }
 
+export async function getPartnerScreeningCentre(): Promise<PartnerScreeningCentre | null> {
+  const normalize = (input: any): PartnerScreeningCentre => ({
+    name: asText(input?.name, "Lexho Screening Centre"),
+    address: asText(input?.address),
+    latitude: asNumber(input?.latitude),
+    longitude: asNumber(input?.longitude),
+    phone: input?.phone != null ? asText(input.phone) : undefined,
+    landmark: input?.landmark != null ? asText(input.landmark) : undefined,
+    entranceInfo: input?.entranceInfo != null ? asText(input.entranceInfo) : undefined,
+  });
+
+  const extract = (payload: any): PartnerScreeningCentre | null => {
+    const candidates = [
+      payload?.data?.data,
+      payload?.data,
+      payload,
+    ];
+
+    for (const candidate of candidates) {
+      if (candidate && typeof candidate === "object") {
+        const center = normalize(candidate);
+        if (center.address || (center.latitude !== 0 && center.longitude !== 0)) return center;
+      }
+    }
+
+    return null;
+  };
+
+  try {
+    const { data } = await withRetry(() => API.get("/api/v1/partner/screening-centre"));
+    return extract(data);
+  } catch (error: any) {
+    const message = String(error?.response?.data?.message ?? error?.response?.data?.errorCode ?? error?.message ?? "");
+    if (error?.response?.status === 404 || message.includes("SCREENING_CENTRE_NOT_CONFIGURED")) {
+      return null;
+    }
+    throw new Error(getReadableApiError(error, "Unable to load screening centre"));
+  }
+}

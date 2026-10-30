@@ -27,11 +27,6 @@ function getAppStore(): any | null {
   }
 }
 
-function isLocationApi(url?: string) {
-  const value = String(url ?? "");
-  return value.includes("/api/v1/customer/location/") || value.includes("/api/customer/location/");
-}
-
 function toDebugUrl(baseURL?: string, url?: string) {
   const rawUrl = String(url ?? "");
   if (/^https?:\/\//i.test(rawUrl)) return rawUrl;
@@ -135,8 +130,6 @@ api.interceptors.response.use(
   },
   async (error) => {
     const status = error?.response?.status;
-    const originalRequest = error?.config as any;
-
     captureFrontendError(error, {
       screenName: "API",
       userAction: String(error?.config?.method ?? "request").toUpperCase(),

@@ -9,8 +9,9 @@ const EMERGENCY_NUMBER = "112";
 let nextSosEventId = 0;
 const eventId = () => {
   nextSosEventId += 1;
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return `sos-${globalThis.crypto.randomUUID()}`;
+  const cryptoApi = (globalThis as typeof globalThis & { crypto?: { randomUUID?: () => string } }).crypto;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    return `sos-${cryptoApi.randomUUID()}`;
   }
   return `sos-${Date.now()}-${nextSosEventId}`;
 };

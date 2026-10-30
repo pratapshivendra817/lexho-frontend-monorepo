@@ -17,6 +17,16 @@ import { isValidMobile } from "../../utils/validation";
 import { COLORS } from "../../constants/colors";
 import { trackAuthenticationEvent } from "../../services/firebaseAnalytics";
 
+const MOBILE_AUTH_COPY = {
+  authTitle: "Login with your mobile number",
+  authSubtitle: "Continue to verify your partner account.",
+  phoneLabel: "Mobile Number",
+  phonePlaceholder: "9876543210",
+  sendOtp: "Send OTP",
+  invalidPhoneMessage: "Enter a valid 10-digit mobile number.",
+  genericErrorTitle: "Unable to send OTP",
+} as const;
+
 export default function MobileNumberScreen({ navigation }: any) {
   const [mobile, setMobile] = useState("");
   const [loading, setLoading] = useState(false);
@@ -27,10 +37,10 @@ export default function MobileNumberScreen({ navigation }: any) {
     setErrorMessage("");
 
     if (!isValidMobile(cleanMobile)) {
-      const message = "Enter a valid 10-digit mobile number.";
+      const message = MOBILE_AUTH_COPY.invalidPhoneMessage;
       setErrorMessage(message);
       void trackAuthenticationEvent(false, { stage: "send_otp_validation" });
-      Alert.alert("Invalid mobile number", message);
+      Alert.alert(MOBILE_AUTH_COPY.invalidPhoneMessage, message);
       return;
     }
 
@@ -43,10 +53,10 @@ export default function MobileNumberScreen({ navigation }: any) {
         resendAfter: response?.resendAfter || 30,
       });
     } catch (e: any) {
-      const message = e?.message || "Unable to send OTP. Please try again.";
+      const message = e?.message || MOBILE_AUTH_COPY.genericErrorTitle;
       setErrorMessage(message);
       void trackAuthenticationEvent(false, { stage: "send_otp", message });
-      Alert.alert("Unable to send OTP", message);
+      Alert.alert(MOBILE_AUTH_COPY.genericErrorTitle, message);
     } finally {
       setLoading(false);
     }
@@ -59,15 +69,12 @@ export default function MobileNumberScreen({ navigation }: any) {
         style={styles.container}
       >
         <View style={styles.topBlock}>
-          <Text style={styles.eyebrow}>Partner Onboarding</Text>
-          <Text style={styles.title}>Login with your mobile number</Text>
-          <Text style={styles.subtitle}>
-            Continue to verify your partner profile and start onboarding.
-          </Text>
+          <Text style={styles.title}>{MOBILE_AUTH_COPY.authTitle}</Text>
+          <Text style={styles.subtitle}>{MOBILE_AUTH_COPY.authSubtitle}</Text>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.inputLabel}>Mobile Number</Text>
+          <Text style={styles.inputLabel}>{MOBILE_AUTH_COPY.phoneLabel}</Text>
           <View style={styles.inputWrap}>
             <Text style={styles.countryCode}>+91</Text>
             <TextInput
@@ -75,7 +82,7 @@ export default function MobileNumberScreen({ navigation }: any) {
               onChangeText={setMobile}
               keyboardType="number-pad"
               maxLength={10}
-              placeholder="9876543210"
+              placeholder={MOBILE_AUTH_COPY.phonePlaceholder}
               placeholderTextColor={COLORS.textMuted}
               style={styles.input}
             />
@@ -92,7 +99,7 @@ export default function MobileNumberScreen({ navigation }: any) {
             {loading ? (
               <ActivityIndicator color={COLORS.background} />
             ) : (
-              <Text style={styles.buttonText}>Send OTP</Text>
+              <Text style={styles.buttonText}>{MOBILE_AUTH_COPY.sendOtp}</Text>
             )}
           </TouchableOpacity>
         </View>

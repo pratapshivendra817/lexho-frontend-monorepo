@@ -312,7 +312,7 @@ export async function startLocationTracking(intervalMs = 30000) {
   }, intervalMs);
 }
 
-export async function detectAndSyncCurrentLocation(): Promise<{
+export async function detectAndSyncCurrentLocation(requireBackendSync = false): Promise<{
   latitude: number;
   longitude: number;
   accuracy: number | null;
@@ -384,7 +384,12 @@ export async function detectAndSyncCurrentLocation(): Promise<{
     else if (state) label = String(state);
     else if (pincode) label = `Pincode ${String(pincode)}`;
     if (label) provider = "backend";
-  } catch {
+  } catch (error) {
+    if (requireBackendSync) {
+      throw Object.assign(new Error(error instanceof Error ? error.message : "Unable to sync location. Please retry."), {
+        code: "LOCATION_SYNC_FAILED",
+      });
+    }
     // Keep null label; caller can fallback to coordinates.
   }
 

@@ -137,7 +137,6 @@ function mockDefaultScreen(path: string, name: string) {
   ["../src/screens/booking/PartnerArrivedScreen", "PartnerArrivedScreen"],
   ["../src/screens/booking/BookingStatusFallbackScreen", "BookingStatusFallbackScreen"],
   ["../src/screens/booking/SubscriptionPlanScreen", "SubscriptionPlanScreen"],
-  ["../src/screens/booking/RatePartnerScreen", "RatePartnerScreen"],
   ["../src/screens/booking/BookingPaymentConfirmScreen", "BookingPaymentConfirmScreen"],
   ["../src/screens/booking/BookingDetailScreen", "BookingDetailScreen"],
   ["../src/screens/booking/SubscriptionConfirmedScreen", "SubscriptionConfirmedScreen"],
@@ -148,9 +147,6 @@ function mockDefaultScreen(path: string, name: string) {
   ["../src/screens/support/FaqScreen", "FaqScreen"],
   ["../src/screens/service/ServiceListScreen", "ServiceListScreen"],
   ["../src/screens/service/ServiceDetailScreen", "ServiceDetailScreen"],
-  ["../src/screens/booking-flow/BookingServiceScreen", "BookingServiceScreen"],
-  ["../src/screens/booking-flow/BookingSlotScreen", "BookingSlotScreen"],
-  ["../src/screens/booking-flow/BookingConfirmScreen", "BookingConfirmScreen"],
   ["../src/screens/location/DetectingLocationScreen", "DetectingLocationScreen"],
   ["../src/screens/location/LocationSearchScreen", "LocationSearchScreen"],
   ["../src/screens/location/AddAddressDetailsScreen", "AddAddressDetailsScreen"],
@@ -159,6 +155,16 @@ function mockDefaultScreen(path: string, name: string) {
 ].forEach(([path, name]) => mockNamedScreen(path, name));
 
 mockDefaultScreen("../src/screens/EditProfileScreen", "EditProfileScreen");
+jest.doMock("../src/modules/calling", () => {
+  const { Text } = require("react-native");
+  const mockScreen = (name: string) => () => <Text>{name}</Text>;
+  return {
+    ActiveCallScreen: mockScreen("ActiveCallScreen"),
+    IncomingCallScreen: mockScreen("IncomingCallScreen"),
+    MissedCallScreen: mockScreen("MissedCallScreen"),
+    OutgoingCallScreen: mockScreen("OutgoingCallScreen"),
+  };
+});
 
 const { AppNavigator } = require("../src/navigation/AppNavigator") as typeof import("../src/navigation/AppNavigator");
 
@@ -277,7 +283,6 @@ describe("AppNavigator", () => {
         "ServiceDetail",
         "LocationSearch",
         "EditProfile",
-        "BookingConfirm",
       ]),
     );
     expect(screen(mockRootScreens, "ServiceDetail").options).toEqual(

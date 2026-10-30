@@ -31,6 +31,7 @@ export function PaymentStatusScreen({ route, navigation }: { route: PaymentRoute
   const [lastCode, setLastCode] = useState("");
   const [retryAllowed, setRetryAllowed] = useState(false);
   const [tapDisabledUntil, setTapDisabledUntil] = useState(0);
+  const [isRateLimited, setIsRateLimited] = useState(false);
   const canRun = useMemo(() => bookingId.trim().length > 0, [bookingId]);
   const isPaymentFailed = useMemo(() => {
     switch (lastCode) {
@@ -90,7 +91,7 @@ export function PaymentStatusScreen({ route, navigation }: { route: PaymentRoute
     },
     onError: (error: any) => {
       const code = getApiErrorCode(error);
-      if (code === "RATE_LIMIT_EXCEEDED") setTapDisabledUntil(Date.now() + 15000);
+      if (code === "RATE_LIMIT_EXCEEDED") { setTapDisabledUntil(Date.now() + 15000); setIsRateLimited(true); }
       captureFrontendError(error, {
         screenName: "PaymentStatusScreen",
         userAction: "recover_payment_status",
@@ -107,7 +108,7 @@ export function PaymentStatusScreen({ route, navigation }: { route: PaymentRoute
     },
     onError: (error: any) => {
       const code = getApiErrorCode(error);
-      if (code === "RATE_LIMIT_EXCEEDED") setTapDisabledUntil(Date.now() + 15000);
+      if (code === "RATE_LIMIT_EXCEEDED") { setTapDisabledUntil(Date.now() + 15000); setIsRateLimited(true); }
       captureFrontendError(error, {
         screenName: "PaymentStatusScreen",
         userAction: "retry_payment",
@@ -122,6 +123,12 @@ export function PaymentStatusScreen({ route, navigation }: { route: PaymentRoute
     recoverMutation.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeBookingId]);
+
+  useEffect(() => {
+    if (!tapDisabledUntil) return;
+    const timer = setTimeout(() => setIsRateLimited(false), Math.max(0, tapDisabledUntil - Date.now()));
+    return () => clearTimeout(timer);
+  }, [tapDisabledUntil]);
 
   const onSharePayment = async () => {
     const message = [
@@ -145,14 +152,14 @@ export function PaymentStatusScreen({ route, navigation }: { route: PaymentRoute
       <TextInput mode="outlined" label="Refund Amount" keyboardType="numeric" value={refundAmount} onChangeText={setRefundAmount} />
 
       <View style={styles.row}>
-        <Button mode="contained" onPress={() => recoverMutation.mutate()} loading={recoverMutation.isPending} disabled={!canRun || Date.now() < tapDisabledUntil}>
+        <Button mode="contained" onPress={() => recoverMutation.mutate()} loading={recoverMutation.isPending} disabled={!canRun || isRateLimited}>
           Check Status
         </Button>
         <Button mode="outlined" onPress={() => refundMutation.mutate()} loading={refundMutation.isPending} disabled={!canRun}>
           Request Refund
         </Button>
       </View>
-      {Date.now() < tapDisabledUntil ? <Text style={styles.rateLimit}>Too many requests. Please try again later.</Text> : null}
+      {isRateLimited ? <Text style={styles.rateLimit}>Too many requests. Please try again later.</Text> : null}
       {isPaymentFailed ? (
         <View style={styles.failedCard}>
           <Text style={styles.failedTitle}>Payment Failed</Text>
@@ -165,7 +172,7 @@ export function PaymentStatusScreen({ route, navigation }: { route: PaymentRoute
           mode="contained-tonal"
           onPress={() => retryMutation.mutate()}
           loading={retryMutation.isPending}
-          disabled={!canRun || !retryAllowed || Date.now() < tapDisabledUntil}
+          disabled={!canRun || !retryAllowed || isRateLimited}
         >
           Retry Payment
         </Button>

@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 const mockDispatch = jest.fn();
 const mockPermission = jest.fn();
@@ -119,6 +119,26 @@ describe("DetectingLocationScreen", () => {
     jest.useRealTimers();
   });
 
+  it("keeps waiting for GPS beyond 18 seconds instead of displaying a premature timeout", async () => {
+    mockCoordinates.mockImplementationOnce(() => new Promise(resolve => setTimeout(() => resolve({
+      latitude: 22.7, longitude: 75.8, accuracy: 12, timestamp: Date.now(),
+    }), 19000)));
+    const view = await render(<DetectingLocationScreen navigation={navigation()} route={{ name: "DetectingLocation" }} />);
+    await act(async () => { await jest.advanceTimersByTimeAsync(18000); });
+    expect(view.queryByText("Retry detection")).toBeNull();
+    await act(async () => { await jest.advanceTimersByTimeAsync(1400); });
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("Main"));
+  });
+
+  it("preserves the GPS address when the coverage response contains a different pincode", async () => {
+    mockServiceability.mockResolvedValue({ data: { serviceAvailable: false, matchedPincode: "201301" } });
+    mockUpdateLocation.mockResolvedValue({ data: { pincode: "201301", formattedAddress: "201301, India" } });
+    await render(<DetectingLocationScreen navigation={navigation()} route={{ name: "DetectingLocation" }} />);
+    await flushDetection();
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("ComingSoon", expect.objectContaining({ pincode: "452010" })));
+    expect(mockDispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "location/address", payload: expect.objectContaining({ pincode: "201301" }) }));
+  });
+
   it("uses an existing manually confirmed address without requesting GPS", async () => {
     mockState.location.currentAddress = {
       id: "saved-1",
@@ -129,6 +149,21 @@ describe("DetectingLocationScreen", () => {
     await render(<DetectingLocationScreen navigation={navigation()} />);
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("Main"));
     expect(mockPermission).not.toHaveBeenCalled();
+  });
+
+  it("detects fresh GPS despite a saved address and rechecks stale backend availability", async () => {
+    mockState.location.currentAddress = { id: "saved-1", addressLine: "Saved", latitude: 23, longitude: 77 };
+    mockUpdateLocation.mockResolvedValue({ data: { latitude: 23, longitude: 77, serviceAvailable: false } });
+    const nav = navigation();
+    const view = await render(<DetectingLocationScreen navigation={nav} route={{ name: "DetectingLocation" }} />);
+    await flushDetection();
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("Main"));
+    expect(mockCoordinates).toHaveBeenCalledTimes(1);
+    expect(mockServiceability).toHaveBeenCalledWith(expect.objectContaining({ latitude: 22.7, longitude: 75.8 }), { forceRefresh: true });
+    expect(mockReplace).not.toHaveBeenCalledWith("ComingSoon", expect.anything());
+    mockState.location.currentAddress = { id: "gps-new", latitude: 22.7, longitude: 75.8 };
+    await view.rerender(<DetectingLocationScreen navigation={nav} route={{ name: "DetectingLocation" }} />);
+    expect(mockCoordinates).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -194,6 +229,17 @@ describe("DetectingLocationScreen", () => {
     expect(view.getByText("Remote Area 999999")).toBeTruthy();
   });
 
+  it("does not route network serviceability failures to ComingSoon", async () => {
+    mockServiceability.mockRejectedValue(new Error("network unavailable"));
+    const view = await render(<DetectingLocationScreen navigation={navigation()} route={{ name: "DetectingLocation" }} />);
+    await flushDetection();
+
+    await waitFor(() => expect(view.getByText(/Network issue while fetching location/)).toBeTruthy());
+    expect(mockReplace).not.toHaveBeenCalledWith("ComingSoon", expect.anything());
+    expect(view.getByText("Retry detection")).toBeTruthy();
+    expect(view.getAllByText("Choose location manually").length).toBeGreaterThan(0);
+  });
+
   it("shows mocked, weak, timeout, and generic GPS errors", async () => {
     mockCoordinates.mockResolvedValueOnce({
       latitude: 1,
@@ -219,17 +265,19 @@ describe("DetectingLocationScreen", () => {
     expect(mockTrack).toHaveBeenCalledWith("gps_timeout", expect.any(Object));
   });
 
-  it("uses saved address fallback when detection fails", async () => {
+  it("offers saved address fallback when automatic detection fails", async () => {
     mockState.location.savedAddresses = [{ id: "saved", addressLine: "Fallback Address" }];
     mockCoordinates.mockRejectedValue(new Error("network failure"));
-    await render(<DetectingLocationScreen navigation={navigation()} />);
+    const view = await render(<DetectingLocationScreen navigation={navigation()} />);
 
-    await waitFor(() =>
-      expect(mockDispatch).toHaveBeenCalledWith({
+    await waitFor(() => expect(view.getByText(/continue with your saved location/i)).toBeTruthy());
+    expect(mockNavigate).not.toHaveBeenCalledWith("Main");
+
+    await fireEvent.press(view.getByText("Use saved location"));
+    expect(mockDispatch).toHaveBeenCalledWith({
         type: "location/address",
         payload: { id: "saved", addressLine: "Fallback Address" },
-      }),
-    );
+    });
     expect(mockNavigate).toHaveBeenCalledWith("Main");
   });
 

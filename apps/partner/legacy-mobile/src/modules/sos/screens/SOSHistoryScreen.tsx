@@ -6,23 +6,40 @@ import PaymentHeader from "../../../components/payments/PaymentHeader";
 import { getSOSHistory } from "../services/SOSApiService";
 import type { SOSIncident } from "../types";
 
+const SOS_HISTORY_COPY = {
+  loadError: "Unable to load SOS history.",
+  title: "SOS History",
+  empty: "No SOS incidents found.",
+  emergencyShort: "Emergency SOS",
+  event: "Event",
+  message: "Message",
+  resolved: "RESOLVED",
+  acknowledged: "ACKNOWLEDGED",
+  triggered: "TRIGGERED",
+} as const;
+
 export function SOSHistoryScreen({ navigation }: any) {
   const [rows, setRows] = useState<SOSIncident[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const load = async () => { setLoading(true); setError(""); try { setRows(await getSOSHistory()); } catch { setError("Unable to load SOS history."); } finally { setLoading(false); } };
+  const load = async () => { setLoading(true); setError(""); try { setRows(await getSOSHistory()); } catch { setError(SOS_HISTORY_COPY.loadError); } finally { setLoading(false); } };
   useEffect(() => { void load(); }, []);
-  return <View style={styles.root}><PaymentHeader title="SOS History" onBack={() => navigation.goBack()} />{error ? <Text style={styles.error}>{error}</Text> : null}<FlatList style={styles.fullBleed} data={rows} keyExtractor={(item, index) => item.eventId || String(index)} contentContainerStyle={styles.listContent} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor={COLORS.accent} colors={[COLORS.accent]} />} ListEmptyComponent={!loading ? <Text style={styles.empty}>No SOS incidents found.</Text> : null} renderItem={({ item }) => <Card style={styles.card}><Card.Content style={styles.cardContent}><View style={styles.row}><Text variant="titleMedium" style={styles.cardTitle}>Emergency SOS</Text><StatusPill status={item.status} /></View><Text style={styles.meta}>Event: {item.eventId || "-"}</Text><Text style={styles.meta}>{item.address || `${item.latitude}, ${item.longitude}`}</Text>{item.message ? <Text style={styles.message}>Message: {item.message}</Text> : null}<Text style={styles.timestamp}>{item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</Text></Card.Content></Card>} /></View>;
+  return <View style={styles.root}><PaymentHeader title={SOS_HISTORY_COPY.title} onBack={() => navigation.goBack()} />{error ? <Text style={styles.error}>{error}</Text> : null}<FlatList style={styles.fullBleed} data={rows} keyExtractor={(item, index) => item.eventId || String(index)} contentContainerStyle={styles.listContent} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor={COLORS.accent} colors={[COLORS.accent]} />} ListEmptyComponent={!loading ? <Text style={styles.empty}>{SOS_HISTORY_COPY.empty}</Text> : null} renderItem={({ item }) => <Card style={styles.card}><View style={styles.cardClip}><Card.Content style={styles.cardContent}><View style={styles.row}><Text variant="titleMedium" style={styles.cardTitle}>{SOS_HISTORY_COPY.emergencyShort}</Text><StatusPill status={item.status} /></View><Text style={styles.meta}>{`${SOS_HISTORY_COPY.event}: ${item.eventId || "-"}`}</Text><Text style={styles.meta}>{item.address || `${item.latitude}, ${item.longitude}`}</Text>{item.message ? <Text style={styles.message}>{`${SOS_HISTORY_COPY.message}: ${item.message}`}</Text> : null}<Text style={styles.timestamp}>{item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</Text></Card.Content></View></Card>} /></View>;
 }
 
 function StatusPill({ status }: { status?: string }) {
   const value = String(status || "TRIGGERED").toUpperCase();
   const isResolved = value === "RESOLVED";
   const isAcknowledged = value === "ACKNOWLEDGED";
+  const label = value === "RESOLVED"
+    ? SOS_HISTORY_COPY.resolved
+    : value === "ACKNOWLEDGED"
+      ? SOS_HISTORY_COPY.acknowledged
+      : SOS_HISTORY_COPY.triggered;
   return (
     <View style={[styles.statusPill, isResolved && styles.statusPillResolved, isAcknowledged && styles.statusPillAcknowledged]}>
       <Text style={[styles.statusPillText, isResolved && styles.statusPillResolvedText, isAcknowledged && styles.statusPillAcknowledgedText]}>
-        {value}
+        {label}
       </Text>
     </View>
   );
@@ -42,8 +59,8 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: COLORS.accent,
     borderRadius: 24,
-    overflow: "hidden",
   },
+  cardClip: { borderRadius: 24, overflow: "hidden" },
   cardContent: { paddingVertical: 16, gap: 8 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 },
   cardTitle: { color: COLORS.textPrimary, fontWeight: "800" },

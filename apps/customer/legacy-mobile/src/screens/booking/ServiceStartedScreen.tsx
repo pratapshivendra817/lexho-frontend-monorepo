@@ -10,25 +10,42 @@ import { radii, shadows, spacing } from "../../constants/theme";
 
 type ServiceStartedRoute = { params?: { bookingId?: string } };
 
+function formatDateTime(value?: string) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "-";
+  const parsed = new Date(raw);
+  if (!Number.isFinite(parsed.getTime())) return raw;
+  return parsed.toLocaleString();
+}
+
 
 export function ServiceStartedScreen({ route, navigation }: { route: ServiceStartedRoute; navigation: any }) {
   const bookingId = String(route?.params?.bookingId ?? "").trim();
   const bookingQuery = useInstantBookingLifecycle(bookingId);
+  const details = bookingQuery.data;
   useBookingLifecycleNavigation({
     bookingId,
-    details: bookingQuery.data,
+    details,
     navigation,
     currentRouteName: "ServiceStarted",
   });
 
   return (
-    <BookingStageShell title="Service Started" subtitle={bookingQuery.data?.message ?? "Partner has started working on your request. You can follow live updates here."}>
+    <BookingStageShell title="Service Started" subtitle={details?.message ?? "Partner has started working on your request. You can follow live updates here."}>
       <StatusBadge status={BookingStatus.IN_PROGRESS} />
       <View style={styles.card}>
-        <Text style={styles.row}>Booking ID: {bookingQuery.data?.id ?? bookingId}</Text>
-        <Text style={styles.row}>Partner: {bookingQuery.data?.partnerName ?? "-"}</Text>
-        <Text style={styles.row}>Address: {bookingQuery.data?.fullAddress ?? bookingQuery.data?.address ?? "-"}</Text>
+        <Text style={styles.row}>Booking ID: {details?.id ?? bookingId}</Text>
+        <Text style={styles.row}>Partner: {details?.partnerName ?? "-"}</Text>
+        <Text style={styles.row}>Address: {details?.fullAddress ?? details?.address ?? "-"}</Text>
       </View>
+      {String(details?.serviceCompletePin ?? "").trim() ? (
+        <View style={styles.pinCard}>
+          <Text style={styles.pinTitle}>Service Complete PIN</Text>
+          <Text style={styles.pinValue}>{details?.serviceCompletePin}</Text>
+          <Text style={styles.row}>Share this only when the partner finishes the service.</Text>
+          <Text style={styles.row}>Expires: {formatDateTime(details?.serviceCompletePinExpiresAt)}</Text>
+        </View>
+      ) : null}
     </BookingStageShell>
   );
 }
@@ -44,6 +61,18 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   row: { color: bookingTheme.colors.textMuted, fontSize: 13, fontWeight: "700" },
+  pinCard: {
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: bookingTheme.colors.cardBorder,
+    backgroundColor: bookingTheme.colors.cardBg,
+    padding: spacing.md + 2,
+    gap: 8,
+    alignItems: "center",
+    ...shadows.sm,
+  },
+  pinTitle: { color: bookingTheme.colors.textPrimary, fontSize: 13, fontWeight: "900" },
+  pinValue: { color: bookingTheme.colors.textPrimary, fontSize: 28, fontWeight: "900", letterSpacing: 4 },
 });
 
 

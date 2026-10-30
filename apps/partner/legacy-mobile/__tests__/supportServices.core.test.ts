@@ -30,9 +30,11 @@ describe("support services core", () => {
     const storage = require("../src/utils/storage");
 
     await storage.saveToken("jwt-1");
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith("admin_jwt_token", "jwt-1");
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith("partner_jwt_token", "jwt-1");
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith("admin_jwt_token");
 
     await storage.saveToken("");
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith("partner_jwt_token");
     expect(AsyncStorage.removeItem).toHaveBeenCalledWith("admin_jwt_token");
 
     await storage.saveRefreshToken("refresh-1");
@@ -52,6 +54,13 @@ describe("support services core", () => {
 
     (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce("saved-token");
     await expect(storage.getToken()).resolves.toBe("saved-token");
+
+    (AsyncStorage.getItem as jest.Mock)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce("legacy-token");
+    await expect(storage.getToken()).resolves.toBe("legacy-token");
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith("partner_jwt_token", "legacy-token");
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith("admin_jwt_token");
 
     (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce("saved-refresh");
     await expect(storage.getRefreshToken()).resolves.toBe("saved-refresh");
@@ -102,6 +111,7 @@ describe("support services core", () => {
 
     await storage.clearSession();
     expect(AsyncStorage.multiRemove).toHaveBeenCalledWith([
+      "partner_jwt_token",
       "admin_jwt_token",
       "partner_refresh_token",
       "admin_profile",

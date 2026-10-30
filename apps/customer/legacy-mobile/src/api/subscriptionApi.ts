@@ -2,6 +2,7 @@ import { api, toApiError } from "./client";
 
 export type SubscriptionDto = {
   id: string;
+  status?: string;
   serviceType?: string;
   serviceName?: string;
   planName?: string;
@@ -18,9 +19,18 @@ export type SubscriptionDto = {
   totalAmount?: number;
   nextServiceDate?: string;
   nextVisitDate?: string;
+  serviceStartPin?: string;
+  serviceStartPinExpiresAt?: string;
+  serviceCompletePin?: string;
+  serviceCompletePinExpiresAt?: string;
   canPause?: boolean;
   canResume?: boolean;
   canCancel?: boolean;
+  paymentStatus?: string;
+  paymentBookingId?: number;
+  assignmentStatus?: string;
+  partnerName?: string;
+  timeline?: Array<{ key: string; label: string; status?: string; completed?: boolean; active?: boolean; timestamp?: string }>;
 };
 
 function boolValue(...values: unknown[]) {
@@ -42,6 +52,7 @@ function numberValue(...values: unknown[]) {
 function toSubscription(row: any): SubscriptionDto {
   return {
     id: String(row?.id ?? row?.subscriptionId ?? ""),
+    status: row?.status ?? row?.subscriptionStatus ?? row?.currentStatus,
     serviceType: row?.serviceType ?? row?.subscriptionServiceType,
     serviceName: row?.serviceName ?? row?.service?.name,
     planName: row?.planName ?? row?.subscriptionPlan ?? row?.frequency,
@@ -58,9 +69,22 @@ function toSubscription(row: any): SubscriptionDto {
     totalAmount: numberValue(row?.totalAmount, row?.totalPrice),
     nextServiceDate: row?.nextServiceDate,
     nextVisitDate: row?.nextVisitDate,
+    serviceStartPin: row?.serviceStartPin ?? row?.startServicePin,
+    serviceStartPinExpiresAt: row?.serviceStartPinExpiresAt,
+    serviceCompletePin: row?.serviceCompletePin ?? row?.completeServicePin,
+    serviceCompletePinExpiresAt: row?.serviceCompletePinExpiresAt,
     canPause: boolValue(row?.canPause),
     canResume: boolValue(row?.canResume),
     canCancel: boolValue(row?.canCancel),
+    paymentStatus: row?.paymentStatus ?? row?.payment?.status,
+    paymentBookingId: numberValue(row?.paymentBookingId, row?.bookingId),
+    assignmentStatus: row?.assignmentStatus ?? row?.professionalAssignmentStatus,
+    partnerName: row?.partnerName ?? row?.professionalName ?? row?.partner?.name,
+    timeline: Array.isArray(row?.timeline)
+      ? row.timeline
+      : String(row?.status ?? "").trim()
+        ? [{ key: "status", label: String(row.status), status: String(row.status), completed: true, active: true }]
+        : undefined,
   };
 }
 
@@ -88,6 +112,15 @@ export async function getSubscriptionDetails(id: string): Promise<SubscriptionDt
   }
 }
 
+export async function retrySubscriptionDispatch(id: string) {
+  try {
+    const { data } = await api.post(`/api/subscriptions/${id}/dispatch`);
+    return data;
+  } catch (error) {
+    throw toApiError(error, "Failed to dispatch subscription");
+  }
+}
+
 export async function pauseSubscription(id: string) {
   try {
     const { data } = await api.post(`/api/subscriptions/${id}/pause`);
@@ -112,5 +145,19 @@ export async function cancelSubscription(id: string) {
     return data;
   } catch (error) {
     throw toApiError(error, "Failed to cancel subscription");
+  }
+}
+
+export async function createSubscriptionChangeRequest(subscriptionId: string, payload: {
+  reasonCategory: string;
+  description?: string;
+}) {
+  try {
+    const { data } = await api.post("/api/subscriptions/change-requests", payload, {
+      params: { subscriptionId },
+    });
+    return data;
+  } catch (error) {
+    throw toApiError(error, "Failed to request professional change");
   }
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Linking, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { APP_CONFIG } from "../../constants/app";
 import { COLORS } from "../../constants/colors";
 import { useAppFeedback } from "../../context/AppFeedbackContext";
@@ -11,6 +11,41 @@ import {
   type PartnerSupportTicketPriority,
   type PartnerSupportTicketStatus,
 } from "../../services/supportService";
+
+const SUPPORT_COPY = {
+  title: "Support",
+  faqTitle: "FAQ",
+  faqBody: "Find answers for payments, cancellations, and service start issues.",
+  raiseTicketTitle: "Raise Ticket",
+  raiseTicketBody: "Create a support request and track replies from the support team.",
+  contactUs: "Contact Us",
+  callSupport: "Call Support",
+  emailSupport: "Email Support",
+  newTicketTitle: "New Ticket",
+  subject: "Subject",
+  description: "Description",
+  categoryOptional: "Category ID (optional)",
+  bookingOptional: "Booking ID (optional)",
+  createTicket: "Create Ticket",
+  ticketCreated: "Support ticket created",
+  ticketHistoryTitle: "Ticket History",
+  ticketDetailTitle: "Ticket Detail",
+  noTicketsYet: "No support tickets yet.",
+  generalCategory: "GENERAL",
+  selectTicketHint: "Select a ticket to view the conversation.",
+  noRepliesYet: "No replies yet.",
+  loadError: "Unable to load support tickets",
+  detailError: "Unable to load ticket details",
+  createError: "Unable to create support ticket",
+  subjectRequired: "Subject is required",
+  messageRequired: "Message is required",
+  submitting: "Submitting...",
+  logout: "Logout",
+  logoutTitle: "Logout",
+  logoutMessage: "Are you sure you want to logout?",
+  cancel: "Cancel",
+  all: "ALL",
+} as const;
 
 export default function SupportScreen({ onLogout, navigation }: { onLogout?: () => Promise<void> | void; navigation?: any }) {
   const { toast } = useAppFeedback();
@@ -25,6 +60,9 @@ export default function SupportScreen({ onLogout, navigation }: { onLogout?: () 
   const [categoryId, setCategoryId] = useState("");
   const [bookingId, setBookingId] = useState("");
   const [priority, setPriority] = useState<PartnerSupportTicketPriority>("MEDIUM");
+
+  const priorityLabel = (value: PartnerSupportTicketPriority | string) => String(value);
+  const statusLabel = (value: PartnerSupportTicketStatus | string) => String(value);
 
   const loadTickets = async () => {
     try {
@@ -41,7 +79,7 @@ export default function SupportScreen({ onLogout, navigation }: { onLogout?: () 
         : response.tickets[0]?.id || "";
       setSelectedTicketId(nextSelectedId);
     } catch (error: any) {
-      toast(error?.message ?? "Unable to load support tickets");
+      toast(error?.message ?? SUPPORT_COPY.loadError);
     } finally {
       setLoading(false);
     }
@@ -53,7 +91,7 @@ export default function SupportScreen({ onLogout, navigation }: { onLogout?: () 
       const detail = await fetchPartnerSupportTicketDetail(ticketId);
       setSelectedTicket(detail);
     } catch (error: any) {
-      toast(error?.message ?? "Unable to load ticket details");
+      toast(error?.message ?? SUPPORT_COPY.detailError);
     }
   };
 
@@ -68,11 +106,11 @@ export default function SupportScreen({ onLogout, navigation }: { onLogout?: () 
 
   const submitTicket = async () => {
     if (!subject.trim()) {
-      toast("Subject is required");
+      toast(SUPPORT_COPY.subjectRequired);
       return;
     }
     if (!message.trim()) {
-      toast("Message is required");
+      toast(SUPPORT_COPY.messageRequired);
       return;
     }
     try {
@@ -84,7 +122,7 @@ export default function SupportScreen({ onLogout, navigation }: { onLogout?: () 
         bookingId: bookingId.trim() || undefined,
         priority,
       });
-      toast("Support ticket created");
+      toast(SUPPORT_COPY.ticketCreated);
       setSubject("");
       setMessage("");
       setCategoryId("");
@@ -94,7 +132,7 @@ export default function SupportScreen({ onLogout, navigation }: { onLogout?: () 
       setSelectedTicketId(created.id);
       setSelectedTicket(created);
     } catch (error: any) {
-      toast(error?.message ?? "Unable to create support ticket");
+      toast(error?.message ?? SUPPORT_COPY.createError);
     } finally {
       setSubmitting(false);
     }
@@ -106,32 +144,32 @@ export default function SupportScreen({ onLogout, navigation }: { onLogout?: () 
       contentContainerStyle={styles.container}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={() => loadTickets()} />}
     >
-      <Text style={styles.title}>Support</Text>
-      <Card title="FAQ" body="Find answers for payments, cancellations, and service start issues." />
-      <Card title="Raise Ticket" body="Create a support request and track replies from the support team." />
-      <Card title="Contact Support" body={`${APP_CONFIG.supportPhone}\n${APP_CONFIG.supportEmail}`} />
+      <Text style={styles.title}>{SUPPORT_COPY.title}</Text>
+      <Card title={SUPPORT_COPY.faqTitle} body={SUPPORT_COPY.faqBody} />
+      <Card title={SUPPORT_COPY.raiseTicketTitle} body={SUPPORT_COPY.raiseTicketBody} />
+      <Card title={SUPPORT_COPY.contactUs} body={`${APP_CONFIG.supportPhone}\n${APP_CONFIG.supportEmail}`} />
 
       <TouchableOpacity style={[styles.btn, styles.fullBleed]} onPress={() => Linking.openURL(`tel:${APP_CONFIG.supportPhone.replace(/\s+/g, "")}`)}>
-        <Text style={styles.btnText}>Call Support</Text>
+        <Text style={styles.btnText}>{SUPPORT_COPY.callSupport}</Text>
       </TouchableOpacity>
       <TouchableOpacity style={[styles.btn, styles.fullBleed]} onPress={() => Linking.openURL(`mailto:${APP_CONFIG.supportEmail}`)}>
-        <Text style={styles.btnText}>Email Support</Text>
+        <Text style={styles.btnText}>{SUPPORT_COPY.emailSupport}</Text>
       </TouchableOpacity>
 
       <View style={[styles.card, styles.fullBleed]}>
-        <Text style={styles.cardTitle}>New Ticket</Text>
-        <TextInput testID="support-subject-input" value={subject} onChangeText={setSubject} placeholder="Subject" placeholderTextColor={COLORS.textSecondary} style={styles.input} />
+        <Text style={styles.cardTitle}>{SUPPORT_COPY.newTicketTitle}</Text>
+        <TextInput testID="support-subject-input" value={subject} onChangeText={setSubject} placeholder={SUPPORT_COPY.subject} placeholderTextColor={COLORS.textSecondary} style={styles.input} />
         <TextInput
           testID="support-message-input"
           value={message}
           onChangeText={setMessage}
-          placeholder="Describe the issue"
+          placeholder={SUPPORT_COPY.description}
           placeholderTextColor={COLORS.textSecondary}
           multiline
           style={[styles.input, styles.textarea]}
         />
-        <TextInput value={categoryId} onChangeText={setCategoryId} placeholder="Category ID (optional)" placeholderTextColor={COLORS.textSecondary} style={styles.input} />
-        <TextInput value={bookingId} onChangeText={setBookingId} placeholder="Booking ID (optional)" placeholderTextColor={COLORS.textSecondary} style={styles.input} />
+        <TextInput value={categoryId} onChangeText={setCategoryId} placeholder={SUPPORT_COPY.categoryOptional} placeholderTextColor={COLORS.textSecondary} style={styles.input} />
+        <TextInput value={bookingId} onChangeText={setBookingId} placeholder={SUPPORT_COPY.bookingOptional} placeholderTextColor={COLORS.textSecondary} style={styles.input} />
         <View style={styles.priorityRow}>
           {(["LOW", "MEDIUM", "HIGH", "URGENT"] as PartnerSupportTicketPriority[]).map((item) => (
             <TouchableOpacity
@@ -139,17 +177,17 @@ export default function SupportScreen({ onLogout, navigation }: { onLogout?: () 
               style={[styles.pill, priority === item ? styles.pillActive : null]}
               onPress={() => setPriority(item)}
             >
-              <Text style={[styles.pillText, priority === item ? styles.pillTextActive : null]}>{item}</Text>
+              <Text style={[styles.pillText, priority === item ? styles.pillTextActive : null]}>{priorityLabel(item)}</Text>
             </TouchableOpacity>
           ))}
         </View>
         <TouchableOpacity testID="support-submit-button" style={[styles.btn, submitting ? styles.btnDisabled : null]} disabled={submitting} onPress={() => void submitTicket()}>
-          <Text style={styles.btnText}>{submitting ? "Submitting..." : "Submit Ticket"}</Text>
+          <Text style={styles.btnText}>{submitting ? SUPPORT_COPY.submitting : SUPPORT_COPY.createTicket}</Text>
         </TouchableOpacity>
       </View>
 
       <View style={[styles.card, styles.fullBleed]}>
-        <Text style={styles.cardTitle}>Ticket History</Text>
+        <Text style={styles.cardTitle}>{SUPPORT_COPY.ticketHistoryTitle}</Text>
         <View style={styles.filterRow}>
           {(["", "OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"] as Array<PartnerSupportTicketStatus | "">).map((item) => (
             <TouchableOpacity
@@ -158,13 +196,13 @@ export default function SupportScreen({ onLogout, navigation }: { onLogout?: () 
               onPress={() => setStatusFilter(item)}
             >
               <Text style={[styles.filterChipText, statusFilter === item ? styles.filterChipTextActive : null]}>
-                {item || "ALL"}
+                {item ? statusLabel(item) : SUPPORT_COPY.all}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
         {loading && tickets.length === 0 ? <ActivityIndicator color={COLORS.secondary} /> : null}
-        {!loading && tickets.length === 0 ? <Text style={styles.emptyText}>No support tickets yet.</Text> : null}
+        {!loading && tickets.length === 0 ? <Text style={styles.emptyText}>{SUPPORT_COPY.noTicketsYet}</Text> : null}
         {tickets.map((ticket) => (
           <TouchableOpacity
             key={ticket.id}
@@ -173,31 +211,31 @@ export default function SupportScreen({ onLogout, navigation }: { onLogout?: () 
           >
             <View style={styles.ticketHeader}>
               <Text style={styles.ticketSubject}>{ticket.subject}</Text>
-              <Text style={styles.ticketStatus}>{ticket.status}</Text>
+              <Text style={styles.ticketStatus}>{statusLabel(ticket.status)}</Text>
             </View>
             <Text style={styles.ticketMeta}>
-              {(ticket.categoryId || "GENERAL")} {ticket.priority ? `• ${ticket.priority}` : ""} {ticket.bookingId ? `• ${ticket.bookingId}` : ""}
+              {(ticket.categoryId || SUPPORT_COPY.generalCategory)} {ticket.priority ? `- ${priorityLabel(ticket.priority)}` : ""} {ticket.bookingId ? `- ${ticket.bookingId}` : ""}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
       <View style={[styles.card, styles.fullBleed]}>
-        <Text style={styles.cardTitle}>Ticket Detail</Text>
+        <Text style={styles.cardTitle}>{SUPPORT_COPY.ticketDetailTitle}</Text>
         {!selectedTicket ? (
-          <Text style={styles.emptyText}>Select a ticket to view the conversation.</Text>
+          <Text style={styles.emptyText}>{SUPPORT_COPY.selectTicketHint}</Text>
         ) : (
           <View style={styles.detailWrap}>
             <Text style={styles.detailTitle}>{selectedTicket.subject}</Text>
             <Text style={styles.ticketMeta}>
-              {selectedTicket.id} • {selectedTicket.status} • {selectedTicket.priority || "MEDIUM"}
+              {selectedTicket.id} - {statusLabel(selectedTicket.status)} - {priorityLabel(selectedTicket.priority || "MEDIUM")}
             </Text>
             {(selectedTicket.messages ?? []).length === 0 ? (
-              <Text style={styles.emptyText}>No replies yet.</Text>
+              <Text style={styles.emptyText}>{SUPPORT_COPY.noRepliesYet}</Text>
             ) : (
               (selectedTicket.messages ?? []).map((item) => (
                 <View key={`${item.id || item.createdAt}-${item.sender}`} style={[styles.messageBubble, item.sender === "SUPPORT" ? styles.messageSupport : styles.messagePartner]}>
-                  <Text style={styles.messageSender}>{item.sender}</Text>
+                  <Text style={styles.messageSender}>{String(item.sender)}</Text>
                   <Text style={styles.messageBody}>{item.message}</Text>
                   <Text style={styles.messageTime}>{item.createdAt || "-"}</Text>
                 </View>
@@ -206,6 +244,21 @@ export default function SupportScreen({ onLogout, navigation }: { onLogout?: () 
           </View>
         )}
       </View>
+
+      {onLogout ? (
+        <TouchableOpacity
+          testID="support-logout-button"
+          style={[styles.btn, styles.logoutBtn, styles.fullBleed]}
+          onPress={() =>
+            Alert.alert(SUPPORT_COPY.logoutTitle, SUPPORT_COPY.logoutMessage, [
+              { text: SUPPORT_COPY.cancel, style: "cancel" },
+              { text: SUPPORT_COPY.logout, style: "destructive", onPress: () => void onLogout() },
+            ])
+          }
+        >
+          <Text style={styles.logoutText}>{SUPPORT_COPY.logout}</Text>
+        </TouchableOpacity>
+      ) : null}
     </ScrollView>
   );
 }
@@ -229,6 +282,8 @@ const styles = StyleSheet.create({
   btn: { borderRadius: 12, backgroundColor: COLORS.surfaceElevated, borderWidth: 1, borderColor: COLORS.border, padding: 12, alignItems: "center" },
   btnDisabled: { opacity: 0.6 },
   btnText: { color: COLORS.textPrimary, fontWeight: "700" },
+  logoutBtn: { borderColor: "#B42318", marginTop: 8 },
+  logoutText: { color: "#B42318", fontWeight: "800" },
   input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: COLORS.textPrimary, backgroundColor: COLORS.background },
   textarea: { minHeight: 96, textAlignVertical: "top" },
   priorityRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

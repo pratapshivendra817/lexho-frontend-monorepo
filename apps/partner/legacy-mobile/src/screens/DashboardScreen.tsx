@@ -3,8 +3,19 @@ import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, Touchabl
 import type { PartnerOrder } from "../types/order";
 import { acceptPartnerRequest, fetchPartnerRequests, rejectPartnerRequest } from "../services/partnerService";
 import { COLORS } from "../constants/colors";
+import { getOrderStatusLabel } from "../utils/statusLabels";
 
 type Props = { onLogout: () => Promise<void> };
+
+const DASHBOARD_COPY = {
+  noPendingRequests: "No pending requests",
+  customer: "Customer",
+  service: "Service",
+  currency: "INR",
+  status: "Status",
+  accept: "Accept",
+  reject: "Reject",
+} as const;
 
 export default function DashboardScreen({ onLogout: _onLogout }: Props) {
   const [loading, setLoading] = useState(false);
@@ -32,18 +43,18 @@ export default function DashboardScreen({ onLogout: _onLogout }: Props) {
       style={{ flex: 1, backgroundColor: COLORS.background }}
       refreshControl={<RefreshControl testID="dashboard-refresh-control" refreshing={loading} onRefresh={() => load()} />}
       contentContainerStyle={{ padding: 16, gap: 10 }}
-      ListEmptyComponent={loading ? <ActivityIndicator testID="dashboard-loading-indicator" color={COLORS.secondary} /> : <Text style={styles.empty}>No pending requests</Text>}
+      ListEmptyComponent={loading ? <ActivityIndicator testID="dashboard-loading-indicator" color={COLORS.secondary} /> : <Text style={styles.empty}>{DASHBOARD_COPY.noPendingRequests}</Text>}
       renderItem={({ item }) => (
         <View style={styles.card}>
-          <Text style={styles.name}>{item.customerName ?? "Customer"}</Text>
-          <Text style={styles.meta}>#{item.id} | {item.serviceType ?? "Service"} | INR {item.amount ?? 0}</Text>
-          <Text style={styles.meta}>Status: {item.status}</Text>
+          <Text style={styles.name}>{item.customerName ?? DASHBOARD_COPY.customer}</Text>
+          <Text style={styles.meta}>#{item.id} | {item.serviceType ?? DASHBOARD_COPY.service} | {DASHBOARD_COPY.currency} {item.amount ?? 0}</Text>
+          <Text style={styles.meta}>{`${DASHBOARD_COPY.status}: ${getOrderStatusLabel(item.status, (_key, fallback) => fallback)}`}</Text>
           <View style={styles.row}>
             <TouchableOpacity style={[styles.btn, styles.accept]} onPress={async () => { await acceptPartnerRequest(item.id); load().catch(() => null); }}>
-              <Text style={styles.btnText}>Accept</Text>
+              <Text style={styles.btnText}>{DASHBOARD_COPY.accept}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.btn, styles.reject]} onPress={async () => { await rejectPartnerRequest(item.id); load().catch(() => null); }}>
-              <Text style={styles.btnText}>Reject</Text>
+              <Text style={styles.btnText}>{DASHBOARD_COPY.reject}</Text>
             </TouchableOpacity>
           </View>
         </View>

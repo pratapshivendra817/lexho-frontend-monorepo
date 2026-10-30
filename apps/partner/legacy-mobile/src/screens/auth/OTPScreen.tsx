@@ -16,6 +16,19 @@ import { COLORS } from "../../constants/colors";
 import { sendOtp, verifyOtp } from "../../services/authService";
 import { trackAuthenticationEvent } from "../../services/firebaseAnalytics";
 
+const OTP_SCREEN_COPY = {
+  verifyTitle: "Verify OTP",
+  otpPlaceholder: "Enter OTP",
+  resendLabel: "Resend OTP",
+  invalidOtpMessage: "Enter a valid 6-digit OTP.",
+  genericErrorTitle: "Something went wrong",
+  otpSentTitle: "OTP sent",
+  doneLabel: "Done",
+  verificationEyebrow: "Partner Verification",
+  otpSentToLabel: "We sent a code to",
+  yourNumberLabel: "your number",
+} as const;
+
 type Props = {
   navigation: any;
   route: any;
@@ -44,10 +57,10 @@ export default function OTPScreen({ route, onAuthSuccess }: Props) {
 
   const handleVerify = async () => {
     if (otp.length !== 6) {
-      const message = "Enter a valid 6-digit OTP.";
+      const message = OTP_SCREEN_COPY.invalidOtpMessage;
       setErrorMessage(message);
       void trackAuthenticationEvent(false, { stage: "verify_validation" });
-      Alert.alert("Invalid OTP", message);
+      Alert.alert(OTP_SCREEN_COPY.invalidOtpMessage, message);
       return;
     }
 
@@ -57,10 +70,10 @@ export default function OTPScreen({ route, onAuthSuccess }: Props) {
       const payload = await verifyOtp(mobile, otp);
       await onAuthSuccess(payload, mobile);
     } catch (e: any) {
-      const message = e?.message || "OTP verification failed. Please try again.";
+      const message = e?.message || OTP_SCREEN_COPY.genericErrorTitle;
       setErrorMessage(message);
       void trackAuthenticationEvent(false, { stage: "verify_otp", message });
-      Alert.alert("OTP verification failed", message);
+      Alert.alert(OTP_SCREEN_COPY.genericErrorTitle, message);
     } finally {
       setLoading(false);
     }
@@ -72,11 +85,11 @@ export default function OTPScreen({ route, onAuthSuccess }: Props) {
       setErrorMessage("");
       const response = await sendOtp(mobile);
       setTimer(response?.resendAfter || resendAfter);
-      Alert.alert("OTP sent", "A new code has been sent to your mobile.");
+      Alert.alert(OTP_SCREEN_COPY.otpSentTitle, OTP_SCREEN_COPY.doneLabel);
     } catch (e: any) {
-      const message = e?.message || "Unable to resend OTP. Please try again.";
+      const message = e?.message || OTP_SCREEN_COPY.genericErrorTitle;
       setErrorMessage(message);
-      Alert.alert("Unable to resend OTP", message);
+      Alert.alert(OTP_SCREEN_COPY.genericErrorTitle, message);
     } finally {
       setLoading(false);
     }
@@ -88,17 +101,20 @@ export default function OTPScreen({ route, onAuthSuccess }: Props) {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.container}
       >
-        <Text style={styles.title}>Verify OTP</Text>
-        <Text style={styles.subtitle}>
-          We sent a code to +91 {mobile || "your number"}.
-        </Text>
+        <View style={styles.topBlock}>
+          <Text style={styles.eyebrow}>{OTP_SCREEN_COPY.verificationEyebrow}</Text>
+          <Text style={styles.title}>{OTP_SCREEN_COPY.verifyTitle}</Text>
+          <Text style={styles.subtitle}>
+            {`${OTP_SCREEN_COPY.otpSentToLabel} +91 ${mobile || OTP_SCREEN_COPY.yourNumberLabel}.`}
+          </Text>
+        </View>
 
         <View style={styles.card}>
           <TextInput
             style={styles.input}
             keyboardType="number-pad"
             maxLength={6}
-            placeholder="Enter OTP"
+            placeholder={OTP_SCREEN_COPY.otpPlaceholder}
             placeholderTextColor={COLORS.textMuted}
             value={otp}
             onChangeText={setOtp}
@@ -115,7 +131,7 @@ export default function OTPScreen({ route, onAuthSuccess }: Props) {
             {loading ? (
               <ActivityIndicator color={COLORS.background} />
             ) : (
-              <Text style={styles.buttonText}>Verify OTP</Text>
+              <Text style={styles.buttonText}>{OTP_SCREEN_COPY.verifyTitle}</Text>
             )}
           </TouchableOpacity>
 
@@ -125,7 +141,7 @@ export default function OTPScreen({ route, onAuthSuccess }: Props) {
             onPress={handleResend}
           >
             <Text style={styles.resend}>
-              {timer > 0 ? `Resend OTP in ${timer}s` : "Resend OTP"}
+              {timer > 0 ? `${OTP_SCREEN_COPY.resendLabel} ${timer}s` : OTP_SCREEN_COPY.resendLabel}
             </Text>
           </TouchableOpacity>
         </View>
@@ -145,15 +161,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     backgroundColor: COLORS.background,
   },
+  topBlock: {
+    marginBottom: 40,
+  },
+  eyebrow: {
+    color: COLORS.secondary,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
   title: {
     color: COLORS.textPrimary,
     fontSize: 30,
     fontWeight: "800",
+    marginTop: 12,
   },
   subtitle: {
     color: COLORS.textSecondary,
     marginTop: 8,
-    marginBottom: 24,
     lineHeight: 22,
   },
   card: {
@@ -172,6 +197,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     letterSpacing: 4,
     textAlign: "center",
+    paddingHorizontal: 16,
     paddingVertical: 16,
   },
   errorText: {

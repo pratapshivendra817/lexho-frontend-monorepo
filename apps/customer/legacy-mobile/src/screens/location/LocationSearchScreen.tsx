@@ -4,7 +4,7 @@ import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIc
 import { Button, Searchbar, Snackbar, Text } from "react-native-paper";
 import { AddressCard } from "../../components/AddressCard";
 import { LocationAddressShimmer } from "../../components/location/LocationAddressShimmer";
-import { setSelectedAddressId } from "../../redux/cartSlice";
+import { clearSelectedAddressId, setSelectedAddressId } from "../../redux/cartSlice";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { deleteAddressThunk, fetchAllAddressesThunk, setCurrentAddressLocal, setDefaultAddressThunk, setServiceAvailable, updateLocationAndSyncThunk } from "../../redux/locationSlice";
 import { checkServiceability, searchLocations } from "../../services/locationService";
@@ -20,28 +20,6 @@ function toReadableError(error: any, fallback: string) {
     return "Address already exists. Please choose another address or edit existing.";
   }
   return text;
-}
-
-function pickBackendPincode(source: any): string {
-  const root = source?.data ?? source ?? {};
-  return String(
-    root?.matchedPincode ??
-      root?.pincode ??
-      root?.postalCode ??
-      root?.serviceArea?.pincode ??
-      root?.serviceableArea?.pincode ??
-      root?.area?.pincode ??
-      root?.location?.pincode ??
-      root?.currentLocation?.pincode ??
-      "",
-  ).trim();
-}
-
-function replaceAddressPincode(addressLine: string, pincode: string): string {
-  const line = String(addressLine ?? "").trim();
-  if (!line || !pincode) return line;
-  if (/\b\d{6}\b/.test(line)) return line.replace(/\b\d{6}\b/g, pincode);
-  return line;
 }
 
 function getSearchScore(row: any, queryText: string) {
@@ -193,21 +171,11 @@ export function LocationSearchScreen({ navigation }: any) {
         return;
       }
       try {
-        const serviceability = await checkServiceability({ latitude: lat, longitude: lng, pincode });
+        const serviceability = await checkServiceability({ latitude: lat, longitude: lng, pincode }, { forceRefresh: true });
         const available = isServiceable(serviceability?.data ?? serviceability);
         if (!cancelled) {
           setCurrentServiceabilityError(null);
           dispatch(setServiceAvailable(available));
-          const backendPincode = pickBackendPincode(serviceability);
-          if (backendPincode && backendPincode !== pincode) {
-            dispatch(
-              setCurrentAddressLocal({
-                ...currentAddress,
-                pincode: backendPincode,
-                addressLine: replaceAddressPincode(String(currentAddress?.addressLine ?? ""), backendPincode),
-              }),
-            );
-          }
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -242,7 +210,6 @@ export function LocationSearchScreen({ navigation }: any) {
     try {
       setActionLoading(true);
       if (!Number.isFinite(locationUserId) || locationUserId <= 0) throw new Error("Login required");
-      const numericAddressId = Number(addressId);
 
       if (selectedRow) {
         dispatch(
@@ -261,8 +228,8 @@ export function LocationSearchScreen({ navigation }: any) {
         );
       }
 
-      if (Number.isFinite(numericAddressId) && numericAddressId > 0) {
-        dispatch(setSelectedAddressId(numericAddressId));
+      if (String(addressId).trim()) {
+        dispatch(setSelectedAddressId(addressId));
       }
 
       setSnack("Address selected");
@@ -303,6 +270,7 @@ export function LocationSearchScreen({ navigation }: any) {
       const available = isServiceable(serviceability?.data ?? serviceability);
       dispatch(setServiceAvailable(available));
 
+      dispatch(clearSelectedAddressId());
       dispatch(
         setCurrentAddressLocal({
           id: String(row?.id ?? row?.addressId ?? formatAddressLine(row)),
@@ -735,6 +703,7 @@ const styles = StyleSheet.create({
 });
 const isServiceable = (data: any): boolean => {
   const value =
+    data?.serviceAvailable ??
     data?.serviceable ??
     data?.available ??
     data?.isServiceable ??
@@ -768,7 +737,7 @@ const isServiceable = (data: any): boolean => {
     return false;
   }
   if (status.includes("inactive")) return false;
-  if (status.includes("serviceable") || status.includes("available") || status === "active") {
+  if (["serviceable", "available", "active"].includes(status.trim())) {
     return true;
   }
 

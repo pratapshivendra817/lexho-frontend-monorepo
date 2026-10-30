@@ -34,6 +34,7 @@ import cartReducer, {
   addToCartThunk,
   clearCartThunk,
   clearRecentlyAdded,
+  clearSelectedAddressId,
   fetchCartPolicyThunk,
   fetchCustomerAddressesThunk,
   fetchCustomerCartThunk,
@@ -100,6 +101,16 @@ function makeStore(preloadedCart?: any) {
 }
 
 describe("cartSlice", () => {
+  it("preserves service category metadata after adding and refreshing the cart", async () => {
+    const store = makeStore();
+    mockCartApi.addCustomerCartItem.mockResolvedValue(response());
+    await store.dispatch(addToCartThunk({ serviceId: 1, categoryId: "8", categoryName: "Cleaning Service" }));
+    expect(store.getState().cart.items[0]).toMatchObject({ categoryId: "8", categoryName: "Cleaning Service" });
+    mockCartApi.getCustomerCart.mockResolvedValue(response());
+    await store.dispatch(fetchCustomerCartThunk());
+    expect(store.getState().cart.items[0]).toMatchObject({ categoryId: "8", categoryName: "Cleaning Service" });
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockStorage.saveCartSnapshot.mockResolvedValue(undefined);
@@ -137,6 +148,12 @@ describe("cartSlice", () => {
 
     await store.dispatch(fetchCustomerCartThunk());
     expect(store.getState().cart.error).toBe("offline");
+  });
+
+  it("clears a stale cart selection after a fresh location is detected", () => {
+    const initial = cartReducer(undefined, { type: "init" });
+    const state = cartReducer({ ...initial, selectedAddressId: 999 }, clearSelectedAddressId());
+    expect(state.selectedAddressId).toBeNull();
   });
 
   it("applies defensive defaults for sparse cart responses and all request statuses", () => {
@@ -205,6 +222,16 @@ describe("cartSlice", () => {
     expect(store.getState().cart.policy).toEqual(basePolicy);
     await store.dispatch(fetchCartPolicyThunk());
     expect(store.getState().cart.policy.maxCartItems).toBe(10);
+  });
+
+  it.each([0, "0", "", 101])("preserves the saved UUID when a cart refresh returns address %s", incomingId => {
+    const initial = cartReducer(undefined, { type: "init" });
+    const id = "b5f02d8a-b64b-4329-89f7-a7daa1f67ef5";
+    const state = cartReducer({ ...initial, selectedAddressId: id, addresses: [{ id, fullAddress: "201, Jangle house" }] }, {
+      type: fetchCustomerCartThunk.fulfilled.type,
+      payload: { items: [], address: { id: incomingId } },
+    });
+    expect(state.selectedAddressId).toBe(id);
   });
 
   it("selects current, default, first, or no address during refresh", async () => {

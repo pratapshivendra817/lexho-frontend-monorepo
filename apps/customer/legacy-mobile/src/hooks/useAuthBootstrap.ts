@@ -49,10 +49,16 @@ export function useAuthBootstrap() {
 
         const session = await loadSession();
         if (!active) return;
-        const fallbackToken = String((await getToken()) ?? "").trim();
-        const fallbackRefreshToken = String((await getRefreshToken()) ?? "").trim();
-        const token = String(session.token ?? fallbackToken ?? "").trim();
-        const refreshToken = String(session.refreshToken ?? fallbackRefreshToken ?? "").trim();
+        let token = String(session.token ?? "").trim();
+        let refreshToken = String(session.refreshToken ?? "").trim();
+        if (!token && !refreshToken) {
+          const [fallbackToken, fallbackRefreshToken] = await Promise.all([
+            getToken(),
+            getRefreshToken(),
+          ]);
+          token = String(fallbackToken ?? "").trim();
+          refreshToken = String(fallbackRefreshToken ?? "").trim();
+        }
         const tokenExpMs = token ? decodeJwtExpMs(token) : null;
         const isTokenExpired = tokenExpMs !== null && tokenExpMs <= Date.now();
 
@@ -65,7 +71,7 @@ export function useAuthBootstrap() {
 
         if (refreshToken) {
           try {
-            const result = await tryRefreshSessionWithAxios(axios);
+            const result = await tryRefreshSessionWithAxios(axios, session);
             if (result.ok) {
               if (!active) return;
               dispatch(setSession({ token: result.token, refreshToken: result.refreshToken, user: result.user ?? undefined }));
@@ -80,6 +86,7 @@ export function useAuthBootstrap() {
           }
         }
       } catch {
+        // Hydration can continue with an unauthenticated state.
       } finally {
         if (active) {
           dispatch(setHydrated(true));

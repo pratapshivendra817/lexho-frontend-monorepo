@@ -10,7 +10,6 @@ import { COLORS } from '../../theme/colors';
 import {
   fetchCustomerProfileThunk,
   refreshProfileBundleThunk,
-  requestAccountDeleteThunk,
 } from "../../redux/customerProfileSlice";
 import { CustomButton } from "../../modules/profile/components/CustomButton";
 import { EmptyState } from "../../modules/profile/components/EmptyState";
@@ -21,34 +20,10 @@ import { unregisterDeviceToken } from "../../services/notificationsService";
 import { radii, shadows, spacing } from "../../constants/theme";
 
 const APP_VERSION = "v0.0.1";
-const DEFAULT_ABOUT_US = `# About Us
-
-Lexho helps customers book trusted home services quickly and conveniently from their phones.
-
-We focus on reliable service partners, smooth bookings, and clear communication so day-to-day home needs feel simple and manageable.
-
-If you need help with your account, bookings, or service experience, please contact our support team.`;
-
-const DEFAULT_TERMS_OF_SERVICE = `# Terms of Service
-
-By using Lexho, you agree to provide accurate information and use the platform only for lawful home-service bookings.
-
-Service availability, pricing, and booking schedules may vary by location. Payments, cancellations, and refunds are handled according to the applicable booking terms.
-
-Please contact support if you need help with a booking or payment.`;
-
-const DEFAULT_PRIVACY_POLICY = `# Privacy Policy
-
-Lexho uses your account details, phone number, and location information to provide home services, manage bookings, and support your requests.
-
-We use reasonable safeguards to protect your information. Your data is shared only where required to deliver services, process payments, or comply with applicable law.
-
-You can contact support for privacy-related questions or account assistance.`;
-
 export function ProfileScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
-  const { profile, addresses, content, status, accountDeleteStatus } = useAppSelector((s) => s.customerProfile);
+  const { profile, addresses, status } = useAppSelector((s) => s.customerProfile);
   const authUser = useAppSelector((s) => s.auth.user);
 
   useEffect(() => {
@@ -85,19 +60,6 @@ export function ProfileScreen({ navigation }: any) {
 
             dispatch(clearSessionState());
           })();
-        },
-      },
-    ]);
-  }, [dispatch]);
-
-  const onDeleteAccount = useCallback(() => {
-    Alert.alert("Delete account", "Send account deletion request?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Request Delete",
-        style: "destructive",
-        onPress: () => {
-          void dispatch(requestAccountDeleteThunk());
         },
       },
     ]);
@@ -176,31 +138,18 @@ export function ProfileScreen({ navigation }: any) {
 
       <ProfileCard>
         <SectionListItem title="My bookings" icon="clipboard-list-outline" onPress={() => navigation.navigate("Bookings")} />
+        <SectionListItem title="Refer & earn" icon="gift-outline" onPress={() => navigation.navigate("Referral")} />
         <SectionListItem title="Help & Support" icon="help-circle-outline" onPress={() => navigation.navigate("Support")} />
+        <SectionListItem title="FAQs" icon="frequently-asked-questions" onPress={() => navigation.navigate("Faq")} />
         <SectionListItem title={`Saved address (${addresses.length})`} icon="map-marker-outline" onPress={() => navigation.navigate("Address")} />
-        <SectionListItem
-          title="About us"
-          icon="information-outline"
-          onPress={() => navigation.navigate("AboutUs", { content: content?.aboutUs || DEFAULT_ABOUT_US })}
-        />
-        <SectionListItem
-          title="Terms of service"
-          icon="file-document-outline"
-          onPress={() => navigation.navigate("TermsOfService", { content: content?.termsOfService || DEFAULT_TERMS_OF_SERVICE })}
-        />
-        <SectionListItem
-          title="Privacy policy"
-          icon="shield-account-outline"
-          onPress={() => navigation.navigate("PrivacyPolicy", { content: content?.privacyPolicy || DEFAULT_PRIVACY_POLICY })}
-        />
-        <SectionListItem title="Delete account" icon="delete-outline" danger onPress={onDeleteAccount} />
+        <SectionListItem title="Legal & Policies" icon="file-document-multiple-outline" onPress={() => navigation.navigate("LegalDocuments")} />
+        <SectionListItem title="Delete account" icon="delete-outline" danger onPress={() => navigation.navigate("DeleteAccount")} />
       </ProfileCard>
 
       <CustomButton label="Logout" onPress={onLogout} variant="ghost" />
 
       <View style={styles.versionWrap}>
         <Text style={styles.versionText}>App version {APP_VERSION}</Text>
-        {accountDeleteStatus === "success" ? <Text style={styles.requestSent}>Delete request submitted.</Text> : null}
       </View>
     </ScrollView>
   );

@@ -3,7 +3,8 @@ import { AppState } from "react-native";
 
 const mockUseQuery = jest.fn();
 const mockUseQueryClient = jest.fn();
-const mockSetQueryData = jest.fn();
+const mockInvalidateQueries = jest.fn();
+const mockGetAccessToken = jest.fn();
 const mockGetBookingDetails = jest.fn();
 const mockGetBookingMeta = jest.fn();
 let mockBookingWsEnabled = true;
@@ -17,6 +18,9 @@ jest.mock("../src/api/bookingExtrasApi", () => ({
 }));
 jest.mock("../src/utils/bookingMeta", () => ({
   getBookingMeta: (...args: unknown[]) => mockGetBookingMeta(...args),
+}));
+jest.mock("../src/services/tokenStorage", () => ({
+  tokenStorage: { getAccessToken: (...args: unknown[]) => mockGetAccessToken(...args) },
 }));
 jest.mock("../src/constants/env", () => ({
   API_BASE_URL: "http://localhost:8082/",
@@ -36,6 +40,7 @@ class MockWebSocket {
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
   onmessage: ((event: { data?: unknown }) => void) | null = null;
+  send = jest.fn();
   close = jest.fn();
 
   constructor(url: string) {
@@ -77,7 +82,8 @@ describe("useInstantBookingLifecycle", () => {
     MockWebSocket.instances = [];
     MockWebSocket.throwOnConstruct = false;
     (globalThis as any).WebSocket = MockWebSocket;
-    mockUseQueryClient.mockReturnValue({ setQueryData: mockSetQueryData });
+    mockUseQueryClient.mockReturnValue({ invalidateQueries: mockInvalidateQueries });
+    mockGetAccessToken.mockResolvedValue("test-token");
     mockUseQuery.mockReturnValue({
       data: undefined,
       isLoading: true,
@@ -144,6 +150,27 @@ describe("useInstantBookingLifecycle", () => {
     expect(removeListener).toHaveBeenCalled();
   });
 
+  it("retries socket setup when access-token retrieval fails", async () => {
+    jest.useFakeTimers();
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    mockGetAccessToken.mockRejectedValueOnce(new Error("storage unavailable"));
+
+    const { unmount } = await renderHook(() =>
+      useInstantBookingLifecycle("booking-token-retry"),
+    );
+    expect(MockWebSocket.instances).toHaveLength(0);
+    expect(warn).toHaveBeenCalledWith(
+      "Unable to retrieve booking realtime credentials; retrying",
+    );
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(4000);
+    });
+    expect(MockWebSocket.instances).toHaveLength(1);
+
+    await act(async () => unmount());
+  });
+
   it("handles query polling, WebSocket messages, reconnect, dependency changes, and cleanup", async () => {
     jest.useFakeTimers();
     mockGetBookingDetails.mockResolvedValue({ id: "booking-1" });
@@ -154,10 +181,11 @@ describe("useInstantBookingLifecycle", () => {
       useInstantBookingLifecycle(currentBookingId),
     );
     let options = mockUseQuery.mock.calls.at(-1)?.[0] as any;
+    await waitFor(() => expect(MockWebSocket.instances.length).toBe(1));
     const first = MockWebSocket.instances[0];
 
     expect(first.url).toBe(
-      "ws://localhost:8082/ws/customer/bookings/booking-1",
+      "ws://localhost:8082/ws/customer/bookings",
     );
     await expect(options.queryFn()).resolves.toEqual({ id: "booking-1" });
     expect(mockGetBookingDetails).toHaveBeenCalledWith("booking-1");
@@ -170,48 +198,40 @@ describe("useInstantBookingLifecycle", () => {
       options.refetchInterval({
         state: { data: { meta: { trackingRefreshSeconds: 0 } } },
       }),
-    ).toBe(false);
+    ).toBe(6000);
     expect(
       options.refetchInterval({
         state: { data: { meta: { trackingRefreshSeconds: "invalid" } } },
       }),
-    ).toBe(false);
+    ).toBe(6000);
 
-    await act(async () => first.open());
+    await act(async () => {
+      first.open();
+      first.message("CONNECTED\nversion:1.2\n\n\0");
+    });
     await waitFor(() => expect(result.current.wsConnected).toBe(true));
+    expect(first.send).toHaveBeenCalledWith(expect.stringContaining("Authorization:Bearer test-token"));
+    expect(first.send).toHaveBeenCalledWith(expect.stringContaining("/topic/customer/bookings/booking-1"));
     options = mockUseQuery.mock.calls.at(-1)?.[0] as any;
     expect(
       options.refetchInterval({
         state: { data: { meta: { trackingRefreshSeconds: 5 } } },
       }),
-    ).toBe(false);
+    ).toBe(5000);
 
     await act(async () => {
-      first.message(
-        JSON.stringify({
-          data: { bookingId: "booking-1", status: "ASSIGNED" },
-        }),
-      );
-      first.message(JSON.stringify({ id: "other" }));
-      first.message(
-        JSON.stringify({
-          id: "booking-1",
-          dispatchStatus: "SEARCHING",
-        }),
-      );
-      first.message("{malformed");
+      first.message("MESSAGE\ndestination:/topic/customer/bookings/booking-1\n\n" +
+        JSON.stringify({ data: { bookingId: "booking-1", status: "ASSIGNED" } }) + "\0");
+      first.message("MESSAGE\ndestination:/topic/customer/bookings/booking-1\n\n" +
+        JSON.stringify({ id: "other" }) + "\0");
+      first.message("MESSAGE\ndestination:/topic/customer/bookings/booking-1\n\n" +
+        JSON.stringify({ id: "booking-1", dispatchStatus: "SEARCHING" }) + "\0");
+      first.message("MESSAGE\ndestination:/topic/customer/bookings/booking-1\n\n{malformed\0");
       first.message(undefined);
     });
-    expect(mockSetQueryData).toHaveBeenCalledTimes(2);
-    const updater = mockSetQueryData.mock.calls[0][1];
-    expect(updater({ amount: 100 })).toEqual({
-      amount: 100,
-      bookingId: "booking-1",
-      status: "ASSIGNED",
-    });
-    expect(updater(null)).toEqual({
-      bookingId: "booking-1",
-      status: "ASSIGNED",
+    expect(mockInvalidateQueries).toHaveBeenCalledTimes(3);
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["instant-booking-status", "booking-1"],
     });
 
     await act(async () => appStateListener?.("background"));
@@ -246,18 +266,24 @@ describe("useInstantBookingLifecycle", () => {
     await act(async () => {
       await jest.advanceTimersByTimeAsync(4000);
     });
-    expect(MockWebSocket.instances.at(-1)?.url).toContain("booking-2");
+    const second = MockWebSocket.instances.at(-1)!;
+    expect(second.url).toBe("ws://localhost:8082/ws/customer/bookings");
 
-    const activeSocket = MockWebSocket.instances.at(-1)!;
-    await act(async () => activeSocket.open());
+    await act(async () => {
+      second.open();
+      second.message("CONNECTED\nversion:1.2\n\n\0");
+    });
     expect(result.current.wsConnected).toBe(true);
+    expect(second.send).toHaveBeenCalledWith(expect.stringContaining(
+      "/topic/customer/bookings/booking-2",
+    ));
 
-    activeSocket.close.mockImplementationOnce(() => {
+    second.close.mockImplementationOnce(() => {
       throw new Error("close failed");
     });
     await act(async () => unmount());
-    expect(activeSocket.close).toHaveBeenCalled();
-    activeSocket.closed();
+    expect(second.close).toHaveBeenCalled();
+    second.closed();
     expect(removeListener).toHaveBeenCalled();
   });
 });

@@ -6,6 +6,27 @@ import PaymentHeader from "../../../components/payments/PaymentHeader";
 import { addEmergencyContact, getEmergencyContacts } from "../services/SOSApiService";
 import type { EmergencyContact } from "../types";
 
+const EMERGENCY_CONTACTS_COPY = {
+  limitTitle: "Contact limit reached",
+  limitBody: "You can add up to 5 emergency contacts.",
+  invalidTitle: "Invalid contact",
+  invalidBody: "Enter name and valid phone number.",
+  addedTitle: "Contact added",
+  addedBody: "Emergency contact saved successfully.",
+  saveErrorTitle: "Unable to save contact",
+  saveErrorBody: "Please check the details and try again.",
+  title: "Emergency Contacts",
+  helper: "Add up to 5 contacts you want to notify in an emergency.",
+  fullName: "Full Name",
+  phoneNumber: "Phone Number",
+  relationship: "Relationship",
+  emailOptional: "Email Address (Optional)",
+  primaryContact: "Mark as primary contact",
+  saveButton: "Save Emergency Contact",
+  noContacts: "No emergency contacts added yet.",
+  primaryShort: "Primary",
+} as const;
+
 export function EmergencyContactsScreen({ navigation }: any) {
   const [contacts, setContacts] = useState<EmergencyContact[]>([]);
   const [name, setName] = useState("");
@@ -22,16 +43,16 @@ export function EmergencyContactsScreen({ navigation }: any) {
   const add = async () => {
     const cleanName = name.trim();
     const cleanPhone = phoneNumber.replace(/[^+\d]/g, "");
-    if (contacts.length >= 5) return Alert.alert("Contact limit reached", "You can add up to 5 emergency contacts.");
-    if (!cleanName || cleanPhone.length < 7) return Alert.alert("Invalid contact", "Enter a name and valid phone number.");
+    if (contacts.length >= 5) return Alert.alert(EMERGENCY_CONTACTS_COPY.limitTitle, EMERGENCY_CONTACTS_COPY.limitBody);
+    if (!cleanName || cleanPhone.length < 7) return Alert.alert(EMERGENCY_CONTACTS_COPY.invalidTitle, EMERGENCY_CONTACTS_COPY.invalidBody);
     setLoading(true);
     try {
       const contact = await addEmergencyContact({ name: cleanName, phoneNumber: cleanPhone, relationship: relationship.trim() || undefined, email: email.trim() || undefined, primaryContact });
       setContacts(current => [contact, ...current.filter(item => item.id !== contact.id)].slice(0, 5));
       setName(""); setPhoneNumber(""); setRelationship(""); setEmail(""); setPrimaryContact(false);
-      Alert.alert("Contact added", "This contact will be notified when you trigger SOS.");
+      Alert.alert(EMERGENCY_CONTACTS_COPY.addedTitle, EMERGENCY_CONTACTS_COPY.addedBody);
     } catch {
-      Alert.alert("Unable to save contact", "Check the details and try again.");
+      Alert.alert(EMERGENCY_CONTACTS_COPY.saveErrorTitle, EMERGENCY_CONTACTS_COPY.saveErrorBody);
     } finally {
       setLoading(false);
     }
@@ -39,15 +60,15 @@ export function EmergencyContactsScreen({ navigation }: any) {
 
   return (
     <View style={styles.root}>
-      <PaymentHeader title="Emergency Contacts" onBack={() => navigation.goBack()} />
-      <Text style={styles.helper}>Add up to 5 contacts. The backend notifies them after an SOS is triggered.</Text>
-      <TextInput label="Name" value={name} onChangeText={setName} mode="outlined" style={styles.input} textColor={COLORS.textPrimary} outlineColor={COLORS.accent} activeOutlineColor={COLORS.accent} theme={{ colors: { onSurfaceVariant: COLORS.accent, primary: COLORS.accent, background: COLORS.surface } }} />
-      <TextInput label="Phone number" value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" mode="outlined" style={styles.input} textColor={COLORS.textPrimary} outlineColor={COLORS.accent} activeOutlineColor={COLORS.accent} theme={{ colors: { onSurfaceVariant: COLORS.accent, primary: COLORS.accent, background: COLORS.surface } }} />
-      <TextInput label="Relationship" value={relationship} onChangeText={setRelationship} mode="outlined" style={styles.input} textColor={COLORS.textPrimary} outlineColor={COLORS.accent} activeOutlineColor={COLORS.accent} theme={{ colors: { onSurfaceVariant: COLORS.accent, primary: COLORS.accent, background: COLORS.surface } }} />
-      <TextInput label="Email (optional)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" mode="outlined" style={styles.input} textColor={COLORS.textPrimary} outlineColor={COLORS.accent} activeOutlineColor={COLORS.accent} theme={{ colors: { onSurfaceVariant: COLORS.accent, primary: COLORS.accent, background: COLORS.surface } }} />
-      <View style={styles.primaryRow}><Checkbox status={primaryContact ? "checked" : "unchecked"} onPress={() => setPrimaryContact(value => !value)} color={COLORS.accent} uncheckedColor={COLORS.accent} /><Text style={styles.primaryText}>Primary contact</Text></View>
-      <Button mode="contained" buttonColor="#C62828" loading={loading} disabled={contacts.length >= 5} onPress={() => void add()} style={[styles.button, contacts.length >= 5 && styles.buttonDisabled]} contentStyle={styles.buttonContent} labelStyle={styles.buttonLabel}>Add Emergency Contact</Button>
-      <FlatList style={styles.fullBleed} data={contacts} keyExtractor={item => item.id} contentContainerStyle={styles.listContent} ListEmptyComponent={<Text style={styles.empty}>No emergency contacts added on this device.</Text>} renderItem={({ item }) => <Card style={styles.card}><Card.Content style={styles.cardContent}><Text variant="titleMedium" style={styles.cardTitle}>{item.name}{item.primaryContact ? " (Primary)" : ""}</Text><Text style={styles.cardText}>{item.phoneNumber}</Text>{item.relationship ? <Text style={styles.cardText}>{item.relationship}</Text> : null}{item.email ? <Text style={styles.cardText}>{item.email}</Text> : null}</Card.Content></Card>} />
+      <PaymentHeader title={EMERGENCY_CONTACTS_COPY.title} onBack={() => navigation.goBack()} />
+      <Text style={styles.helper}>{EMERGENCY_CONTACTS_COPY.helper}</Text>
+      <TextInput label={EMERGENCY_CONTACTS_COPY.fullName} value={name} onChangeText={setName} mode="outlined" style={styles.input} textColor={COLORS.textPrimary} outlineColor={COLORS.accent} activeOutlineColor={COLORS.accent} theme={{ colors: { onSurfaceVariant: COLORS.accent, primary: COLORS.accent, background: COLORS.surface } }} />
+      <TextInput label={EMERGENCY_CONTACTS_COPY.phoneNumber} value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" mode="outlined" style={styles.input} textColor={COLORS.textPrimary} outlineColor={COLORS.accent} activeOutlineColor={COLORS.accent} theme={{ colors: { onSurfaceVariant: COLORS.accent, primary: COLORS.accent, background: COLORS.surface } }} />
+      <TextInput label={EMERGENCY_CONTACTS_COPY.relationship} value={relationship} onChangeText={setRelationship} mode="outlined" style={styles.input} textColor={COLORS.textPrimary} outlineColor={COLORS.accent} activeOutlineColor={COLORS.accent} theme={{ colors: { onSurfaceVariant: COLORS.accent, primary: COLORS.accent, background: COLORS.surface } }} />
+      <TextInput label={EMERGENCY_CONTACTS_COPY.emailOptional} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" mode="outlined" style={styles.input} textColor={COLORS.textPrimary} outlineColor={COLORS.accent} activeOutlineColor={COLORS.accent} theme={{ colors: { onSurfaceVariant: COLORS.accent, primary: COLORS.accent, background: COLORS.surface } }} />
+      <View style={styles.primaryRow}><Checkbox status={primaryContact ? "checked" : "unchecked"} onPress={() => setPrimaryContact(value => !value)} color={COLORS.accent} uncheckedColor={COLORS.accent} /><Text style={styles.primaryText}>{EMERGENCY_CONTACTS_COPY.primaryContact}</Text></View>
+      <Button mode="contained" buttonColor="#C62828" loading={loading} disabled={contacts.length >= 5} onPress={() => void add()} style={[styles.button, contacts.length >= 5 && styles.buttonDisabled]} contentStyle={styles.buttonContent} labelStyle={styles.buttonLabel}>{EMERGENCY_CONTACTS_COPY.saveButton}</Button>
+      <FlatList style={styles.fullBleed} data={contacts} keyExtractor={item => item.id} contentContainerStyle={styles.listContent} ListEmptyComponent={<Text style={styles.empty}>{EMERGENCY_CONTACTS_COPY.noContacts}</Text>} renderItem={({ item }) => <Card style={styles.card}><Card.Content style={styles.cardContent}><Text variant="titleMedium" style={styles.cardTitle}>{item.name}{item.primaryContact ? ` (${EMERGENCY_CONTACTS_COPY.primaryShort})` : ""}</Text><Text style={styles.cardText}>{item.phoneNumber}</Text>{item.relationship ? <Text style={styles.cardText}>{item.relationship}</Text> : null}{item.email ? <Text style={styles.cardText}>{item.email}</Text> : null}</Card.Content></Card>} />
     </View>
   );
 }

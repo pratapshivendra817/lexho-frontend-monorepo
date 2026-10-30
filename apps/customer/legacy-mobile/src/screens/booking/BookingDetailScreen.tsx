@@ -11,6 +11,19 @@ import { BookingTimeline } from "../../components/booking/BookingTimeline";
 import { COLORS } from '../../theme/colors';
 import { radii, shadows, spacing } from "../../constants/theme";
 
+function normalizeLifecycleStatus(value?: string) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return normalized === "STARTED" ? "IN_PROGRESS" : normalized;
+}
+
+function shouldShowStartPin(booking: any) {
+  return normalizeLifecycleStatus(booking?.assignmentStatus ?? booking?.status) === "ARRIVED" && String(booking?.serviceStartPin ?? "").trim().length > 0;
+}
+
+function shouldShowCompletePin(booking: any) {
+  return normalizeLifecycleStatus(booking?.assignmentStatus ?? booking?.status) === "IN_PROGRESS" && String(booking?.serviceCompletePin ?? "").trim().length > 0;
+}
+
 function formatDate(value?: string) {
   if (!value) return "N/A";
   const date = new Date(value);
@@ -61,7 +74,7 @@ export function BookingDetailScreen({ route, navigation }: any) {
         <Text style={styles.row}>Partner: {booking.partnerName || "Not assigned"}</Text>
         <Text style={styles.row}>Partner Phone: {booking.partnerPhone || "N/A"}</Text>
         <Text style={styles.row}>ETA: {booking.etaMinutes != null ? `${booking.etaMinutes} min` : "N/A"}</Text>
-        <Text style={styles.row}>Assignment: {booking.assignmentStatus || "N/A"}</Text>
+        <Text style={styles.row}>Assignment: {normalizeLifecycleStatus(booking.assignmentStatus || booking.status) || "N/A"}</Text>
         <Text style={styles.row}>Message: {booking.message || "N/A"}</Text>
         {booking.partnerName ? (
           <Button
@@ -74,6 +87,24 @@ export function BookingDetailScreen({ route, navigation }: any) {
           </Button>
         ) : null}
       </View>
+
+      {shouldShowStartPin(booking) ? (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Service Start PIN</Text>
+          <Text style={styles.pinValue}>{booking.serviceStartPin}</Text>
+          <Text style={styles.row}>Visible after partner arrives. Share this PIN only with the partner at your doorstep.</Text>
+          <Text style={styles.row}>Expires: {formatDate(booking.serviceStartPinExpiresAt)}</Text>
+        </View>
+      ) : null}
+
+      {shouldShowCompletePin(booking) ? (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Service Complete PIN</Text>
+          <Text style={styles.pinValue}>{booking.serviceCompletePin}</Text>
+          <Text style={styles.row}>Share this PIN only when the service is fully completed.</Text>
+          <Text style={styles.row}>Expires: {formatDate(booking.serviceCompletePinExpiresAt)}</Text>
+        </View>
+      ) : null}
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Payment Breakdown</Text>
@@ -116,6 +147,7 @@ const styles = StyleSheet.create({
   chip: { alignSelf: "flex-start", marginBottom: spacing.xs },
   row: { fontSize: 14, color: COLORS.slate700 },
   sectionTitle: { fontSize: 16, fontWeight: "800", color: COLORS.slate900, marginBottom: spacing.xs },
+  pinValue: { fontSize: 24, fontWeight: "900", color: COLORS.slate900, letterSpacing: 4 },
   callButton: { marginTop: spacing.sm },
   timelineRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm + 2 },
   dot: { width: 10, height: 10, borderRadius: radii.pill, marginTop: 5, backgroundColor: COLORS.blue600 },

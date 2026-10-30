@@ -5,9 +5,16 @@ import { useAppDispatch, useAppSelector } from "../../hooks/useRedux";
 import { clearCurrentCall, hangUpCall, setCallMuted, setCallSpeaker, startOutgoingCall } from "../../redux/slices/callSlice";
 import { CallControls } from "./CallControls";
 
+const OUTGOING_CALL_COPY = {
+  customer: "Customer",
+  orderCall: "Order call",
+  callingCustomer: "Calling customer",
+  order: "Order",
+} as const;
+
 export default function OutgoingCallScreen({ route, navigation }: any) {
   const orderId = Number(route?.params?.orderId);
-  const customerName = String(route?.params?.customerName ?? "Customer");
+  const customerName = String(route?.params?.customerName ?? OUTGOING_CALL_COPY.customer);
   const dispatch = useAppDispatch();
   const { current, muted, speaker, loading, error } = useAppSelector(state => state.calls);
   const [duration, setDuration] = useState(0);
@@ -37,14 +44,15 @@ export default function OutgoingCallScreen({ route, navigation }: any) {
     navigation.goBack();
   });
   const displayName = current?.customerName || customerName;
-  const status = current?.status === "active" ? formatDuration(duration) : current?.status ?? (loading ? "connecting" : "failed");
+  const rawStatus = current?.status ?? (loading ? "connecting" : "failed");
+  const status = current?.status === "active" ? formatDuration(duration) : rawStatus;
 
   return (
     <View style={styles.container}>
-      <Text style={styles.eyebrow}>{current?.direction === "incoming" ? "Order call" : "Calling customer"}</Text>
+      <Text style={styles.eyebrow}>{current?.direction === "incoming" ? OUTGOING_CALL_COPY.orderCall : OUTGOING_CALL_COPY.callingCustomer}</Text>
       <View style={styles.avatar}><Text style={styles.avatarText}>{displayName.slice(0, 1).toUpperCase()}</Text></View>
       <Text style={styles.name}>{displayName}</Text>
-      <Text style={styles.order}>{`Order #${current?.orderId ?? orderId}`}</Text>
+      <Text style={styles.order}>{`${OUTGOING_CALL_COPY.order} #${current?.orderId ?? orderId}`}</Text>
       <View style={styles.statusRow}>
         {loading ? <ActivityIndicator color={COLORS.secondary} size="small" /> : null}
         <Text style={styles.status}>{status}</Text>

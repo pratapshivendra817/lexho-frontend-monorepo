@@ -55,6 +55,7 @@ export const requestAdminOtp = async (payload: {
     throw new Error(
       extractApiError(error, "Unable to request OTP", {
         401: "Invalid admin email or password",
+        403: "This account is not authorized to access the Admin portal. Use an active ADMIN account.",
       }),
     );
   }
@@ -72,6 +73,7 @@ export const verifyAdminOtp = async (payload: {
     throw new Error(
       extractApiError(error, "OTP verification failed", {
         401: "Invalid or expired OTP",
+        403: "This account is not authorized to access the Admin portal. Use an active ADMIN account.",
       }),
     );
   }

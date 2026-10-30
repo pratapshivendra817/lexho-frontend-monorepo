@@ -100,6 +100,7 @@ describe("utils/authSessionManager", () => {
         refreshToken: "old-refresh",
         deviceId: "device-1",
       },
+      { timeout: 5000 },
     );
     expect(mockSaveSession).toHaveBeenCalledWith(
       "new-access",

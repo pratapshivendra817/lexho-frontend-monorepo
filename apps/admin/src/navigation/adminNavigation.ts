@@ -1,5 +1,6 @@
 import { adminPaymentsNavItems, adminPaymentsRouteMeta } from "../features/admin-payments";
 import { apiReadinessNavItems, apiReadinessRouteMeta } from "../features/api-readiness";
+import { couponsNavItems, couponsRouteMeta } from "../features/coupons";
 import { bannersNavItems, bannersRouteMeta } from "../features/banners";
 import { bookingsNavItems, bookingsRouteMeta } from "../features/bookings";
 import { cartBookingSettingsNavItems, cartBookingSettingsRouteMeta } from "../features/cart-booking-settings";
@@ -16,7 +17,6 @@ import { notificationsNavItems, notificationsRouteMeta } from "../features/notif
 import { operationsNavItems, operationsRouteMeta } from "../features/operations";
 import { popularServicesNavItems, popularServicesRouteMeta } from "../features/popular-services";
 import { payoutsNavItems, payoutsRouteMeta } from "../features/payouts";
-import { partnersNavItems, partnersRouteMeta } from "../features/providers";
 import { recommendedAddonsNavItems, recommendedAddonsRouteMeta } from "../features/recommended-addons";
 import { reviewsNavItems, reviewsRouteMeta } from "../features/reviews";
 import { sectionsNavItems, sectionsRouteMeta } from "../features/sections";
@@ -27,22 +27,28 @@ import { subscriptionsNavItems, subscriptionsRouteMeta } from "../features/subsc
 import { supportNavItems, supportRouteMeta } from "../features/support";
 import { usersNavItems, usersRouteMeta } from "../features/users";
 import { liveDispatchNavItems, liveDispatchRouteMeta } from "../features/live-dispatch";
+import { legalContentNavItems, legalContentRouteMeta } from "../features/legal-content";
+import { screeningCentreNavItems, screeningCentreRouteMeta } from "../features/screening-centre";
+import { websiteCitiesNavItems, websiteCitiesRouteMeta } from "../features/website-cities";
 import {
   bannerManagementNavItems,
   bannerManagementRouteMeta,
 } from "../modules/banner";
 
 import type { AdminNavItem, AdminRouteMeta } from "./types";
+import { accountDeletionNavItems, accountDeletionRouteMeta } from "../features/account-deletion";
+import { socialMediaNavItems, socialMediaRouteMeta } from "../features/social-media";
+import { partnerOnboardingNavItems, partnerOnboardingRouteMeta } from "../features/partner-onboarding";
 
 export const adminNavItems: AdminNavItem[] = [
   ...dashboardNavItems,
+  ...couponsNavItems,
   ...emergencySosNavItems,
   ...customerProfileControlNavItems,
   ...categoriesNavItems,
   ...usersNavItems,
   ...bookingsNavItems,
   ...cartBookingSettingsNavItems,
-  ...partnersNavItems,
   ...servicesNavItems,
   ...cookFamilySizesNavItems,
   ...cleaningCoverageNavItems,
@@ -52,6 +58,11 @@ export const adminNavItems: AdminNavItem[] = [
   ...sectionsNavItems,
   ...serviceableAreaNavItems,
   ...liveDispatchNavItems,
+  ...accountDeletionNavItems,
+  ...socialMediaNavItems,
+  ...legalContentNavItems,
+  ...websiteCitiesNavItems,
+  ...screeningCentreNavItems,
   ...notificationsNavItems,
   ...popularServicesNavItems,
   ...recommendedAddonsNavItems,
@@ -62,16 +73,18 @@ export const adminNavItems: AdminNavItem[] = [
   ...payoutsNavItems,
   ...operationsNavItems,
   ...apiReadinessNavItems,
+  ...partnerOnboardingNavItems,
 ];
 
 const adminRouteMeta: AdminRouteMeta[] = [
+  ...couponsRouteMeta,
+  ...socialMediaRouteMeta,
   ...emergencySosRouteMeta,
   ...usersRouteMeta,
   ...customerProfileControlRouteMeta,
   ...categoriesRouteMeta,
   ...bookingsRouteMeta,
   ...cartBookingSettingsRouteMeta,
-  ...partnersRouteMeta,
   ...servicesRouteMeta,
   ...cookFamilySizesRouteMeta,
   ...cleaningCoverageRouteMeta,
@@ -81,6 +94,10 @@ const adminRouteMeta: AdminRouteMeta[] = [
   ...sectionsRouteMeta,
   ...serviceableAreaRouteMeta,
   ...liveDispatchRouteMeta,
+  ...accountDeletionRouteMeta,
+  ...legalContentRouteMeta,
+  ...websiteCitiesRouteMeta,
+  ...screeningCentreRouteMeta,
   ...notificationsRouteMeta,
   ...popularServicesRouteMeta,
   ...recommendedAddonsRouteMeta,
@@ -92,6 +109,7 @@ const adminRouteMeta: AdminRouteMeta[] = [
   ...operationsRouteMeta,
   ...apiReadinessRouteMeta,
   ...dashboardRouteMeta,
+  ...partnerOnboardingRouteMeta,
 ].sort((first, second) => second.pathPrefix.length - first.pathPrefix.length);
 
 export function getAdminRouteMeta(pathname: string): AdminRouteMeta {

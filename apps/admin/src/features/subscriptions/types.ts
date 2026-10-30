@@ -1,5 +1,21 @@
-export type AdminSubscriptionStatus = "ACTIVE" | "CANCELLED" | "COMPLETED";
+export type AdminSubscriptionStatus =
+  | "PENDING"
+  | "PENDING_ADMIN_REVIEW"
+  | "UNDER_REVIEW"
+  | "PENDING_PARTNER_ASSIGNMENT"
+  | "PENDING_PARTNER_ACCEPTANCE"
+  | "CONFIRMED"
+  | "ACTIVE"
+  | "PAUSED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "COMPLETED";
 export type AdminSubscriptionVisitStatus = "SCHEDULED" | "COMPLETED" | "SKIPPED" | "CANCELLED";
+
+export type AdminEligiblePartner = {
+  partnerId: number;
+  partnerName: string;
+};
 
 export type AdminSubscriptionListItem = {
   id: number;
@@ -39,6 +55,10 @@ export type AdminSubscriptionDetail = AdminSubscriptionListItem & {
   instructions?: string;
   addOns?: string[];
   visitsList?: AdminSubscriptionVisit[];
+  paymentStatus?: string;
+  paymentBookingId?: number;
+  assignmentStatus?: string;
+  partnerName?: string;
 };
 
 export type AdminSubscriptionAssignment = {
@@ -60,6 +80,28 @@ export type AdminSubscriptionAssignment = {
     reason?: string;
     assignedAt?: string;
   }>;
+};
+
+export type AdminProfessionalChangeRequestStatus =
+  | "PENDING_ADMIN_REVIEW"
+  | "UNDER_REVIEW"
+  | "APPROVED"
+  | "PENDING_PARTNER_ASSIGNMENT"
+  | "PENDING_PARTNER_ACCEPTANCE"
+  | "COMPLETED"
+  | "REJECTED"
+  | "CANCELLED";
+
+export type AdminProfessionalChangeRequest = {
+  id: number;
+  subscriptionId?: number;
+  customerId?: number;
+  reasonCategory?: string;
+  description?: string;
+  status?: AdminProfessionalChangeRequestStatus | string;
+  adminReason?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type AdminSubscriptionsResponse = {

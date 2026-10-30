@@ -1,51 +1,64 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { Controller, useForm } from "react-hook-form";
+import { useQuery } from "@tanstack/react-query";
 import { StyleSheet, View } from "react-native";
-import { Button, Card, Snackbar, Text, TextInput } from "react-native-paper";
-import { z } from "zod";
-import { applyCoupon, getCoupons } from "../../api/couponApi";
+import { Card, Text } from "react-native-paper";
+import { getCoupons } from "../../api/couponApi";
 import { EmptyStateCard } from "../../components/common/EmptyStateCard";
 import { SkeletonList } from "../../components/common/SkeletonList";
+import { palette } from "../../constants/theme";
+import { COLORS } from "../../theme/colors";
+import type { CouponDto } from "../../types/contracts";
 
-const schema = z.object({ code: z.string().min(3, "Enter valid coupon code") });
+function couponStatus(coupon: CouponDto) {
+  if (coupon.active === false) return "Inactive";
+  if (coupon.validUntil && new Date(coupon.validUntil).getTime() < Date.now()) return "Expired";
+  if (coupon.totalUsageLimit != null && Number(coupon.usedCount ?? 0) >= Number(coupon.totalUsageLimit)) return "Used";
+  return "Available";
+}
 
-import { COLORS } from '../../theme/colors';
-
-type Form = z.infer<typeof schema>;
+function couponDescription(coupon: CouponDto) {
+  const value = Number(coupon.discountValue ?? coupon.discount ?? 0);
+  const amount = coupon.discountType === "PERCENTAGE" ? `${value}% off` : `INR ${value.toFixed(2)} off`;
+  return coupon.minimumPurchaseAmount && Number(coupon.minimumPurchaseAmount) > 0
+    ? `${amount} on orders above INR ${Number(coupon.minimumPurchaseAmount).toFixed(2)}`
+    : amount;
+}
 
 export function CouponScreen() {
-  const { control, handleSubmit, formState: { errors } } = useForm<Form>({ defaultValues: { code: "" }, resolver: zodResolver(schema) });
-  const coupons = useQuery<any>({ queryKey: ["coupons"], queryFn: getCoupons });
-  const apply = useMutation({ mutationFn: ({ code }: Form) => applyCoupon({ code }) });
-  const items = coupons.data?.data ?? coupons.data ?? [];
+  const coupons = useQuery<CouponDto[]>({ queryKey: ["coupons"], queryFn: () => getCoupons() });
+  const items = coupons.data ?? [];
 
   return (
     <View style={styles.root}>
       <Card style={styles.card}>
-        <Card.Title title="Apply Coupon" />
-        <Card.Content style={styles.form}>
-          <Controller control={control} name="code" render={({ field: { value, onChange } }) => <TextInput mode="outlined" label="Coupon code" value={value} onChangeText={onChange} autoCapitalize="characters" />} />
-          {errors.code ? <Text style={styles.err}>{errors.code.message}</Text> : null}
-          <Button mode="contained" onPress={handleSubmit((v) => apply.mutate(v))} loading={apply.isPending}>Apply Coupon</Button>
-        </Card.Content>
+        <Card.Title title="My Reward Coupons" subtitle="Apply a coupon from checkout. Final eligibility is verified by backend." />
       </Card>
-
       {coupons.isLoading ? <SkeletonList rows={3} /> : null}
-      {!coupons.isLoading && (!Array.isArray(items) || items.length === 0) ? <EmptyStateCard title="No coupons" subtitle="New offers will appear here." /> : null}
-      {Array.isArray(items) ? items.slice(0, 8).map((item: any, idx: number) => (
-        <Card key={String(item?.id ?? idx)} style={styles.item}><Card.Content><Text style={styles.code}>{item?.code ?? "COUPON"}</Text><Text>{item?.description ?? "Discount available"}</Text></Card.Content></Card>
-      )) : null}
-
-      <Snackbar visible={apply.isError} onDismiss={() => apply.reset()}>{apply.error instanceof Error ? apply.error.message : "Failed to apply coupon"}</Snackbar>
-      <Snackbar visible={apply.isSuccess} onDismiss={() => apply.reset()}>Coupon applied</Snackbar>
+      {!coupons.isLoading && items.length === 0 ? <EmptyStateCard title="No coupons" subtitle="New offers will appear here." /> : null}
+      {items.slice(0, 20).map(coupon => (
+        <Card key={String(coupon.id ?? coupon.code)} style={styles.item}>
+          <Card.Content style={styles.itemContent}>
+            <View style={styles.itemDetails}>
+              <Text style={styles.code}>{coupon.code}</Text>
+              <Text style={styles.itemText}>{couponDescription(coupon)}</Text>
+              <Text style={styles.itemText}>{coupon.applicableBookingType ? `For ${coupon.applicableBookingType.toLowerCase()} bookings` : "Valid for eligible bookings"}</Text>
+            </View>
+            <Text style={styles.status}>{couponStatus(coupon)}</Text>
+          </Card.Content>
+        </Card>
+      ))}
+      {coupons.isError ? <Text style={styles.error}>{coupons.error instanceof Error ? coupons.error.message : "Unable to load coupons"}</Text> : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({ root: { flex: 1, padding: 16, gap: 10 }, card: { borderRadius: 16 }, form: { gap: 8 }, item: { borderRadius: 12 }, code: { fontWeight: "800" }, err: { color: COLORS.danger } });
-
-
-
-
-
+const styles = StyleSheet.create({
+  root: { flex: 1, padding: 16, gap: 10, backgroundColor: palette.bg },
+  card: { borderRadius: 16, backgroundColor: COLORS.navyDark, borderWidth: 1, borderColor: COLORS.goldSoft },
+  item: { borderRadius: 12, backgroundColor: COLORS.navy, borderWidth: 1, borderColor: "rgba(224,169,75,0.28)" },
+  itemContent: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
+  itemDetails: { flex: 1, gap: 4 },
+  code: { fontWeight: "800", color: COLORS.white, fontSize: 16 },
+  itemText: { color: COLORS.neutral100, lineHeight: 18 },
+  status: { color: COLORS.goldSoft, fontWeight: "800", fontSize: 12 },
+  error: { color: COLORS.danger },
+});

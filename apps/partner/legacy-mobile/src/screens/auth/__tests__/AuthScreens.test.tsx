@@ -15,6 +15,19 @@ jest.mock("../../../services/firebaseAnalytics", () => ({
   trackAuthenticationEvent: jest.fn(),
 }));
 
+jest.mock("../../../context/AppLanguageContext", () => ({
+  useAppLanguage: () => ({
+    t: (key: string) => ({
+      "auth.title": "Welcome Back",
+      "auth.phone.label": "Mobile Number",
+      "auth.phone.placeholder": "9876543210",
+      "auth.send_otp": "Send OTP",
+      "validation.invalid_phone": "Enter a valid 10-digit mobile number.",
+      "common.something_went_wrong": "Unable to send OTP",
+    }[key] ?? key),
+  }),
+}));
+
 const mockSendOtp = sendOtp as jest.MockedFunction<typeof sendOtp>;
 describe("auth screens", () => {
   beforeEach(() => {
@@ -36,7 +49,7 @@ describe("auth screens", () => {
     fireEvent.press(await view.findByText("Send OTP"));
 
     await waitFor(() => {
-      expect(Alert.alert).toHaveBeenCalledWith("Invalid mobile number", "Enter a valid 10-digit mobile number.");
+      expect(Alert.alert).toHaveBeenCalledWith("Enter a valid 10-digit mobile number.", "Enter a valid 10-digit mobile number.");
     });
     expect(trackAuthenticationEvent).toHaveBeenCalledWith(false, { stage: "send_otp_validation" });
 

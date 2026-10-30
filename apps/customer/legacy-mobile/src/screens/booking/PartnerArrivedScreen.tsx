@@ -20,6 +20,10 @@ function formatDateTime(value?: string) {
   return parsed.toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
+function showStartPin(booking: any) {
+  return String(booking?.serviceStartPin ?? "").trim().length > 0;
+}
+
 export function PartnerArrivedScreen({ route, navigation }: { route: PartnerArrivedRoute; navigation: any }) {
   const bookingId = String(route?.params?.bookingId ?? "").trim();
   const bookingQuery = useInstantBookingLifecycle(bookingId);
@@ -59,6 +63,14 @@ export function PartnerArrivedScreen({ route, navigation }: { route: PartnerArri
         </Pressable>
       ) : null}
 
+      {showStartPin(booking) ? (
+        <View style={styles.pinCard}>
+          <Text style={styles.pinTitle}>Service Start PIN</Text>
+          <Text style={styles.pinValue}>{booking?.serviceStartPin}</Text>
+          <Text style={styles.pinMeta}>Expires: {formatDateTime(booking?.serviceStartPinExpiresAt)}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.startState}>
         <Text style={styles.startText}>Waiting for service to start.</Text>
       </View>
@@ -84,6 +96,10 @@ const styles = StyleSheet.create({
   row: { color: bookingTheme.colors.textMuted, fontSize: 13, fontWeight: "700" },
   primaryBtn: { backgroundColor: bookingTheme.colors.primaryBtn, borderRadius: radii.md, paddingVertical: spacing.md + 1, alignItems: "center", ...shadows.sm },
   primaryText: { color: bookingTheme.colors.primaryBtnText, fontSize: 14, fontWeight: "900" },
+  pinCard: { borderRadius: radii.md, borderWidth: 1, borderColor: COLORS.borderSoft, backgroundColor: COLORS.white, padding: spacing.md, gap: 6, alignItems: "center" },
+  pinTitle: { color: bookingTheme.colors.textPrimary, fontSize: 13, fontWeight: "900" },
+  pinValue: { color: bookingTheme.colors.textPrimary, fontSize: 28, fontWeight: "900", letterSpacing: 4 },
+  pinMeta: { color: bookingTheme.colors.textMuted, fontSize: 12, fontWeight: "700" },
   startState: { borderRadius: radii.md, borderWidth: 1, borderColor: COLORS.borderSoft, backgroundColor: COLORS.white, padding: spacing.md, alignItems: "center" },
   startText: { color: bookingTheme.colors.textPrimary, fontSize: 13, fontWeight: "800", textAlign: "center" },
 });

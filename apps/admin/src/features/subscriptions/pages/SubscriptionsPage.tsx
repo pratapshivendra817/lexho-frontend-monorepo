@@ -8,7 +8,19 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { getAdminSubscriptions } from "../api/subscriptionsApi";
 import type { AdminSubscriptionStatus } from "../types";
 
-const statusOptions: Array<"" | AdminSubscriptionStatus> = ["", "ACTIVE", "CANCELLED", "COMPLETED"];
+const statusOptions: Array<"" | AdminSubscriptionStatus> = [
+  "",
+  "PENDING_ADMIN_REVIEW",
+  "UNDER_REVIEW",
+  "PENDING_PARTNER_ASSIGNMENT",
+  "PENDING_PARTNER_ACCEPTANCE",
+  "CONFIRMED",
+  "ACTIVE",
+  "PAUSED",
+  "REJECTED",
+  "CANCELLED",
+  "COMPLETED",
+];
 
 const parsePage = (value: string | null) => {
   const parsed = Number(value);
@@ -18,11 +30,15 @@ const parsePage = (value: string | null) => {
 function StatusBadge({ status }: { status: string }) {
   const normalized = status.toUpperCase();
   const classes =
-    normalized === "ACTIVE"
+    normalized === "ACTIVE" || normalized === "CONFIRMED" || normalized === "COMPLETED"
       ? "bg-emerald-500/20 text-emerald-300"
-      : normalized === "CANCELLED"
+      : normalized === "REJECTED" || normalized === "CANCELLED"
         ? "bg-rose-500/20 text-rose-300"
-        : "bg-blue-500/20 text-blue-300";
+        : normalized === "PENDING_ADMIN_REVIEW" || normalized === "UNDER_REVIEW" || normalized === "PENDING_PARTNER_ASSIGNMENT" || normalized === "PENDING_PARTNER_ACCEPTANCE"
+          ? "bg-amber-500/20 text-amber-300"
+          : normalized === "PAUSED"
+            ? "bg-violet-500/20 text-violet-300"
+            : "bg-blue-500/20 text-blue-300";
   return <span className={`rounded-full px-2 py-1 text-xs font-medium ${classes}`}>{status}</span>;
 }
 

@@ -90,7 +90,7 @@ describe("PayoutsScreen", () => {
 
   it("renders payout rows and navigates to payout details", async () => {
     (getPartnerPayouts as jest.Mock).mockResolvedValueOnce([
-      { id: "p1", netAmount: 1200, createdAt: "2026-07-01T00:00:00Z", status: "PAID" },
+      { id: "p1", settlementAmount: 1200, createdAt: "2026-07-01T00:00:00Z", status: "PAID" },
     ]);
     let tree!: ReactTestRenderer.ReactTestRenderer;
     await act(async () => {
@@ -127,8 +127,8 @@ describe("PayoutsScreen", () => {
 
   it("reloads payouts when pull to refresh is triggered", async () => {
     (getPartnerPayouts as jest.Mock)
-      .mockResolvedValueOnce([{ id: "p1", netAmount: 1200, createdAt: "2026-07-01T00:00:00Z", status: "PAID" }])
-      .mockResolvedValueOnce([{ id: "p2", netAmount: 800, createdAt: "2026-07-02T00:00:00Z", status: "PROCESSING" }]);
+      .mockResolvedValueOnce([{ id: "p1", settlementAmount: 1200, createdAt: "2026-07-01T00:00:00Z", status: "PAID" }])
+      .mockResolvedValueOnce([{ id: "p2", settlementAmount: 800, createdAt: "2026-07-02T00:00:00Z", status: "PROCESSING" }]);
 
     let tree!: ReactTestRenderer.ReactTestRenderer;
     await act(async () => {

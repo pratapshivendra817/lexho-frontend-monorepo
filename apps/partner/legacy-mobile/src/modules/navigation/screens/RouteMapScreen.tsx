@@ -6,6 +6,23 @@ import { COLORS } from "../../../constants/colors";
 import { usePartnerNavigation } from "../hooks/usePartnerNavigation";
 import { buildRouteFeature, ensureMapboxConfigured, getMapboxStyleUrl, getRouteBounds, toMapboxCoordinate } from "../services/mapboxService";
 
+const ROUTE_MAP_COPY = {
+  routePreview: "Route Preview",
+  booking: "Booking",
+  startNavigation: "Start Navigation",
+  eta: "ETA",
+  distance: "Distance",
+  traffic: "Traffic",
+  fetchingRoute: "Fetching route...",
+  routePreviewPlaceholder: "Route preview will appear here.",
+  customerDetails: "Customer Details",
+  liveGpsStatus: "Live GPS status",
+  accurate: "Accurate",
+  verifying: "Verifying",
+  routeSource: "Route source",
+  pending: "pending",
+} as const;
+
 function formatEta(seconds: number | null) {
   if (!seconds) return "--";
   const minutes = Math.max(1, Math.round(seconds / 60));
@@ -42,8 +59,8 @@ export default function RouteMapScreen({ route, navigation }: any) {
     <View style={styles.root}>
       <View style={styles.headerCard}>
         <View style={styles.headerTextWrap}>
-          <Text style={styles.heading}>Route Preview</Text>
-          <Text style={styles.subheading}>Booking #{bookingId}</Text>
+          <Text style={styles.heading}>{ROUTE_MAP_COPY.routePreview}</Text>
+          <Text style={styles.subheading}>{`${ROUTE_MAP_COPY.booking} #${bookingId}`}</Text>
         </View>
         <TouchableOpacity
           style={styles.primaryButton}
@@ -55,15 +72,15 @@ export default function RouteMapScreen({ route, navigation }: any) {
             })
           }
         >
-          <Text style={styles.primaryButtonText}>Start Navigation</Text>
+          <Text style={styles.primaryButtonText}>{ROUTE_MAP_COPY.startNavigation}</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.statsRow}>
-        <InfoCard label="ETA" value={formatEta(navigationState.eta)} icon="clock-outline" />
-        <InfoCard label="Distance" value={formatDistance(navigationState.distance)} icon="map-marker-distance" />
+        <InfoCard label={ROUTE_MAP_COPY.eta} value={formatEta(navigationState.eta)} icon="clock-outline" />
+        <InfoCard label={ROUTE_MAP_COPY.distance} value={formatDistance(navigationState.distance)} icon="map-marker-distance" />
         <InfoCard
-          label="Traffic"
+          label={ROUTE_MAP_COPY.traffic}
           value={formatEta(navigationState.trafficDelaySeconds)}
           icon="traffic-light-outline"
         />
@@ -89,19 +106,19 @@ export default function RouteMapScreen({ route, navigation }: any) {
             {navigationState.routeStatus === "loading" ? (
               <>
                 <ActivityIndicator color={COLORS.secondary} />
-                <Text style={styles.placeholderText}>Fetching route...</Text>
+                <Text style={styles.placeholderText}>{ROUTE_MAP_COPY.fetchingRoute}</Text>
               </>
             ) : (
-              <Text style={styles.placeholderText}>{navigationState.lastError ?? "Route preview will appear here."}</Text>
+              <Text style={styles.placeholderText}>{navigationState.lastError ?? ROUTE_MAP_COPY.routePreviewPlaceholder}</Text>
             )}
           </View>
         )}
       </View>
 
       <View style={styles.footerCard}>
-        <Text style={styles.footerTitle}>Customer Details</Text>
-        <Text style={styles.footerMeta}>Live GPS status: {tracking.accuracyValid ? "Accurate" : "Verifying"}</Text>
-        <Text style={styles.footerMeta}>Route source: {activeRoute?.source ?? "pending"}</Text>
+        <Text style={styles.footerTitle}>{ROUTE_MAP_COPY.customerDetails}</Text>
+        <Text style={styles.footerMeta}>{`${ROUTE_MAP_COPY.liveGpsStatus}: ${tracking.accuracyValid ? ROUTE_MAP_COPY.accurate : ROUTE_MAP_COPY.verifying}`}</Text>
+        <Text style={styles.footerMeta}>{`${ROUTE_MAP_COPY.routeSource}: ${activeRoute?.source ?? ROUTE_MAP_COPY.pending}`}</Text>
       </View>
     </View>
   );

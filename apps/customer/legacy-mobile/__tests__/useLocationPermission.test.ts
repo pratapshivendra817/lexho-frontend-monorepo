@@ -2,15 +2,22 @@ import { Linking, PermissionsAndroid, Platform } from "react-native";
 
 const mockCheck = jest.fn();
 const mockRequest = jest.fn();
+const mockGeo = {
+  requestAuthorization: jest.fn(),
+};
 const mockPermissionsModule = {
   RESULTS: {
     GRANTED: "granted",
     BLOCKED: "blocked",
     DENIED: "denied",
+    LIMITED: "limited",
   },
   PERMISSIONS: {
     ANDROID: {
       ACCESS_FINE_LOCATION: undefined as string | undefined,
+    },
+    IOS: {
+      LOCATION_WHEN_IN_USE: undefined as string | undefined,
     },
   },
   check: (...args: unknown[]) => mockCheck(...args),
@@ -20,6 +27,13 @@ const mockPermissionsModule = {
 jest.mock("react-native-permissions", () => mockPermissionsModule, {
   virtual: true,
 });
+jest.mock("react-native-geolocation-service", () => ({
+  __esModule: true,
+  default: {
+    requestAuthorization: (...args: unknown[]) =>
+      mockGeo.requestAuthorization(...args),
+  },
+}));
 
 import {
   openLocationSettings,
@@ -48,18 +62,21 @@ describe("useLocationPermission utilities", () => {
     });
   });
 
-  it("returns denied without requesting permission outside Android", async () => {
+  it("requests iOS when-in-use permission outside Android", async () => {
     Object.defineProperty(Platform, "OS", {
       configurable: true,
       value: "ios",
     });
+    mockGeo.requestAuthorization.mockResolvedValue("granted");
 
-    await expect(requestLocationPermission()).resolves.toBe("denied");
+    await expect(requestLocationPermission()).resolves.toBe("granted");
+    expect(mockGeo.requestAuthorization).toHaveBeenCalledWith("whenInUse");
     expect(PermissionsAndroid.check).not.toHaveBeenCalled();
   });
 
   it.each([
     ["granted", undefined, "granted"],
+    ["blocked", undefined, "blocked"],
     ["denied", "granted", "granted"],
     ["denied", "blocked", "blocked"],
     ["denied", "denied", "denied"],
@@ -72,7 +89,7 @@ describe("useLocationPermission utilities", () => {
       mockRequest.mockResolvedValue(requested);
 
       await expect(requestLocationPermission()).resolves.toBe(expected);
-      if (current === "granted") {
+      if (current === "granted" || current === "blocked") {
         expect(mockRequest).not.toHaveBeenCalled();
       }
     },

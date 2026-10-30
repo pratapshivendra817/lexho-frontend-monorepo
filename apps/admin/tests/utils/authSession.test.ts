@@ -50,8 +50,8 @@ describe("authSession", () => {
     expect(getAccessToken()).toBe("admin-token");
 
     localStorage.removeItem("admin_access_token");
-    localStorage.setItem("access_token", "legacy-token");
-    expect(getAccessToken()).toBe("legacy-token");
+    localStorage.setItem("access_token", "customer-token");
+    expect(getAccessToken()).toBeNull();
 
     setRefreshToken("refresh-token");
     expect(getRefreshToken()).toBe("refresh-token");
@@ -88,7 +88,7 @@ describe("authSession", () => {
 
   it("clears access state and reports whether an admin session exists", () => {
     localStorage.setItem("admin_access_token", "admin-token");
-    localStorage.setItem("access_token", "legacy-token");
+    localStorage.setItem("access_token", "customer-token");
     localStorage.setItem("admin_refresh_token", "refresh-token");
 
     expect(hasAdminSession()).toBe(true);
@@ -96,7 +96,7 @@ describe("authSession", () => {
     clearAccessToken();
 
     expect(localStorage.getItem("admin_access_token")).toBeNull();
-    expect(localStorage.getItem("access_token")).toBeNull();
+    expect(localStorage.getItem("access_token")).toBe("customer-token");
     expect(localStorage.getItem("admin_refresh_token")).toBeNull();
     expect(hasAdminSession()).toBe(false);
   });

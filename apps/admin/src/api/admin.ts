@@ -3,7 +3,6 @@ import type { Banner } from "@/types/banner";
 import type { BookingDetails, BookingListItem } from "@/types/booking";
 import type { Notification, NotificationType } from "@/types/notification";
 import type { Payout } from "@/types/payout";
-import type { Partner, VerificationStatus } from "@/types/partner";
 import type { Review } from "@/types/review";
 import type { Service } from "@/types/service";
 import type { Ticket, TicketPriority, TicketStatus } from "@/types/ticket";
@@ -267,27 +266,6 @@ export async function fetchBookingById(id: string) {
   return pickObject<BookingDetails>(data, ["data", "booking", "item", "result"]);
 }
 
-export async function fetchPartners(params?: { status?: string; search?: string }) {
-  const { data } = await api.get("/api/admin/partners", { params });
-  return pickArray<Partner>(data, ["data", "content", "partners", "items", "results"]);
-}
-
-export async function fetchPartnerById(id: string) {
-  const { data } = await api.get(`/api/admin/partners/${id}`);
-  return pickObject<Partner>(data, ["data", "partner", "item", "result"]);
-}
-
-export async function updatePartnerVerification(payload: {
-  id: string;
-  status: VerificationStatus;
-  reason?: string;
-}) {
-  await api.patch(`/api/admin/partners/${payload.id}/verification`, {
-    status: payload.status,
-    reason: payload.reason,
-  });
-}
-
 export async function fetchServices() {
   const { data } = await api.get("/api/admin/services");
   return pickArray<Service>(data, ["data", "content", "services", "items", "results"]);
@@ -487,4 +465,64 @@ export async function deleteSupportFaqItem(categoryId: string, faqId: string) {
   await api.delete(`/api/admin/support/faq-categories/${categoryId}/faqs/${faqId}`);
 }
 
+export type PartnerOnboardingReview = {
+  applicationStatus: "PENDING" | "APPROVED" | "REJECTED" | "BLOCKED";
+  documentStatus: "PENDING" | "UNDER_REVIEW" | "VERIFIED" | "REJECTED";
+  rejectionReason: string | null;
+};
 
+export async function fetchPartnerOnboardingApplications(params?: { page?: number; size?: number }) {
+  const { data } = await api.get("/api/admin/partners/onboarding", {
+    params: { page: params?.page ?? 0, size: params?.size ?? 20 },
+  });
+  return data;
+}
+
+export async function fetchPartnerOnboarding(partnerId: string | number) {
+  const { data } = await api.get(`/api/admin/partners/${partnerId}/onboarding`);
+  return data;
+}
+
+export async function reviewPartnerOnboarding(
+  partnerId: string | number,
+  payload: PartnerOnboardingReview,
+) {
+  const { data } = await api.patch(`/api/admin/partners/${partnerId}/onboarding/review`, payload);
+  return data;
+}
+
+export type PartnerOnboardingNotificationPayload = PartnerOnboardingReview & {
+  partnerId: string | number;
+  title: string;
+  message: string;
+};
+
+export async function sendPartnerOnboardingReviewNotification(
+  payload: PartnerOnboardingNotificationPayload,
+) {
+  const numericPartnerId = Number(payload.partnerId);
+  const notificationPayload = {
+    userId: Number.isFinite(numericPartnerId) ? numericPartnerId : undefined,
+    partnerId: payload.partnerId,
+    providerId: payload.partnerId,
+    targetUserType: "PARTNER",
+    audience: "PARTNER",
+    appType: "PARTNER",
+    title: payload.title,
+    message: payload.message,
+    body: payload.message,
+    type: "PUSH",
+    notificationType: "ONBOARDING",
+    redirectType: "ONBOARDING",
+    referenceType: "ONBOARDING",
+    referenceId: payload.partnerId,
+    redirectValue: payload.partnerId,
+    metadata: {
+      applicationStatus: payload.applicationStatus,
+      documentStatus: payload.documentStatus,
+      rejectionReason: payload.rejectionReason,
+    },
+  };
+  const { data } = await api.post("/api/admin/notifications", notificationPayload);
+  return data;
+}

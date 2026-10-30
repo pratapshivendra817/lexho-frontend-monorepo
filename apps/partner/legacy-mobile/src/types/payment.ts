@@ -12,6 +12,8 @@ export type PartnerEarningsTransaction = {
   bookingId?: string;
   description: string;
   amount: number;
+  netAmount?: number;
+  settlementAmount?: number;
   type?: string;
   status?: string;
   createdAt?: string;
@@ -19,10 +21,7 @@ export type PartnerEarningsTransaction = {
 
 export type PartnerPayout = {
   id: string;
-  grossAmount: number;
-  commissionAmount: number;
-  reversalAmount: number;
-  netAmount: number;
+  settlementAmount: number;
   status: string;
   createdAt?: string;
   settledAt?: string;

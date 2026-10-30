@@ -4,6 +4,8 @@ const mockParseApiError = jest.fn(
   (_error: unknown, fallback: string) => fallback,
 );
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 jest.mock("../src/api/client", () => ({
   api: {
     get: (...args: unknown[]) => mockGet(...args),
@@ -20,7 +22,8 @@ import {
 } from "../src/api/bookingApi";
 
 describe("bookingApi", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
     jest.clearAllMocks();
     mockParseApiError.mockImplementation(
       (_error: unknown, fallback: string) => fallback,
@@ -331,6 +334,20 @@ describe("bookingApi", () => {
   });
 
   describe("createBooking", () => {
+    it("keeps explicit instant mode even when a slot is supplied", async () => {
+      mockPost.mockResolvedValue({ data: { data: { bookingId: "B1" } } });
+      await createBooking({ serviceId: "7", addressId: "2", bookingType: "INSTANT", date: "2026-09-15", slot: "15:00-15:30" });
+      expect(mockPost).toHaveBeenCalledWith("/api/v1/bookings/create", expect.objectContaining({ bookingType: "INSTANT" }));
+    });
+
+    it("preserves the saved location UUID in the booking request", async () => {
+      mockPost.mockResolvedValue({ data: { data: { bookingId: "B1" } } });
+      await createBooking({ serviceId: "7", addressId: "b5f02d8a-b64b-4329-89f7-a7daa1f67ef5", latitude: 19.14, longitude: 72.80 });
+      expect(mockPost).toHaveBeenCalledWith("/api/v1/bookings/create", expect.objectContaining({
+        addressId: "b5f02d8a-b64b-4329-89f7-a7daa1f67ef5",
+      }));
+    });
+
     it("creates a scheduled booking with normalized coordinates and values", async () => {
       mockPost.mockResolvedValue({
         data: {
@@ -359,7 +376,7 @@ describe("bookingApi", () => {
           serviceName: "Cleaning",
         }),
       );
-      expect(mockPost).toHaveBeenCalledWith("/api/v1/bookings/create", {
+      expect(mockPost).toHaveBeenCalledWith("/api/v1/bookings/create", expect.objectContaining({
         serviceId: 7,
         addressId: 8,
         latitude: 22.7,
@@ -369,7 +386,7 @@ describe("bookingApi", () => {
         date: "2026-06-13",
         slot: "10:00",
         note: "Ring bell",
-      });
+      }));
     });
 
     it.each([
@@ -402,7 +419,7 @@ describe("bookingApi", () => {
           "/api/v1/bookings/create",
           expect.objectContaining({
             serviceId: 0,
-            addressId: 0,
+            addressId: undefined,
             latitude: undefined,
             longitude: undefined,
             coordinates: undefined,
@@ -446,17 +463,25 @@ describe("bookingApi", () => {
       },
     );
 
-    it.each([
-      [{ response: { status: 400, data: { message: "Invalid", reasonCode: "BAD" } } }, "Invalid booking"],
-      [{ response: { status: 500, data: { message: "Down" } } }, "Server failure"],
-      [{ code: "ERR_NETWORK", message: "Network Error" }, "Network failure"],
-      [{ code: "ECONNABORTED", message: "timeout" }, "Timeout failure"],
-    ])("does not retry non-legacy create errors %#", async (error, readable) => {
+    it("does not retry non-legacy validation errors", async () => {
+      const error = { response: { status: 400, data: { message: "Invalid", reasonCode: "BAD" } } };
       mockPost.mockRejectedValue(error);
-      mockParseApiError.mockReturnValue(readable);
+      mockParseApiError.mockReturnValue("Invalid booking");
       await expect(
         createBooking({ serviceId: "1", addressId: "2" }),
-      ).rejects.toThrow(readable);
+      ).rejects.toThrow("Invalid booking");
+      expect(mockPost).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      [{ response: { status: 500, data: { message: "Down" } } }],
+      [{ code: "ERR_NETWORK", message: "Network Error" }],
+      [{ code: "ECONNABORTED", message: "timeout" }],
+    ])("queues booking creation on network/server availability failures %#", async (error) => {
+      mockPost.mockRejectedValue(error);
+      await expect(
+        createBooking({ serviceId: "1", addressId: "2" }),
+      ).rejects.toThrow("Network unavailable. Booking request has been queued and will retry automatically.");
       expect(mockPost).toHaveBeenCalledTimes(1);
     });
 

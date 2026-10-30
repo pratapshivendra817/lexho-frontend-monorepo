@@ -199,7 +199,7 @@ describe("shiftApi", () => {
       expect(mockGetReadableApiError).toHaveBeenCalledWith(expect.any(Error), "Unable to update availability");
     });
 
-    it("ignores optional partner sync failures after dispatch availability succeeds", async () => {
+    it("rejects and rolls dispatch offline when service availability cannot sync", async () => {
       mockApi.put
         .mockResolvedValueOnce({ data: { success: true } } as any)
         .mockRejectedValueOnce(new Error("partner sync failed"))
@@ -209,8 +209,17 @@ describe("shiftApi", () => {
         .mockRejectedValueOnce(new Error("partner sync failed payload 3"))
         .mockRejectedValueOnce(new Error("legacy partner sync failed payload 3"))
         .mockRejectedValueOnce(new Error("partner sync failed payload 4"))
-        .mockRejectedValueOnce(new Error("legacy partner sync failed payload 4"));
+        .mockRejectedValueOnce(new Error("legacy partner sync failed payload 4"))
+        .mockResolvedValueOnce({ data: { success: true } } as any);
 
+      await expect(setPartnerAvailabilityApi(true)).rejects.toThrow("legacy partner sync failed payload 4");
+      expect(mockApi.put).toHaveBeenLastCalledWith("/api/v1/partner/dispatch/availability", { online: false });
+    });
+
+    it("accepts the backend's direct availability response", async () => {
+      mockApi.put
+        .mockResolvedValueOnce({ data: { success: true } } as any)
+        .mockResolvedValueOnce({ data: { online: true, updatedAt: "2026-09-16T12:00:00Z" } } as any);
       await expect(setPartnerAvailabilityApi(true)).resolves.toBeUndefined();
     });
 

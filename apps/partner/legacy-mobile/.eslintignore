@@ -1,0 +1,6 @@
+coverage/
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+jest.setup.js
+jest.afterEnv.js

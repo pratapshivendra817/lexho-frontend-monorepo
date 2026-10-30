@@ -16,7 +16,7 @@ jest.mock("../src/api/client", () => ({
   extractList: (...args: any[]) => (mockExtract as any)(...args),
 }));
 
-import { applyCoupon, getCoupons } from "../src/api/couponApi";
+import { applyCoupon, getCartCoupons, getCoupons } from "../src/api/couponApi";
 import { addFavorite, getFavorites, removeFavorite } from "../src/api/favoritesApi";
 import { applyReferral, generateReferral } from "../src/api/referralApi";
 import { getPaymentStatus, refundPayment, retryPayment } from "../src/api/paymentExtrasApi";
@@ -40,17 +40,65 @@ describe("small API wrappers", () => {
     mockApi.post.mockResolvedValue({ data: { ok: true } });
     mockApi.get.mockResolvedValue({ data: { data: [{ id: "1" }] } });
     mockApi.delete.mockResolvedValue({ data: { removed: true } });
-    await expect(applyCoupon({ code: "SAVE" } as any)).resolves.toEqual({ ok: true });
+    await expect(applyCoupon({ code: "SAVE", planId: 11, categoryId: 3, amount: 499, bookingType: "INSTANT" })).resolves.toEqual({
+      valid: false,
+      couponCode: "SAVE",
+      originalAmount: undefined,
+      discountAmount: undefined,
+      finalAmount: undefined,
+      currency: "INR",
+      message: "Coupon validated",
+    });
+    expect(mockApi.post).toHaveBeenCalledWith("/api/coupons/validate", { code: "SAVE", planId: 11, categoryId: 3, amount: 499, bookingType: "INSTANT" });
     await expect(getCoupons()).resolves.toEqual([{ id: "1" }]);
     await expect(addFavorite({ serviceId: "1" } as any)).resolves.toEqual({ ok: true });
     await expect(getFavorites()).resolves.toEqual([{ id: "1" }]);
     await expect(removeFavorite("1")).resolves.toEqual({ removed: true });
-    await expect(generateReferral()).resolves.toEqual({ ok: true });
+    await expect(generateReferral()).resolves.toEqual({ code: "" });
     await expect(applyReferral({ code: "REF" } as any)).resolves.toEqual({ ok: true });
+    expect(mockApi.post).toHaveBeenCalledWith("/api/referrals/generate");
+    expect(mockApi.post).toHaveBeenCalledWith("/api/referrals/apply", { code: "REF" });
     await expect(getPaymentStatus("B1")).resolves.toEqual({ data: [{ id: "1" }] });
     await expect(retryPayment("B1")).resolves.toEqual({ ok: true });
     await expect(refundPayment({ bookingId: "B1" } as any)).resolves.toEqual({ ok: true });
     expect(mockApi.delete).toHaveBeenCalledWith("/api/favorites/remove", { data: { id: "1" } });
+  });
+
+  it("loads admin campaign coupons from data.data with pagination", async () => {
+    const coupon = { code: "CAMPAIGN50", title: "Campaign offer", discountValue: 50 };
+    mockApi.get.mockResolvedValue({ data: { success: true, message: "Coupons fetched", data: { data: [coupon] } } });
+    await expect(getCartCoupons()).resolves.toEqual([coupon]);
+    expect(mockApi.get).toHaveBeenCalledWith("/api/coupon/list", { params: { page: 0, size: 20 } });
+    mockApi.get.mockRejectedValue(new Error("network"));
+    await expect(getCartCoupons()).rejects.toThrow("Unable to load available coupons");
+  });
+
+  it.each([
+    { items: [{ code: "SAVE" }] },
+    { data: { content: [{ code: "SAVE" }] } },
+    { data: { data: { coupons: [{ code: "SAVE" }] } } },
+  ])("reads coupon list envelopes without losing offers: %j", async (data) => {
+    mockApi.get.mockResolvedValue({ data });
+    await expect(getCartCoupons()).resolves.toEqual([{ code: "SAVE" }]);
+  });
+
+  it.each([{}, { success: false, data: [] }, { data: null }])("rejects invalid coupon responses instead of reporting no coupons: %j", async (data) => {
+    mockApi.get.mockResolvedValue({ data });
+    await expect(getCartCoupons()).rejects.toThrow("Unable to load available coupons");
+  });
+
+  it("accepts a successfully returned empty coupon list", async () => {
+    mockApi.get.mockResolvedValue({ data: { success: true, data: { content: [] } } });
+    await expect(getCartCoupons()).resolves.toEqual([]);
+  });
+
+  it("accepts discount response fields without a valid flag, but respects explicit rejection", async () => {
+    const payload = { code: "CAMPAIGN50", amount: 499, planId: 11, categoryId: 3, bookingType: "INSTANT" as const };
+    const discount = { couponCode: "CAMPAIGN50", discountAmount: 50, finalAmount: 449 };
+    mockApi.post.mockResolvedValue({ data: { data: discount } });
+    await expect(applyCoupon(payload)).resolves.toMatchObject({ ...discount, valid: true });
+    mockApi.post.mockResolvedValue({ data: { data: { ...discount, valid: false } } });
+    await expect(applyCoupon(payload)).resolves.toMatchObject({ valid: false });
   });
 
   it("normalizes empty list responses and all simple-wrapper errors", async () => {
@@ -231,7 +279,7 @@ describe("small API wrappers", () => {
   });
 
   it("creates subscription bookings with endpoint fallback and final error", async () => {
-    mockApi.post.mockRejectedValueOnce(new Error("first")).mockResolvedValueOnce({ data: { data: { id: "SB1" } } });
+    mockApi.post.mockRejectedValueOnce({ response: { status: 404 } }).mockResolvedValueOnce({ data: { data: { id: "SB1" } } });
     await expect(createSubscriptionBooking({ serviceId: 1, visits: 4 })).resolves.toEqual({ id: "SB1" });
     mockApi.post.mockRejectedValue(new Error("all failed"));
     await expect(createSubscriptionBooking({})).rejects.toThrow("Unable to create subscription booking");

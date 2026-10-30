@@ -1,5 +1,7 @@
 const { jest: jestGlobals } = require('@jest/globals');
 
+jestGlobals.mock('react-native-webview', () => ({ WebView: 'WebView' }));
+
 jestGlobals.mock('react-native-linear-gradient', () => 'LinearGradient');
 jestGlobals.mock('react-native-vector-icons/Ionicons', () => 'Icon');
 jestGlobals.mock('react-native-vector-icons/Feather', () => 'FeatherIcon');

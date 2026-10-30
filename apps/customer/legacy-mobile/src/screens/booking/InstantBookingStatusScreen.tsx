@@ -13,11 +13,12 @@ import { trackBookingCancelled } from "../../services/customerAnalyticsEvents";
 import { captureFrontendError } from "../../services/monitoring";
 import { BookingStageShell } from "../../components/booking/BookingStageShell";
 import { StatusBadge } from "../../components/booking/StatusBadge";
+import { AssignedPartnerMap } from "../../components/booking/AssignedPartnerMap";
 import { bookingTheme } from "../../components/booking/bookingTheme";
 import { COLORS } from '../../theme/colors';
 import { radii, shadows, spacing } from "../../constants/theme";
 
-type InstantBookingStatusRoute = { params?: { bookingId?: string } };
+type InstantBookingStatusRoute = { params?: { bookingId?: string; serviceName?: string; address?: string; amount?: number; currency?: string; scheduledAt?: string } };
 
 function toReadableDateTime(value?: string) {
   const raw = String(value ?? "").trim();
@@ -31,7 +32,8 @@ export function InstantBookingStatusScreen({ route, navigation }: { route: Insta
   const bookingId = String(route?.params?.bookingId ?? "").trim();
 
   const bookingQuery = useInstantBookingLifecycle(bookingId);
-  const details = bookingQuery.data;
+  const routeFallback = route?.params ?? {};
+  const details: any = bookingQuery.data ? { ...routeFallback, ...bookingQuery.data } : { id: bookingId, ...routeFallback };
   const meta = getBookingMeta(details);
   const statusForBadge = String(details?.assignmentStatus ?? details?.status ?? "SEARCHING_PARTNER").toUpperCase();
   const partnerPhone = String(details?.partnerPhone ?? "").trim();
@@ -93,15 +95,19 @@ export function InstantBookingStatusScreen({ route, navigation }: { route: Insta
 
           <Text style={styles.serviceName}>{details?.serviceName ?? "Service Booking"}</Text>
           <View style={styles.metaLine}>
+            <MaterialCommunityIcon name="cash" size={14} color={COLORS.goldSoft} />
+            <Text style={styles.row}>{details?.currency ?? "Rs"} {details?.totalAmount ?? details?.amount ?? details?.price ?? "-"}</Text>
+          </View>
+          <View style={styles.metaLine}>
             <MaterialCommunityIcon name="calendar-clock-outline" size={14} color={COLORS.goldSoft} />
             <Text style={styles.row}>{toReadableDateTime(details?.scheduledAt ?? details?.promisedStartTime)}</Text>
           </View>
           <View style={styles.metaLine}>
             <MaterialCommunityIcon name="map-marker-outline" size={14} color={COLORS.goldSoft} />
-            <Text style={styles.row}>{details?.fullAddress ?? details?.address ?? "-"}</Text>
+            <Text style={[styles.row, styles.address]}>{details?.fullAddress || details?.address || "-"}</Text>
           </View>
 
-          <View style={styles.partnerRow}>
+          {details?.partnerId || statusForBadge === "PARTNER_ASSIGNED" ? <View style={styles.partnerRow}>
             {partnerProfileImage ? (
               <Image source={{ uri: partnerProfileImage }} style={styles.partnerAvatarImage} resizeMode="cover" />
             ) : (
@@ -145,8 +151,10 @@ export function InstantBookingStatusScreen({ route, navigation }: { route: Insta
               </Pressable>
             </View>
             ) : null}
-          </View>
+          </View> : null}
         </View>
+
+        {statusForBadge === "PARTNER_ASSIGNED" ? <AssignedPartnerMap booking={details} /> : null}
 
         <View style={styles.progressWrap}>
           <BookingTimeline history={details?.statusHistory} compact />
@@ -229,6 +237,7 @@ const styles = StyleSheet.create({
   loader: { marginTop: 6 },
   card: { gap: 8 },
   row: { color: bookingTheme.colors.textMuted, fontSize: 13, fontWeight: "700" },
+  address: { flex: 1, lineHeight: 20 },
   serviceName: { color: bookingTheme.colors.textPrimary, fontSize: 18, fontWeight: "900" },
   metaLine: { flexDirection: "row", alignItems: "center", gap: 6 },
   partnerRow: { marginTop: 8, flexDirection: "row", alignItems: "center", gap: 10 },

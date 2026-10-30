@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { COLORS } from '../../theme/colors';
 
 type Address = {
-  id: number;
+  id: number | string;
   fullAddress: string;
   city?: string;
   pincode?: string;
@@ -12,8 +12,8 @@ type Address = {
 
 type AddressSelectorProps = {
   addresses: Address[];
-  selectedAddressId: number | null;
-  onSelect: (id: number) => void;
+  selectedAddressId: number | string | null;
+  onSelect: (id: number | string) => void;
   showError?: boolean;
 };
 
@@ -22,7 +22,7 @@ export function AddressSelector({ addresses, selectedAddressId, onSelect, showEr
     <View style={styles.wrap}>
       <Text style={styles.title}>Select Address</Text>
       {addresses.map((address) => {
-        const selected = selectedAddressId === address.id;
+        const selected = String(selectedAddressId) === String(address.id);
         return (
           <Pressable
             key={address.id}

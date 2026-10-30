@@ -13,6 +13,7 @@ describe("partner api service", () => {
     manufacturer = "google",
     scriptURL = buildBundleUrl("192.168.0.15"),
     configuredApiBaseUrl = "",
+    manualRealDeviceApiHost = "",
   }: {
     platform?: string;
     fingerprint?: string;
@@ -21,6 +22,7 @@ describe("partner api service", () => {
     manufacturer?: string;
     scriptURL?: string | null;
     configuredApiBaseUrl?: string;
+    manualRealDeviceApiHost?: string;
   } = {}) => {
     jest.resetModules();
 
@@ -46,6 +48,7 @@ describe("partner api service", () => {
     const storage = {
       clearSession: jest.fn(async () => undefined),
       getOrCreateDeviceId: jest.fn(async () => "device-1"),
+      getPartnerLanguage: jest.fn(async () => null),
       getRefreshToken: jest.fn(async () => "refresh-1"),
       getToken: jest.fn(async () => "access-1"),
       saveRefreshToken: jest.fn(async () => undefined),
@@ -62,6 +65,7 @@ describe("partner api service", () => {
     jest.doMock("../src/services/crashlyticsService", () => ({ logApiFailure }));
     jest.doMock("react-native-config", () => ({
       API_BASE_URL: configuredApiBaseUrl,
+      MANUAL_REAL_DEVICE_API_HOST: manualRealDeviceApiHost,
     }));
     jest.doMock("react-native", () => ({
       Platform: { OS: platform },
@@ -109,7 +113,7 @@ describe("partner api service", () => {
     expect(API_BASE_URL).toBe("https://partner-api.lexho.test");
   });
 
-  it("uses localhost for real android devices when adb reverse is enabled", () => {
+  it("uses the metro host for real android devices", () => {
     const { API_BASE_URL } = loadApiModule({
       fingerprint: "samsung/device",
       model: "sm-a54",
@@ -117,7 +121,20 @@ describe("partner api service", () => {
       manufacturer: "samsung",
     });
 
-    expect(API_BASE_URL).toBe(buildApiUrl("localhost"));
+    expect(API_BASE_URL).toBe(buildApiUrl("192.168.0.15"));
+  });
+
+  it("prefers the manual real device host over the metro host", () => {
+    const { API_BASE_URL } = loadApiModule({
+      fingerprint: "samsung/device",
+      model: "sm-a54",
+      brand: "samsung",
+      manufacturer: "samsung",
+      scriptURL: buildBundleUrl("192.168.0.15"),
+      manualRealDeviceApiHost: "192.168.31.38",
+    });
+
+    expect(API_BASE_URL).toBe(buildApiUrl("192.168.31.38"));
   });
 
   it("falls back to metro host on ios", () => {
@@ -152,6 +169,15 @@ describe("partner api service", () => {
 
     await expect(requestInterceptor(config)).resolves.toBe(config);
     expect(config.headers.Authorization).toBe("Bearer access-1");
+  });
+
+  it("adds the selected partner locale as Accept-Language", async () => {
+    const loaded = loadApiModule();
+    loaded.storage.getPartnerLanguage.mockResolvedValueOnce("hi-IN");
+    const config = { headers: {} as Record<string, string> };
+
+    await expect(loaded.requestInterceptor(config)).resolves.toBe(config);
+    expect(config.headers["Accept-Language"]).toBe("hi-IN");
   });
 
   it("keeps request config unchanged when no token exists", async () => {

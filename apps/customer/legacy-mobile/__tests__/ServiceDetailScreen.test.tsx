@@ -240,6 +240,22 @@ describe("ServiceDetailScreen", () => {
     expect(mockGoBack).toHaveBeenCalled();
   });
 
+  it.each(["Vehicle Wash", "Vehical Wash", "Fitness & Wellness"])(
+    "selects Time Based duration and passes it to cart for %s",
+    async categoryName => {
+      mockFetchDetails.mockResolvedValue({ ...details, serviceName: "Standard service" });
+      const view = await renderScreen({ categoryName, categoryId: "other", serviceName: "Standard service" });
+      await view.findByText("Standard service");
+      expect(view.getByText("Time Based")).toBeTruthy();
+      await fireEvent.press(view.getByText("2 hrs"));
+      expect(view.getAllByText("Rs. 600").length).toBeGreaterThan(0);
+      await fireEvent.press(view.getByText("Book Now"));
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("CartCrud", expect.objectContaining({
+        serviceId: 55, categoryName, durationHours: 2, durationLabel: "2 hrs",
+      })));
+    },
+  );
+
   it("selects coverage and add-ons, expands sections, and creates a scheduled cart payload", async () => {
     mockFetchDetails.mockResolvedValue({
       ...details,
@@ -276,6 +292,8 @@ describe("ServiceDetailScreen", () => {
 
     expect(mockAddToCart).toHaveBeenCalledWith({
       serviceId: 55,
+      categoryId: "cook",
+      categoryName: "Cleaning",
       quantity: 1,
       addons: [
         { addonId: 1, quantity: 1 },
@@ -297,6 +315,8 @@ describe("ServiceDetailScreen", () => {
     expect(mockNavigate).toHaveBeenCalledWith(
       "CartCrud",
       expect.objectContaining({
+        recurringBooking: null,
+        categoryName: "Cleaning",
         bookingMode: "SCHEDULED",
         scheduleMode: "FIXED",
         durationHours: 1,

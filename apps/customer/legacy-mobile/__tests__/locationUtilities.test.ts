@@ -4,6 +4,7 @@ const mockGeo = {
   getCurrentPosition: jest.fn(),
   watchPosition: jest.fn(),
   clearWatch: jest.fn(),
+  requestAuthorization: jest.fn(),
 };
 const mockTrackAnalytics = jest.fn();
 const mockRecordError = jest.fn();
@@ -14,11 +15,11 @@ const mockRnPermissions = {
     GRANTED: "granted",
     BLOCKED: "blocked",
     DENIED: "denied",
+    LIMITED: "limited",
   },
   PERMISSIONS: {
-    ANDROID: {
-      ACCESS_FINE_LOCATION: undefined as string | undefined,
-    },
+    ANDROID: { ACCESS_FINE_LOCATION: undefined as string | undefined },
+    IOS: { LOCATION_WHEN_IN_USE: undefined as string | undefined },
   },
   check: (...args: unknown[]) => mockRnPermissionCheck(...args),
   request: (...args: unknown[]) => mockRnPermissionRequest(...args),
@@ -30,6 +31,7 @@ jest.mock("react-native-geolocation-service", () => ({
     getCurrentPosition: (...args: any[]) => mockGeo.getCurrentPosition(...args),
     watchPosition: (...args: any[]) => mockGeo.watchPosition(...args),
     clearWatch: (...args: any[]) => mockGeo.clearWatch(...args),
+    requestAuthorization: (...args: any[]) => mockGeo.requestAuthorization(...args),
   },
 }));
 jest.mock("../src/services/firebaseAnalytics", () => ({
@@ -68,9 +70,12 @@ describe("location permissions", () => {
     Object.defineProperty(Platform, "OS", { configurable: true, value: originalOS });
   });
 
-  it("returns denied outside Android", async () => {
+  it("requests iOS when-in-use permission outside Android", async () => {
     Object.defineProperty(Platform, "OS", { configurable: true, value: "ios" });
-    await expect(requestLocationPermission()).resolves.toBe("denied");
+    mockGeo.requestAuthorization.mockResolvedValue("granted");
+
+    await expect(requestLocationPermission()).resolves.toBe("granted");
+    expect(mockGeo.requestAuthorization).toHaveBeenCalledWith("whenInUse");
   });
 
   it.each([
@@ -114,6 +119,10 @@ describe("location permissions", () => {
       "android.permission.ACCESS_FINE_LOCATION";
     mockRnPermissionCheck.mockResolvedValue("granted");
     await expect(requestLocationPermission()).resolves.toBe("granted");
+    expect(mockRnPermissionRequest).not.toHaveBeenCalled();
+
+    mockRnPermissionCheck.mockResolvedValue("blocked");
+    await expect(requestLocationPermission()).resolves.toBe("blocked");
     expect(mockRnPermissionRequest).not.toHaveBeenCalled();
 
     mockRnPermissionCheck.mockResolvedValue("denied");
@@ -169,7 +178,7 @@ describe("GPS helpers", () => {
     ).resolves.toMatchObject({ latitude: 22.7, accuracy: 10 });
   });
 
-  it("rejects mocked, disabled, and weak GPS samples", async () => {
+  it("rejects mocked and disabled samples while accepting approximate GPS", async () => {
     mockGeo.watchPosition.mockImplementationOnce((success: (...args: any[]) => void) => {
       success({
         coords: { latitude: 22, longitude: 75, accuracy: 10, mocked: true },
@@ -192,7 +201,7 @@ describe("GPS helpers", () => {
     });
     await expect(
       getBestCurrentCoordinates({ samples: 2, maxAcceptedAccuracyMeters: 100 }),
-    ).rejects.toThrow("accuracy is weak");
+    ).resolves.toMatchObject({ accuracy: 170 });
   });
 
   it("falls back from watch timeout to a balanced single position", async () => {
@@ -205,7 +214,7 @@ describe("GPS helpers", () => {
         failure({ code: 3, message: "timeout" }),
       )
       .mockImplementationOnce((success: (...args: any[]) => void) =>
-        success({ coords: { latitude: 23, longitude: 77, accuracy: 50 }, timestamp: 10 }),
+        success({ coords: { latitude: 23, longitude: 77, accuracy: 50 }, timestamp: Date.now() }),
       );
     await expect(getBestCurrentCoordinates()).resolves.toMatchObject({
       latitude: 23,

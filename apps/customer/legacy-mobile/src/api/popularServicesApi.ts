@@ -1,4 +1,4 @@
-import { api, parseApiError } from "./client";
+import { api } from "./client";
 import { API_BASE_URL, DEV_IMAGE_HOST } from "../constants/env";
 import { Platform } from "react-native";
 import { getToken } from "../utils/storage";
@@ -30,6 +30,7 @@ export type PopularServiceCategory = string;
 function extractRows(payload: any): PopularServiceDto[] {
   if (Array.isArray(payload)) return mapRows(payload as PopularServiceDto[]);
   if (Array.isArray(payload?.data)) return mapRows(payload.data as PopularServiceDto[]);
+  if (Array.isArray(payload?.data?.data)) return mapRows(payload.data.data as PopularServiceDto[]);
   if (Array.isArray(payload?.content)) return mapRows(payload.content as PopularServiceDto[]);
   if (Array.isArray(payload?.items)) return mapRows(payload.items as PopularServiceDto[]);
   if (Array.isArray(payload?.rows)) return mapRows(payload.rows as PopularServiceDto[]);
@@ -148,8 +149,13 @@ export async function getPopularServicesByCategory(category: PopularServiceCateg
   for (const attempt of attempts) {
     try {
       const { data, rows } = await getPopularAttempt(attempt, headers);
-      workingPopularEndpoint = attempt.url;
       void data;
+      // A 200 response with no rows can come from an endpoint that is available
+      // but not backed by the popular-services data. Keep trying compatible
+      // endpoints before treating the category as genuinely empty.
+      if (rows.length === 0) continue;
+
+      workingPopularEndpoint = attempt.url;
       return rows;
     } catch (error: any) {
       const status = Number(error?.response?.status ?? 0);

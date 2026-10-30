@@ -14,6 +14,9 @@ const { nestedServiceRoute } = vi.hoisted(() => ({
 vi.mock("@/features/admin-payments", () => ({
   adminPaymentsRoutes: [{ path: "/payments", element: "payments-page" }],
 }));
+vi.mock("@/features/coupons", () => ({
+  couponsRoutes: [{ path: "/coupons", element: "coupons-page" }],
+}));
 vi.mock("@/features/api-readiness", () => ({
   apiReadinessRoutes: [{ path: "/api-readiness", element: "api-readiness-page" }],
 }));
@@ -56,9 +59,6 @@ vi.mock("@/features/popular-services", () => ({
 vi.mock("@/features/payouts", () => ({
   payoutsRoutes: [{ path: "/payouts", element: "payouts-page" }],
 }));
-vi.mock("@/features/providers", () => ({
-  partnersRoutes: [{ path: "/providers", element: "providers-page" }],
-}));
 vi.mock("@/features/recommended-addons", () => ({
   recommendedAddonsRoutes: [{ path: "/recommended-addons", element: "recommended-addons-page" }],
 }));
@@ -89,6 +89,21 @@ vi.mock("@/features/users", () => ({
 vi.mock("@/features/live-dispatch", () => ({
   liveDispatchRoutes: [{ path: "/live-dispatch", element: "live-dispatch-page" }],
 }));
+vi.mock("@/features/legal-content", () => ({
+  legalContentRoutes: [{ path: "/legal-content", element: "legal-content-page" }],
+}));
+vi.mock("@/features/account-deletion", () => ({
+  accountDeletionRoutes: [],
+}));
+vi.mock("@/features/social-media", () => ({
+  socialMediaRoutes: [],
+}));
+vi.mock("@/features/screening-centre", () => ({
+  screeningCentreRoutes: [{ path: "/screening-centre", element: "screening-centre-page" }],
+}));
+vi.mock("@/features/website-cities", () => ({
+  websiteCitiesRoutes: [{ path: "/website/header-navigation/cities", element: "website-cities-page" }],
+}));
 vi.mock("@/modules/banner", () => ({
   bannerManagementRoutes: [{ path: "/banner-management", element: "banner-management-page" }],
 }));
@@ -99,6 +114,7 @@ describe("adminRoutes", () => {
   it("aggregates route config arrays in the declared order", () => {
     expect(adminRoutes).toEqual([
       { index: true, element: "dashboard-home" },
+      { path: "/coupons", element: "coupons-page" },
       { path: "/emergency-sos", element: "emergency-page" },
       { path: "/profile-control", element: "profile-control-page" },
       { path: "/categories", element: "categories-page" },
@@ -112,6 +128,9 @@ describe("adminRoutes", () => {
       { path: "/reviews", element: "reviews-page" },
       { path: "/serviceable-areas", element: "serviceable-areas-page" },
       { path: "/live-dispatch", element: "live-dispatch-page" },
+      { path: "/legal-content", element: "legal-content-page" },
+      { path: "/website/header-navigation/cities", element: "website-cities-page" },
+      { path: "/screening-centre", element: "screening-centre-page" },
       { path: "/recommended-addons", element: "recommended-addons-page" },
       { path: "/payments", element: "payments-page" },
       { path: "/subscriptions", element: "subscriptions-page" },

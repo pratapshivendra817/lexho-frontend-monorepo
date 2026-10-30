@@ -42,8 +42,6 @@ import {
   fetchDashboardServiceDistribution,
   fetchDashboardStats,
   fetchNotifications,
-  fetchPartnerById,
-  fetchPartners,
   fetchPaymentReconciliation,
   fetchPayouts,
   fetchReviews,
@@ -59,7 +57,6 @@ import {
   replySupportTicket,
   toggleUserStatus,
   updateBookingPartnerLocation,
-  updatePartnerVerification,
   updatePaymentStatus,
   updateSupportFaqCategory,
   updateSupportFaqItem,
@@ -170,14 +167,12 @@ describe("admin api", () => {
     mocks.get
       .mockResolvedValueOnce({ data: { user: { id: "u1", name: "User One" } } })
       .mockResolvedValueOnce({ data: { item: { id: "bk1", status: "CONFIRMED" } } })
-      .mockResolvedValueOnce({ data: { partner: { id: "p1", name: "Partner One" } } })
       .mockResolvedValueOnce({ data: { result: { id: "ticket-1", status: "OPEN" } } })
       .mockResolvedValueOnce({ data: { data: { bookingId: 7, amount: 1200, paymentStatus: "PENDING" } } })
       .mockResolvedValueOnce({ data: null });
 
     await expect(fetchUserById("u1")).resolves.toEqual({ id: "u1", name: "User One" });
     await expect(fetchBookingById("bk1")).resolves.toEqual({ id: "bk1", status: "CONFIRMED" });
-    await expect(fetchPartnerById("p1")).resolves.toEqual({ id: "p1", name: "Partner One" });
     await expect(fetchSupportTicketById("ticket-1")).resolves.toEqual({ id: "ticket-1", status: "OPEN" });
     await expect(fetchPaymentReconciliation(7)).resolves.toEqual({
       bookingId: 7,
@@ -209,7 +204,6 @@ describe("admin api", () => {
     await expect(fetchSupportTickets()).resolves.toEqual([{ id: "st1" }]);
     await expect(fetchSupportFaqCategories()).resolves.toEqual([{ id: "faq-cat" }]);
     await expect(fetchSupportFaqItems("cat-1")).resolves.toEqual([{ id: "faq-item" }]);
-    await expect(fetchPartners()).resolves.toEqual([]);
   });
 
   it("covers root-object and no-match fallback parsing branches", async () => {
@@ -264,16 +258,11 @@ describe("admin api", () => {
   it("forwards query params for collection endpoints", async () => {
     mocks.get
       .mockResolvedValueOnce({ data: { bookings: [] } })
-      .mockResolvedValueOnce({ data: { partners: [] } });
 
     await fetchBookings({ page: 1, limit: 25, status: "PENDING", search: "cook" });
-    await fetchPartners({ status: "APPROVED", search: "raj" });
 
     expect(mocks.get).toHaveBeenNthCalledWith(1, "/api/admin/bookings", {
       params: { page: 1, limit: 25, status: "PENDING", search: "cook" },
-    });
-    expect(mocks.get).toHaveBeenNthCalledWith(2, "/api/admin/partners", {
-      params: { status: "APPROVED", search: "raj" },
     });
   });
 
@@ -284,7 +273,6 @@ describe("admin api", () => {
     mocks.del.mockResolvedValue({});
 
     await toggleUserStatus("u9");
-    await updatePartnerVerification({ id: "p9", status: "VERIFIED", reason: "approved" as any });
     await deleteReview("r9");
     await flagReview("r9");
     await createNotification({
@@ -306,10 +294,6 @@ describe("admin api", () => {
     await deleteSupportFaqItem("faq-cat", "faq-1");
 
     expect(mocks.post).toHaveBeenCalledWith("/api/admin/users/u9/toggle");
-    expect(mocks.patch).toHaveBeenCalledWith("/api/admin/partners/p9/verification", {
-      status: "VERIFIED",
-      reason: "approved",
-    });
     expect(mocks.del).toHaveBeenCalledWith("/api/admin/reviews/r9");
     expect(mocks.post).toHaveBeenCalledWith("/api/admin/reviews/r9/flag");
     expect(mocks.post).toHaveBeenCalledWith("/api/admin/notifications", {
@@ -548,7 +532,6 @@ describe("admin api", () => {
     await expect(fetchBookings()).rejects.toBe(cancelError);
     await expect(fetchUsers({ page: 1, limit: 10 })).rejects.toEqual(badRequest);
     await expect(fetchUserById("u1")).rejects.toEqual(unauthorized);
-    await expect(fetchPartnerById("p1")).rejects.toEqual(forbidden);
     await expect(fetchSupportTicketById("t1")).rejects.toEqual(notFound);
     await expect(fetchPayouts()).rejects.toEqual(limited);
     await expect(fetchNotifications()).rejects.toEqual(network);

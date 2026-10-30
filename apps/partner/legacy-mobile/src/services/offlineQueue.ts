@@ -4,7 +4,7 @@ import { isNetworkOnline, subscribeNetworkStatus } from "./networkService";
 
 const OFFLINE_QUEUE_KEY = "partner_offline_queue_v1";
 
-export type OfflineQueueActionType = "accept_order" | "reject_order" | "update_location" | "update_profile";
+export type OfflineQueueActionType = "accept_order" | "reject_order" | "update_location";
 
 export type OfflineQueueItem = {
   id: string;

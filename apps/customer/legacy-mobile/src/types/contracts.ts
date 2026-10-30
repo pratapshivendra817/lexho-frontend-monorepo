@@ -20,7 +20,7 @@ export type AuthUserDto = {
 export type SendOtpRequest = { mobile: string; role?: "CUSTOMER" | "PARTNER" };
 export type SendOtpResponse = { success?: boolean; message?: string; resendAfter?: number; otp?: string; code?: string };
 
-export type VerifyOtpRequest = { mobile: string; otp: string };
+export type VerifyOtpRequest = { mobile: string; otp: string; role?: "CUSTOMER" | "PARTNER" };
 export type VerifyOtpResponse = { token: string; refreshToken?: string; user?: AuthUserDto };
 
 export type RefreshTokenRequest = { refreshToken: string; deviceId: string };
@@ -168,6 +168,10 @@ export type BookingSummaryDto = {
   serviceStartedAt?: string;
   estimatedCompletionTime?: string;
   progressStatus?: string;
+  serviceStartPin?: string;
+  serviceStartPinExpiresAt?: string;
+  serviceCompletePin?: string;
+  serviceCompletePinExpiresAt?: string;
   retryPaymentAllowed?: boolean;
   arrivalTime?: string;
   canPause?: boolean;
@@ -216,6 +220,7 @@ export type AddCartRequest = { serviceId: string; quantity: number; addons?: { a
 export type UpdateCartRequest = { id: string; quantity: number };
 
 export type CreateBookingRequest = {
+  bookingType?: "INSTANT" | "SCHEDULED";
   serviceId: string;
   addressId: string;
   date?: string;
@@ -223,6 +228,7 @@ export type CreateBookingRequest = {
   note?: string;
   latitude?: number;
   longitude?: number;
+  couponCode?: string;
 };
 export type RescheduleBookingRequest = { date: string };
 export type LiveLocationResponse = { lat?: number; lng?: number; eta?: string };
@@ -237,8 +243,51 @@ export type PaymentMode = "UPI" | "CARD" | "WALLET" | "COD";
 export type InitiatePaymentRequest = { mode: PaymentMode; bookingId?: string; amount?: number };
 export type RefundPaymentRequest = { bookingId: string; amount: number };
 
-export type CouponDto = { id?: string; code: string; description?: string; discount?: number };
-export type ApplyCouponRequest = { code: string };
+export type CouponDto = {
+  id?: string | number;
+  code: string;
+  title?: string;
+  customerVisible?: boolean;
+  firstBookingOnly?: boolean;
+  maxUsesPerDay?: number | null;
+  applicableCategoryId?: number | null;
+  description?: string;
+  discount?: number;
+  discountType?: "FIXED" | "PERCENTAGE" | string;
+  discountValue?: number;
+  maxDiscountAmount?: number;
+  minimumPurchaseAmount?: number;
+  totalUsageLimit?: number;
+  perUserUsageLimit?: number;
+  usedCount?: number;
+  active?: boolean;
+  applicableServiceId?: number | null;
+  applicableBookingType?: "INSTANT" | "SCHEDULED" | "SUBSCRIPTION" | null;
+  sourceType?: string;
+  validFrom?: string;
+  validUntil?: string;
+  rewardType?: string;
+  rewardLabel?: string;
+  minimumAmount?: number;
+};
+export type CouponValidationRequest = {
+  code: string;
+  // The backend currently interprets planId as the selected service ID.
+  planId?: number;
+  categoryId?: number;
+  amount: number;
+  bookingType: "INSTANT" | "SCHEDULED";
+};
+export type CouponValidationData = {
+  valid?: boolean;
+  couponCode?: string;
+  originalAmount?: number;
+  discountAmount?: number;
+  finalAmount?: number;
+  currency?: string;
+  message?: string;
+};
+export type ApplyCouponRequest = CouponValidationRequest;
 
 export type ReviewDto = { id: string; serviceId?: string; rating: number; comment: string; imageUrls?: string[]; createdAt?: string; serviceName?: string };
 export type AddReviewRequest = { serviceId: string; rating: number; comment: string; imageUrls?: string[] };
@@ -250,6 +299,17 @@ export type AddFavoriteRequest = { serviceId: string };
 export type NotificationDto = { id: string; title: string; message: string; read?: boolean; createdAt?: string };
 
 export type ApplyReferralRequest = { code: string };
+export type AppliedReferralDto = {
+  id?: string | number;
+  referrerUserId?: string | number;
+  referredUserId?: string | number;
+  referralCode?: string;
+  status?: string;
+  createdAt?: string;
+  qualifiedAt?: string | null;
+  rewardedAt?: string | null;
+  qualifyingBookingId?: string | number | null;
+};
 
 export type CreateSupportTicketRequest = { subject: string; message: string };
 export type SupportTicketDto = { id: string; subject: string; message: string; status?: string; createdAt?: string };

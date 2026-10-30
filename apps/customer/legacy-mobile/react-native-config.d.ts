@@ -1,6 +1,7 @@
 declare module 'react-native-config' {
   export interface NativeConfig {
     API_BASE_URL?: string;
+    WEBSITE_BASE_URL?: string;
     TURN_URL?: string;
     TURN_USERNAME?: string;
     TURN_PASSWORD?: string;
@@ -8,6 +9,7 @@ declare module 'react-native-config' {
     AUTH_FALLBACK_BASE_URLS?: string;
     DEV_LAN_HOST?: string;
     MANUAL_REAL_DEVICE_API_HOST?: string;
+    USE_ADB_REVERSE_FOR_REAL_ANDROID_DEVICE?: string;
     MAPBOX_PUBLIC_TOKEN?: string;
     SSL_PINNING_ENABLED?: string;
     SSL_PINNING_CERT_NAME?: string;

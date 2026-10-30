@@ -15,7 +15,7 @@ import { DEFAULT_CART_POLICY, type CartPolicy } from "../constants/cartPolicy";
 import { getCartSnapshot, saveCartSnapshot } from "../services/storage";
 
 type AddressRow = {
-  id: number;
+  id: number | string;
   fullAddress: string;
   city?: string;
   pincode?: string;
@@ -39,7 +39,7 @@ type CartState = {
   currency: string;
   contactName: string | null;
   contactPhone: string | null;
-  selectedAddressId: number | null;
+  selectedAddressId: number | string | null;
   scheduledTime: string | null;
   addresses: AddressRow[];
   loading: boolean;
@@ -95,7 +95,15 @@ function applyCart(
   payload: any,
 ) {
   state.cartId = payload.cartId;
-  state.items = payload.items ?? [];
+  const previousItems = state.items;
+  state.items = (payload.items ?? []).map((item: CustomerCartItem) => {
+    const previous = previousItems.find(row => row.serviceId === item.serviceId);
+    return {
+      ...item,
+      categoryId: item.categoryId || previous?.categoryId,
+      categoryName: item.categoryName || previous?.categoryName,
+    };
+  });
   state.grandTotal = Number(payload.grandTotal ?? 0);
   state.itemTotal = Number(payload.itemTotal ?? state.grandTotal ?? 0);
   state.gstAmount = Number(payload.gstAmount ?? 0);
@@ -109,7 +117,12 @@ function applyCart(
   if (payload.scheduledTime !== undefined) {
     state.scheduledTime = payload.scheduledTime;
   }
-  state.selectedAddressId = payload.address?.id ?? state.selectedAddressId ?? null;
+  const incomingAddressId = payload.address?.id;
+  const incomingAddressKey = String(incomingAddressId ?? "").trim();
+  const hasSelectedSavedAddress = state.addresses.some(row => String(row.id) === String(state.selectedAddressId));
+  if (!hasSelectedSavedAddress && incomingAddressKey && incomingAddressKey !== "0") {
+    state.selectedAddressId = incomingAddressId ?? null;
+  }
   const requestStatus = String(payload.requestStatus ?? state.requestStatus).toUpperCase();
   state.requestStatus =
     requestStatus === "PENDING" || requestStatus === "ACCEPTED" || requestStatus === "REJECTED"
@@ -139,6 +152,8 @@ export const addToCartThunk = createAsyncThunk(
   "cart/addToCart",
   async (payload: {
     serviceId: number;
+    categoryId?: string;
+    categoryName?: string;
     quantity?: number;
     addons?: SelectedCartAddon[];
     familySizeId?: number;
@@ -212,7 +227,7 @@ export const clearCartThunk = createAsyncThunk("cart/clearCart", async () => {
 
 export const updateCartMetaThunk = createAsyncThunk(
   "cart/updateMeta",
-  async (payload: { addressId: number; scheduledTime: string }) => {
+  async (payload: { addressId: number | string; scheduledTime: string }) => {
     return await patchCustomerCartMeta(payload);
   },
 );
@@ -224,8 +239,11 @@ const cartSlice = createSlice({
     clearRecentlyAdded(state) {
       state.recentlyAddedServiceId = null;
     },
-    setSelectedAddressId(state, action: { payload: number | null }) {
+    setSelectedAddressId(state, action: { payload: number | string | null }) {
       state.selectedAddressId = action.payload;
+    },
+    clearSelectedAddressId(state) {
+      state.selectedAddressId = null;
     },
     setScheduledTime(state, action: { payload: string | null }) {
       state.scheduledTime = action.payload;
@@ -282,13 +300,13 @@ const cartSlice = createSlice({
         state.refreshing = false;
         state.addresses = action.payload;
         if (action.payload.length > 0) {
-          const hasCurrentSelection = action.payload.some((row: AddressRow) => Number(row.id) === Number(state.selectedAddressId));
+          const hasCurrentSelection = action.payload.some((row: AddressRow) => String(row.id) === String(state.selectedAddressId));
           const defaultAddressId = action.payload.find((row: AddressRow) => row.default)?.id ?? null;
           if (hasCurrentSelection) {
             // Keep explicitly selected address instead of forcing default on every refresh.
           } else if (defaultAddressId) {
             state.selectedAddressId = defaultAddressId;
-          } else if (!state.selectedAddressId) {
+          } else {
             state.selectedAddressId = action.payload[0].id;
           }
         }
@@ -304,6 +322,11 @@ const cartSlice = createSlice({
       .addCase(addToCartThunk.fulfilled, (state, action) => {
         state.updating = false;
         applyCart(state, action.payload);
+        state.items.forEach(item => {
+          if (item.serviceId !== action.meta.arg.serviceId) return;
+          item.categoryId ||= action.meta.arg.categoryId;
+          item.categoryName ||= action.meta.arg.categoryName;
+        });
         const firstItem = action.payload.items[action.payload.items.length - 1];
         state.recentlyAddedServiceId = firstItem?.serviceId ?? null;
         void saveCartSnapshot(state.items as any);
@@ -354,6 +377,13 @@ const cartSlice = createSlice({
   },
 });
 
-export const { clearRecentlyAdded, setSelectedAddressId, setScheduledTime, setRequestStatus, lockCartUntilPayment, unlockCartAfterPayment } =
-  cartSlice.actions;
+export const {
+  clearRecentlyAdded,
+  clearSelectedAddressId,
+  setSelectedAddressId,
+  setScheduledTime,
+  setRequestStatus,
+  lockCartUntilPayment,
+  unlockCartAfterPayment,
+} = cartSlice.actions;
 export default cartSlice.reducer;

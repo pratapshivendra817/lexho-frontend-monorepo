@@ -34,4 +34,3 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { color: COLORS.background, fontWeight: "800" },
 });
-

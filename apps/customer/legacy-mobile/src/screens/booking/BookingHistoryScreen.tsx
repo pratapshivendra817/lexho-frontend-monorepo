@@ -296,6 +296,8 @@ export function BookingHistoryScreen({
   useEffect(() => {
     // Initial load only.
     void fetchHistory();
+    // fetchHistory intentionally runs once; pagination and refresh invoke it explicitly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const q = String(query ?? "").trim().toLowerCase();

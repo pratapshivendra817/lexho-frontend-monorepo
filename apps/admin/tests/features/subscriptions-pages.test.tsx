@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   useDebounce: vi.fn(),
   getAdminSubscriptions: vi.fn(),
   getServices: vi.fn(),
+  getAdminSubscriptionChangeRequests: vi.fn(),
+  reviewAdminSubscriptionChangeRequest: vi.fn(),
   extractApiError: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
@@ -75,6 +77,8 @@ vi.mock("@/features/subscriptions/api/subscriptionsApi", () => ({
   getAdminSubscriptionDetail: vi.fn(),
   getAdminSubscriptionCalendar: vi.fn(),
   getAdminSubscriptionAssignment: vi.fn(),
+  getAdminSubscriptionChangeRequests: mocks.getAdminSubscriptionChangeRequests,
+  reviewAdminSubscriptionChangeRequest: mocks.reviewAdminSubscriptionChangeRequest,
   updateAdminSubscriptionStatus: vi.fn(),
   updateAdminSubscriptionVisitStatus: vi.fn(),
   assignAdminSubscriptionPartner: vi.fn(),
@@ -94,6 +98,7 @@ vi.mock("@/features/subscriptions/api/subscriptionPricingApi", () => ({
 }));
 
 import SubscriptionsPage from "@/features/subscriptions/pages/SubscriptionsPage";
+import SubscriptionDetailsPage from "@/features/subscriptions/pages/SubscriptionDetailsPage";
 import SubscriptionPricingPage from "@/features/subscriptions/pages/SubscriptionPricingPage";
 import CookSubscriptionPricingPage from "@/features/subscriptions/pages/CookSubscriptionPricingPage";
 
@@ -102,6 +107,7 @@ describe("subscriptions pages", () => {
     vi.clearAllMocks();
     mocks.useDebounce.mockImplementation((value) => value);
     mocks.extractApiError.mockImplementation((_error, fallback) => fallback);
+    mocks.useMutation.mockImplementation(() => ({ isPending: false, mutate: vi.fn() }));
     mocks.useQueryClient.mockReturnValue({ invalidateQueries: mocks.invalidateQueries });
     mocks.useSearchParams.mockReturnValue([new URLSearchParams({ page: "0" }), vi.fn()]);
     mocks.useParams.mockReturnValue({ id: "15" });
@@ -170,7 +176,7 @@ describe("subscriptions pages", () => {
     render(<SubscriptionsPage />);
     expect(screen.getByText("Customer #11")).toBeInTheDocument();
     expect(screen.getByText("7")).toBeInTheDocument();
-    expect(screen.getByText("PAUSED")).toBeInTheDocument();
+    expect(screen.getAllByText("PAUSED").length).toBeGreaterThan(0);
     expect(screen.getAllByText("-").length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByDisplayValue("CANCELLED"), { target: { value: "" } });
@@ -181,6 +187,68 @@ describe("subscriptions pages", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));
     expect(setSearchParams).toHaveBeenCalledWith(new URLSearchParams({ page: "0" }));
+  });
+
+  it("shows the admin professional change review panel for the current subscription", async () => {
+    mocks.useMutation.mockImplementation((options: any) => ({
+      isPending: false,
+      mutate: (payload: any) => {
+        if (options.mutationFn) {
+          void options.mutationFn(payload);
+        }
+      },
+    }));
+    mocks.useQuery.mockImplementation((options: any) => {
+      const key = options.queryKey?.[0];
+      if (key === "admin-subscription-detail") {
+        return {
+          data: { id: 15, customerName: "Neha", serviceName: "Cook", status: "PENDING_ADMIN_REVIEW", frequency: "WEEKLY", startDate: "2026-07-01", endDate: "2026-08-01", visits: 5 },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      if (key === "admin-subscription-calendar") {
+        return { data: [], isLoading: false, isError: false, refetch: vi.fn() };
+      }
+      if (key === "admin-subscription-assignment") {
+        return { data: null, isLoading: false, isError: false, refetch: vi.fn() };
+      }
+      if (key === "admin-subscription-change-requests") {
+        return {
+          data: [{ id: 101, subscriptionId: 15, customerId: 9, reasonCategory: "PROFESSIONAL_PREFERENCE", description: "Need a different professional", status: "PENDING_ADMIN_REVIEW" }],
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return { data: null, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(<SubscriptionDetailsPage />);
+
+    expect(screen.getByText("Professional Change Requests")).toBeInTheDocument();
+    expect(screen.getByText("Need a different professional")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Approve"));
+    await waitFor(() => expect(mocks.reviewAdminSubscriptionChangeRequest).toHaveBeenCalledWith(101, expect.objectContaining({ status: "APPROVED" })));
+  });
+
+  it("includes lifecycle states used by the admin-controlled subscription flow", () => {
+    mocks.useQuery.mockReturnValue({
+      data: { content: [], totalElements: 0 },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(<SubscriptionsPage />);
+
+    expect(screen.getByRole("option", { name: "PENDING_ADMIN_REVIEW" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "UNDER_REVIEW" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "PENDING_PARTNER_ASSIGNMENT" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "PENDING_PARTNER_ACCEPTANCE" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "CONFIRMED" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "REJECTED" })).toBeInTheDocument();
   });
 
   it("covers subscriptions list loading, error, and empty states", () => {

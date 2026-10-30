@@ -2,7 +2,7 @@ import React from "react";
 import { Share } from "react-native";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import OrderHistoryScreen from "../OrderHistoryScreen";
-import { getOrderHistory } from "../../../services/partnerService";
+import { getCanonicalPartnerOrderId, getOrderHistory } from "../../../services/partnerService";
 
 jest.mock("react-native/Libraries/Lists/FlatList", () => {
   const React = require("react");
@@ -32,16 +32,19 @@ jest.mock("@react-navigation/native", () => ({
 }));
 
 jest.mock("../../../services/partnerService", () => ({
+  getCanonicalPartnerOrderId: jest.fn((item) => item.requestId ?? item.id),
   getOrderHistory: jest.fn(),
 }));
 
 jest.spyOn(Share, "share").mockResolvedValue({ action: "sharedAction" } as any);
 
 const mockedGetOrderHistory = getOrderHistory as jest.MockedFunction<typeof getOrderHistory>;
+const mockedGetCanonicalPartnerOrderId = getCanonicalPartnerOrderId as jest.MockedFunction<typeof getCanonicalPartnerOrderId>;
 
 describe("OrderHistoryScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedGetCanonicalPartnerOrderId.mockImplementation((item) => item.requestId ?? item.id);
   });
 
   it("loads and renders filtered completed orders", async () => {
@@ -66,12 +69,12 @@ describe("OrderHistoryScreen", () => {
     const view = await render(<OrderHistoryScreen />);
     expect(await view.findByText("Aarav")).toBeTruthy();
 
-    fireEvent.press(view.getByText("CANCELLED"));
+    fireEvent.press(view.getByText("Cancelled"));
     await waitFor(() => {
       expect(view.getByText("Neha")).toBeTruthy();
     });
 
-    fireEvent.press(view.getByText("PENDING"));
+    fireEvent.press(view.getByText("Pending"));
     await waitFor(() => {
       expect(view.getByText("Kabir")).toBeTruthy();
     });

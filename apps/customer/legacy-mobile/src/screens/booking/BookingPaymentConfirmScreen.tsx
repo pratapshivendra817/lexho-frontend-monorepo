@@ -6,11 +6,12 @@ import { bookingTheme } from "../../components/booking/bookingTheme";
 import { useInstantBookingLifecycle } from "../../hooks/useInstantBookingLifecycle";
 import { resolveLifecycleTarget } from "../../hooks/useBookingLifecycleNavigation";
 import { BookingTimeline } from "../../components/booking/BookingTimeline";
+import { AssignedPartnerMap } from "../../components/booking/AssignedPartnerMap";
 import { getBookingMeta } from "../../utils/bookingMeta";
 import { COLORS } from '../../theme/colors';
 import { radii, shadows, spacing } from "../../constants/theme";
 
-type BookingPaymentConfirmRoute = { params?: { bookingId?: string; bookingMode?: "INSTANT" | "SCHEDULED" | "SUBSCRIPTION" } };
+type BookingPaymentConfirmRoute = { params?: { bookingId?: string; bookingMode?: "INSTANT" | "SCHEDULED" | "SUBSCRIPTION"; serviceName?: string; address?: string; amount?: number; currency?: string; scheduledAt?: string } };
 
 const SUPPORT_NUMBER = "+917999700475";
 
@@ -32,12 +33,20 @@ function formatDateTime(value?: string) {
 export function BookingPaymentConfirmScreen({ route, navigation }: { route: BookingPaymentConfirmRoute; navigation: any }) {
   const bookingId = String(route?.params?.bookingId ?? "").trim();
   const bookingQuery = useInstantBookingLifecycle(bookingId);
-  const details = bookingQuery.data;
+  const routeFallback = route?.params ?? {};
+  const details: any = bookingQuery.data ? { ...routeFallback, ...bookingQuery.data } : { id: bookingId, ...routeFallback };
   const routeBookingMode = String(route?.params?.bookingMode ?? "").toUpperCase();
-  const bookingType = String(details?.bookingType ?? routeBookingMode).toUpperCase();
-  const isInstantBooking = routeBookingMode === "INSTANT" || bookingType === "INSTANT";
-  const isScheduledBooking = routeBookingMode === "SCHEDULED" || bookingType === "SCHEDULED";
+  const bookingType = String(details?.bookingType || routeBookingMode).toUpperCase();
+  const isInstantBooking = bookingType === "INSTANT";
+  const isScheduledBooking = bookingType === "SCHEDULED";
   const meta = getBookingMeta(details);
+  const lifecycleStatus = String(details?.assignmentStatus ?? details?.status ?? "").trim().toUpperCase();
+  const showPartnerMap = isInstantBooking && [
+    "ASSIGNED", "ACCEPTED", "PARTNER_ASSIGNED", "PARTNER_ACCEPTED",
+    "ON_THE_WAY", "PARTNER_ON_THE_WAY", "ARRIVED", "PARTNER_ARRIVED", "PARTNER_REACHED",
+  ].includes(lifecycleStatus);
+  const startPin = lifecycleStatus === "ARRIVED" ? String(details?.serviceStartPin ?? "").trim() : "";
+  const endPin = ["IN_PROGRESS", "STARTED"].includes(lifecycleStatus) ? String(details?.serviceCompletePin ?? "").trim() : "";
 
   const goNext = () => {
     if (!bookingId) return;
@@ -79,6 +88,11 @@ export function BookingPaymentConfirmScreen({ route, navigation }: { route: Book
       }
     >
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {showPartnerMap ? (
+          <View style={styles.partnerMapSection}>
+            <AssignedPartnerMap booking={details} />
+          </View>
+        ) : null}
         <View style={[styles.card, isScheduledBooking && styles.cardScheduled]}>
           <View style={styles.successRow}>
             <View style={[styles.iconWrap, isScheduledBooking && styles.iconWrapScheduled]}>
@@ -89,6 +103,31 @@ export function BookingPaymentConfirmScreen({ route, navigation }: { route: Book
               <Text style={[styles.successSub, isScheduledBooking && styles.textScheduledSecondary]}>Booking ID: {(details?.id ?? bookingId) || "-"}</Text>
             </View>
           </View>
+          <View style={[styles.line, isScheduledBooking && styles.lineScheduled]} />
+
+          <View style={styles.pinSection}>
+            <Text style={[styles.label, isScheduledBooking && styles.textScheduledLabel]}>Start Service PIN</Text>
+            {startPin ? (
+              <>
+                <Text selectable style={[styles.pinValue, isScheduledBooking && styles.textScheduledPrimary]}>{startPin}</Text>
+                <Text style={[styles.value, isScheduledBooking && styles.textScheduledSecondary]}>Share with the partner when you are ready to start the service.</Text>
+                {details?.serviceStartPinExpiresAt ? <Text style={[styles.value, isScheduledBooking && styles.textScheduledSecondary]}>Expires: {formatDateTime(details.serviceStartPinExpiresAt)}</Text> : null}
+              </>
+            ) : <Text style={[styles.value, isScheduledBooking && styles.textScheduledSecondary]}>The start PIN is available after the partner arrives, until the service starts.</Text>}
+          </View>
+          <View style={styles.pinSection}>
+            <Text style={[styles.label, isScheduledBooking && styles.textScheduledLabel]}>End Service PIN</Text>
+            {endPin ? (
+              <>
+                <Text selectable style={[styles.pinValue, isScheduledBooking && styles.textScheduledPrimary]}>{endPin}</Text>
+                <Text style={[styles.value, isScheduledBooking && styles.textScheduledSecondary]}>Share only after the service is fully completed.</Text>
+                {details?.serviceCompletePinExpiresAt ? <Text style={[styles.value, isScheduledBooking && styles.textScheduledSecondary]}>Expires: {formatDateTime(details.serviceCompletePinExpiresAt)}</Text> : null}
+              </>
+            ) : <Text style={[styles.value, isScheduledBooking && styles.textScheduledSecondary]}>The end PIN is available during the service after the partner requests it.</Text>}
+          </View>
+          <Pressable accessibilityRole="button" disabled={!bookingId || bookingQuery.isFetching} style={[styles.secondaryBtn, isScheduledBooking && styles.secondaryBtnScheduled]} onPress={() => void bookingQuery.refetch()}>
+            <Text style={[styles.secondaryBtnText, isScheduledBooking && styles.secondaryBtnTextScheduled]}>{bookingQuery.isFetching ? "Refreshing..." : "Refresh PINs & Status"}</Text>
+          </Pressable>
           <View style={[styles.line, isScheduledBooking && styles.lineScheduled]} />
 
           <View style={styles.row}><Text style={[styles.label, isScheduledBooking && styles.textScheduledLabel]}>Service</Text><Text style={[styles.value, isScheduledBooking && styles.textScheduledPrimary]}>{details?.serviceName ?? "-"}</Text></View>
@@ -115,7 +154,7 @@ export function BookingPaymentConfirmScreen({ route, navigation }: { route: Book
             </>
           )}
           <View style={styles.row}><Text style={[styles.label, isScheduledBooking && styles.textScheduledLabel]}>Address</Text><Text style={[styles.value, isScheduledBooking && styles.textScheduledPrimary]}>{details?.fullAddress ?? details?.address ?? "-"}</Text></View>
-          <View style={styles.row}><Text style={[styles.label, isScheduledBooking && styles.textScheduledLabel]}>Amount Paid</Text><Text style={[styles.value, isScheduledBooking && styles.textScheduledPrimary]}>Rs {details?.totalAmount ?? details?.amount ?? "-"}</Text></View>
+          <View style={styles.row}><Text style={[styles.label, isScheduledBooking && styles.textScheduledLabel]}>Amount Paid</Text><Text style={[styles.value, isScheduledBooking && styles.textScheduledPrimary]}>{details?.currency ?? "Rs"} {details?.totalAmount ?? details?.amount ?? "-"}</Text></View>
         </View>
 
         {Array.isArray(details?.statusHistory) && details.statusHistory.length > 0 ? (
@@ -169,6 +208,9 @@ export function BookingPaymentConfirmScreen({ route, navigation }: { route: Book
 }
 
 const styles = StyleSheet.create({
+  partnerMapSection: { marginBottom: spacing.md },
+  pinSection: { gap: 6, paddingVertical: spacing.sm },
+  pinValue: { color: bookingTheme.colors.textPrimary, fontSize: 30, fontWeight: "900", letterSpacing: 6 },
   scrollContent: { paddingBottom: spacing.xl },
   card: {
     borderWidth: 1,

@@ -12,6 +12,7 @@ import { HomeScreen } from "../screens/home/HomeScreen";
 import { BookingHistoryScreen } from "../screens/booking/BookingHistoryScreen";
 import { ProfileScreen } from "../screens/profile/ProfileScreen";
 import { LegalContentScreen } from "../screens/profile/LegalContentScreen";
+import { LegalWebsiteScreen } from "../screens/compliance/LegalWebsiteScreen";
 import EditProfileScreen from "../screens/EditProfileScreen";
 import { NotificationsScreen } from "../screens/notifications/NotificationsScreen";
 import { CartCrudScreen } from "../screens/cart/CartCrudScreen";
@@ -33,7 +34,6 @@ import { ServiceCompletedScreen } from "../screens/booking/ServiceCompletedScree
 import { PartnerArrivedScreen } from "../screens/booking/PartnerArrivedScreen";
 import { BookingStatusFallbackScreen } from "../screens/booking/BookingStatusFallbackScreen";
 import { SubscriptionPlanScreen } from "../screens/booking/SubscriptionPlanScreen";
-import { RatePartnerScreen } from "../screens/booking/RatePartnerScreen";
 import { BookingPaymentConfirmScreen } from "../screens/booking/BookingPaymentConfirmScreen";
 import { BookingDetailScreen } from "../screens/booking/BookingDetailScreen";
 import { SubscriptionConfirmedScreen } from "../screens/booking/SubscriptionConfirmedScreen";
@@ -41,12 +41,19 @@ import { PaymentScreen } from "../screens/payment/PaymentScreen";
 import { PaymentStatusScreen } from "../screens/payment/PaymentStatusScreen";
 import { ReviewScreen } from "../screens/home/ReviewScreen";
 import { SupportTicketsScreen } from "../screens/support/SupportTicketsScreen";
-import { FaqScreen } from "../screens/support/FaqScreen";
+import {
+  CustomerFaqScreen,
+  CustomerSupportScreen,
+  DeleteAccountConfirmationScreen,
+  DeleteAccountScreen,
+  DeleteAccountStatusScreen,
+  LegalAcceptanceScreen,
+  LegalDocumentDetailScreen,
+  LegalDocumentsScreen,
+  ManageDataScreen,
+} from "../screens/compliance/ComplianceScreens";
 import { ServiceListScreen } from "../screens/service/ServiceListScreen";
 import { ServiceDetailScreen } from "../screens/service/ServiceDetailScreen";
-import { BookingServiceScreen } from "../screens/booking-flow/BookingServiceScreen";
-import { BookingSlotScreen } from "../screens/booking-flow/BookingSlotScreen";
-import { BookingConfirmScreen } from "../screens/booking-flow/BookingConfirmScreen";
 import { DetectingLocationScreen } from "../screens/location/DetectingLocationScreen";
 import { LocationSearchScreen } from "../screens/location/LocationSearchScreen";
 import { AddAddressDetailsScreen } from "../screens/location/AddAddressDetailsScreen";
@@ -62,7 +69,7 @@ import { radii, shadows, spacing } from "../constants/theme";
 type RecurringCartPayload = {
   serviceName?: string;
   serviceId?: number;
-  subscriptionServiceType?: "CLEANING" | "COOK";
+  subscriptionServiceType?: "CLEANING" | "COOK" | "VEHICLE_WASH" | "FITNESS_WELLNESS";
   frequencyDays?: string[];
   frequencyLabel?: string;
   startDate?: string;
@@ -89,7 +96,7 @@ type RootStackParamList = {
         categoryName?: string;
         durationHours?: number;
         durationLabel?: string;
-        recurringBooking?: RecurringCartPayload;
+        recurringBooking?: RecurringCartPayload | null;
         cookFamilySizeId?: number;
         cookFamilySize?: string;
         cookFamilySizeLabel?: string;
@@ -109,6 +116,7 @@ type RootStackParamList = {
   Payment:
     | {
         bookingId?: string;
+        subscriptionId?: string;
         cartId?: number | null;
         amount?: number;
         currency?: string;
@@ -126,9 +134,17 @@ type RootStackParamList = {
   ServiceCompleted: { bookingId?: string } | undefined;
   BookingStatusFallback: { bookingId?: string } | undefined;
   SubscriptionPlan: { subscriptionId?: string; bookingId?: string } | undefined;
-  RatePartner: { bookingId?: string } | undefined;
   Reviews: undefined;
   Support: undefined;
+  SupportTickets: undefined;
+  LegalDocuments: undefined;
+  LegalWebsite: { path: string; title: string };
+  LegalDocumentDetail: { type: any };
+  LegalAcceptance: { type: any; title: string; version: string };
+  DeleteAccount: undefined;
+  ManageData: undefined;
+  DeleteAccountConfirmation: undefined;
+  DeleteAccountStatus: undefined;
   AboutUs: { content?: string } | undefined;
   TermsOfService: { content?: string } | undefined;
   PrivacyPolicy: { content?: string } | undefined;
@@ -161,9 +177,6 @@ type RootStackParamList = {
   MapAddressPicker: { address?: any; initial?: { latitude?: number; longitude?: number } } | undefined;
   ComingSoon: { addressLine?: string; pincode?: string } | undefined;
   EditProfile: undefined;
-  BookingService: undefined;
-  BookingSlot: { serviceId: number };
-  BookingConfirm: { serviceId: number; scheduledTime: string };
   IncomingCall: { callId: string; bookingId: number };
   OutgoingCall: { bookingId: number; partnerName?: string };
   ActiveCall: undefined;
@@ -440,13 +453,21 @@ export function AppNavigator({
         <Root.Screen name="ServiceCompleted" component={ServiceCompletedScreen} options={{ headerShown: true, title: "Service Completed" }} />
         <Root.Screen name="BookingStatusFallback" component={BookingStatusFallbackScreen} options={{ headerShown: true, title: "Booking Status" }} />
         <Root.Screen name="SubscriptionPlan" component={SubscriptionPlanScreen} options={{ headerShown: true, title: "Subscription Plan" }} />
-        <Root.Screen name="RatePartner" component={RatePartnerScreen} options={{ headerShown: true, title: "Rate Partner" }} />
         <Root.Screen name="Reviews" component={ReviewScreen} options={{ headerShown: true, title: "Reviews" }} />
-        <Root.Screen name="Support" component={SupportTicketsScreen} options={{ headerShown: true, title: "Help & Support" }} />
+        <Root.Screen name="Support" component={CustomerSupportScreen} options={{ headerShown: true, title: "Support" }} />
+        <Root.Screen name="SupportTickets" component={SupportTicketsScreen} options={{ headerShown: true, title: "Support tickets" }} />
+        <Root.Screen name="LegalDocuments" component={LegalDocumentsScreen} options={{ headerShown: true, title: "Legal & Policies" }} />
+        <Root.Screen name="LegalWebsite" component={LegalWebsiteScreen} options={({ route }) => ({ headerShown: true, title: route.params.title })} />
+        <Root.Screen name="ManageData" component={ManageDataScreen} options={{ headerShown: true, title: "Manage data" }} />
+        <Root.Screen name="LegalDocumentDetail" component={LegalDocumentDetailScreen} options={{ headerShown: true, title: "Legal document" }} />
+        <Root.Screen name="LegalAcceptance" component={LegalAcceptanceScreen} options={{ headerShown: true, title: "Legal acceptance" }} />
+        <Root.Screen name="DeleteAccount" component={DeleteAccountScreen} options={{ headerShown: true, title: "Delete account" }} />
+        <Root.Screen name="DeleteAccountConfirmation" component={DeleteAccountConfirmationScreen} options={{ headerShown: false }} />
+        <Root.Screen name="DeleteAccountStatus" component={DeleteAccountStatusScreen} options={{ headerShown: true, title: "Deletion status" }} />
         <Root.Screen name="AboutUs" component={LegalContentScreen} options={{ headerShown: true, title: "About Us" }} />
         <Root.Screen name="TermsOfService" component={LegalContentScreen} options={{ headerShown: true, title: "Terms of Service" }} />
         <Root.Screen name="PrivacyPolicy" component={LegalContentScreen} options={{ headerShown: true, title: "Privacy Policy" }} />
-        <Root.Screen name="Faq" component={FaqScreen} options={{ headerShown: true, title: "FAQs" }} />
+        <Root.Screen name="Faq" component={CustomerFaqScreen} options={{ headerShown: true, title: "FAQs" }} />
         <Root.Screen name="BookingDetail" component={BookingDetailScreen} options={{ headerShown: true, title: "Booking Detail" }} />
         <Root.Screen
           name="ServiceList"
@@ -481,9 +502,6 @@ export function AppNavigator({
         <Root.Screen name="MapAddressPicker" component={MapAddressPickerScreen} options={{ headerShown: true, title: "Pick on Map" }} />
         <Root.Screen name="ComingSoon" component={ComingSoonScreen} options={{ headerShown: false }} />
         <Root.Screen name="EditProfile" component={EditProfileScreen} options={{ headerShown: false }} />
-        <Root.Screen name="BookingService" component={BookingServiceScreen} options={{ headerShown: true, title: "Book Service" }} />
-        <Root.Screen name="BookingSlot" component={BookingSlotScreen} options={{ headerShown: true, title: "Select Slot" }} />
-        <Root.Screen name="BookingConfirm" component={BookingConfirmScreen} options={{ headerShown: true, title: "Confirm Booking" }} />
         <Root.Screen name="IncomingCall" component={IncomingCallScreen} options={{ headerShown: false, gestureEnabled: false }} />
         <Root.Screen name="OutgoingCall" component={OutgoingCallScreen} options={{ headerShown: false, gestureEnabled: false }} />
         <Root.Screen name="ActiveCall" component={ActiveCallScreen} options={{ headerShown: false, gestureEnabled: false }} />

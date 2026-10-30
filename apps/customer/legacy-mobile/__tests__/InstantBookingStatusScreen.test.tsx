@@ -140,6 +140,8 @@ describe("InstantBookingStatusScreen", () => {
     expect(view.getByText("Deep Clean")).toBeTruthy();
     expect(view.getByText("4.5")).toBeTruthy();
     expect(view.getByText("Timeline")).toBeTruthy();
+    expect(view.getByText("Amit")).toBeTruthy();
+    expect(view.getByText("Waiting for partner location")).toBeTruthy();
 
     await fireEvent.press(view.getByLabelText("icon-phone"));
     await fireEvent.press(view.getByLabelText("icon-chat-outline"));

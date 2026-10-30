@@ -33,11 +33,15 @@ function isLiveScheduledState(details?: BookingSummaryDto) {
 
   return [
     "PARTNER_ASSIGNED",
+    "PARTNER_ON_THE_WAY",
+    "PARTNER_ACCEPTED",
+    "ARRIVED",
     "PARTNER_ARRIVED",
     "SERVICE_STARTED",
     "IN_PROGRESS",
     "SERVICE_IN_PROGRESS",
     "COMPLETED",
+    "SERVICE_COMPLETED",
   ].includes(state);
 }
 

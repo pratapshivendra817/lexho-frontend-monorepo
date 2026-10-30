@@ -61,6 +61,20 @@ jest.mock("../../../services/chatSocket", () => ({
   },
 }));
 
+jest.mock("../../../context/AppLanguageContext", () => ({
+  useAppLanguage: () => ({
+    t: (key: string) => ({
+      "chat.live": "Live",
+      "chat.start_conversation_order": "Start the conversation for this order.",
+      "orders.title": "Order",
+      "chat.failed_tap_retry": "Failed - tap to retry",
+      "chat.is_typing": "is typing...",
+      "chat.message_customer": "Message customer",
+      "chat.send_message_accessibility": "Send message",
+    }[key] ?? key),
+  }),
+}));
+
 import ChatScreen from "../ChatScreen";
 import { useAppDispatch, useAppSelector } from "../../../hooks/useRedux";
 import { clearThreadUnread, fetchMessages, readOrderMessages, sendChatMessage } from "../../../redux/slices/chatSlice";
@@ -252,7 +266,7 @@ describe("ChatScreen", () => {
     expect(view.getByText("Need help")).toBeTruthy();
     expect(view.getByText("On my way")).toBeTruthy();
     expect(view.getByText("sent")).toBeTruthy();
-    expect(view.getByText("Failed • tap to retry")).toBeTruthy();
+    expect(view.getByText("Failed - tap to retry")).toBeTruthy();
 
     await waitFor(() => {
       expect(mockReadOrderMessages).toHaveBeenCalledWith({ orderId: 42, messageIds: ["c1"] });

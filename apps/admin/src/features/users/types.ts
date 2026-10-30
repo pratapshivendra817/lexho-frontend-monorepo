@@ -25,6 +25,7 @@ export type AdminUser = {
   name: string;
   email: string;
   phone: string;
+  gender?: string;
   role: UserRole;
   status: UserStatus;
   city: string;

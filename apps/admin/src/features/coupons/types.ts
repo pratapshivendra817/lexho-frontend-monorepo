@@ -1,0 +1,21 @@
+export type CouponPayload = {
+  code: string;
+  title: string;
+  description: string;
+  discountType: "PERCENTAGE" | "FIXED";
+  discountValue: number;
+  maxDiscountAmount: number | null;
+  minimumPurchaseAmount: number;
+  totalUsageLimit: number | null;
+  perUserUsageLimit: number;
+  maxUsesPerDay: number | null;
+  validFrom: string;
+  validUntil: string;
+  active: boolean;
+  customerVisible: boolean;
+  firstBookingOnly: boolean;
+  applicableServiceId: number | null;
+  applicableCategoryId: number | null;
+  applicableBookingType: "INSTANT" | "SCHEDULED" | "SUBSCRIPTION" | null;
+};
+export type Coupon = CouponPayload & { id: number };

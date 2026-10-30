@@ -5,8 +5,23 @@ import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityI
 import { getCanonicalPartnerOrderId, getOrderHistory } from "../../services/partnerService";
 import type { PartnerOrder } from "../../types/order";
 import { COLORS } from "../../constants/colors";
+import { getOrderStatusLabel } from "../../utils/statusLabels";
+import { isActiveOrderStatus } from "../../utils/partnerDispatch";
 
 const tabs = ["COMPLETED", "CANCELLED", "PENDING"] as const;
+const ORDER_HISTORY_COPY = {
+  history: "Order History",
+  bookingId: "Booking ID",
+  customer: "Customer",
+  service: "Service",
+  amount: "Service Amount",
+  status: "Status",
+  title: "Order",
+  currency: "INR",
+  searchPlaceholder: "Search by customer/order id",
+  shareAccessibility: "Share order",
+  viewDetails: "View Details",
+} as const;
 
 export default function OrderHistoryScreen() {
   const navigation = useNavigation<any>();
@@ -33,7 +48,7 @@ export default function OrderHistoryScreen() {
 
   const filtered = useMemo(() => {
     return orders.filter((o) => {
-      const matchStatus = status === "PENDING" ? ["PENDING", "NEW", "ACCEPTED", "STARTED"].includes(o.status) : o.status === status;
+      const matchStatus = status === "PENDING" ? (["PENDING", "NEW"].includes(o.status) || isActiveOrderStatus(o.status)) : o.status === status;
       const needle = search.trim().toLowerCase();
       const matchSearch = !needle || (o.customerName ?? "").toLowerCase().includes(needle) || String(o.id).includes(needle);
       return matchStatus && matchSearch;
@@ -42,23 +57,23 @@ export default function OrderHistoryScreen() {
 
   const onShareHistoryItem = async (item: PartnerOrder) => {
     const message = [
-      "Order History",
-      `Order ID: ${item.id}`,
-      `Customer: ${item.customerName ?? "-"}`,
-      `Service: ${item.serviceType ?? "-"}`,
-      `Amount: INR ${item.amount ?? 0}`,
-      `Status: ${item.status}`,
+      ORDER_HISTORY_COPY.history,
+      `${ORDER_HISTORY_COPY.bookingId}: ${item.id}`,
+      `${ORDER_HISTORY_COPY.customer}: ${item.customerName ?? "-"}`,
+      `${ORDER_HISTORY_COPY.service}: ${formatServiceName(item)}`,
+      `${ORDER_HISTORY_COPY.amount}: ${formatServiceAmount(item)}`,
+      `${ORDER_HISTORY_COPY.status}: ${getOrderStatusLabel(item.status, (_key, fallback) => fallback)}`,
     ].join("\n");
-    await Share.share({ title: `Order #${item.id}`, message });
+    await Share.share({ title: `${ORDER_HISTORY_COPY.title} #${item.id}`, message });
   };
 
   return (
     <View style={styles.container}>
-      <TextInput value={search} onChangeText={setSearch} placeholder="Search by customer/order id" placeholderTextColor={COLORS.textMuted} style={styles.search} />
+      <TextInput value={search} onChangeText={setSearch} placeholder={ORDER_HISTORY_COPY.searchPlaceholder} placeholderTextColor={COLORS.textMuted} style={styles.search} />
       <View style={styles.tabs}>
         {tabs.map((tab) => (
           <TouchableOpacity key={tab} style={[styles.tab, status === tab && styles.tabActive]} onPress={() => setStatus(tab)}>
-            <Text style={[styles.tabText, status === tab && styles.tabTextActive]}>{tab}</Text>
+            <Text style={[styles.tabText, status === tab && styles.tabTextActive]}>{getOrderStatusLabel(tab, (_key, fallback) => fallback)}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -75,22 +90,40 @@ export default function OrderHistoryScreen() {
         renderItem={({ item }) => (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={styles.name}>{item.customerName ?? "Customer"}</Text>
-              <TouchableOpacity style={styles.shareIconBtn} onPress={() => onShareHistoryItem(item)} accessibilityLabel="Share order">
+              <Text style={styles.name}>{item.customerName ?? ORDER_HISTORY_COPY.customer}</Text>
+              <TouchableOpacity style={styles.shareIconBtn} onPress={() => onShareHistoryItem(item)} accessibilityLabel={ORDER_HISTORY_COPY.shareAccessibility}>
                 <MaterialCommunityIcons name="share-variant" size={18} color={COLORS.secondary} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.meta}>Order #{item.id}</Text>
-            <Text style={styles.meta}>{item.serviceType ?? "Service"} | INR {item.amount ?? 0}</Text>
-            <Text style={styles.meta}>Status: {item.status}</Text>
+            <Text style={styles.meta}>{`${ORDER_HISTORY_COPY.title} #${item.id}`}</Text>
+            <Text style={styles.meta}>{`${ORDER_HISTORY_COPY.service}: ${formatServiceName(item)}`}</Text>
+            <Text style={styles.meta}>{`${ORDER_HISTORY_COPY.amount}: ${formatServiceAmount(item)}`}</Text>
+            <Text style={styles.meta}>{`Address: ${item.address ?? "-"}`}</Text>
+            {String(item.bookingType ?? "").toUpperCase() === "SCHEDULED" ? (
+              <Text testID={`history-scheduled-${item.id}`} style={styles.scheduledMeta}>
+                Scheduled service: {item.scheduledDate ?? "-"} {item.scheduledTime ?? item.promisedStartTime ?? ""}
+              </Text>
+            ) : null}
+            <Text style={styles.meta}>{`${ORDER_HISTORY_COPY.status}: ${getOrderStatusLabel(item.status, (_key, fallback) => fallback)}`}</Text>
             <TouchableOpacity style={styles.viewBtn} onPress={() => navigation.navigate("OrderDetails", { orderId: getCanonicalPartnerOrderId(item), requestId: item.requestId })}>
-              <Text style={styles.viewBtnText}>View Details</Text>
+              <Text style={styles.viewBtnText}>{ORDER_HISTORY_COPY.viewDetails}</Text>
             </TouchableOpacity>
           </View>
         )}
       />
     </View>
   );
+}
+
+function formatServiceName(order: PartnerOrder) {
+  const primary = order.serviceType ?? ORDER_HISTORY_COPY.service;
+  const secondary = order.subService;
+  if (secondary && secondary !== primary) return `${primary} - ${secondary}`;
+  return primary;
+}
+
+function formatServiceAmount(order: Pick<PartnerOrder, "amount" | "payout">) {
+  return `\u20B9${order.amount ?? order.payout ?? 0}`;
 }
 
 const styles = StyleSheet.create({
@@ -107,6 +140,7 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   name: { flex: 1, color: COLORS.textPrimary, fontWeight: "800" },
   meta: { color: COLORS.textSecondary, fontSize: 12 },
+  scheduledMeta: { color: COLORS.secondary, fontSize: 12, fontWeight: "800" },
   viewBtn: {
     marginTop: 10,
     borderWidth: 1,

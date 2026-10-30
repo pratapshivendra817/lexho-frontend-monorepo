@@ -10,6 +10,7 @@ import {
 } from "../../constants/env";
 import { getBestCurrentCoordinates } from "../../hooks/useCurrentLocation";
 import { openLocationSettings, requestLocationPermission } from "../../hooks/useLocationPermission";
+import { clearSelectedAddressId } from "../../redux/cartSlice";
 import { useAppDispatch, useAppSelector } from "../../redux/hooks";
 import { setCurrentAddressLocal, setCurrentLocationLocal, setServiceAvailable } from "../../redux/locationSlice";
 import { checkServiceability, reverseGeocode, updateCurrentLocation } from "../../services/locationService";
@@ -38,6 +39,7 @@ function isManualConfirmedAddress(address: any): boolean {
 
 function isServiceable(data: any): boolean {
   const value =
+    data?.serviceAvailable ??
     data?.serviceable ??
     data?.available ??
     data?.isServiceable ??
@@ -69,7 +71,7 @@ function isServiceable(data: any): boolean {
     return false;
   }
   if (status.includes("inactive")) return false;
-  if (status.includes("serviceable") || status.includes("available") || status === "active") {
+  if (["serviceable", "available", "active"].includes(status.trim())) {
     return true;
   }
   return false;
@@ -77,22 +79,6 @@ function isServiceable(data: any): boolean {
 
 function toAddressText(value: unknown): string {
   return String(value ?? "").trim();
-}
-
-function pickBackendPincode(source: any): string {
-  const root = source?.data ?? source ?? {};
-  return toAddressText(
-    root?.matchedPincode ??
-      root?.pincode ??
-      root?.postalCode ??
-      root?.serviceArea?.pincode ??
-      root?.serviceableArea?.pincode ??
-      root?.area?.pincode ??
-      root?.location?.pincode ??
-      root?.currentLocation?.pincode ??
-      source?.matchedPincode ??
-      source?.pincode,
-  );
 }
 
 function pickBackendLocationData(source: any) {
@@ -165,8 +151,8 @@ function replaceAddressPincode(addressLine: string, pincode: string): string {
 }
 
 function getLocationConfidence(accuracy: number): "HIGH" | "MEDIUM" | "LOW" {
-  if (accuracy <= 15) return "HIGH";
-  if (accuracy <= 35) return "MEDIUM";
+  if (accuracy <= 50) return "HIGH";
+  if (accuracy <= 100) return "MEDIUM";
   return "LOW";
 }
 
@@ -187,7 +173,8 @@ function shouldShowSettingsAction(error: string | null): boolean {
   return text.includes("permission") || text.includes("gps") || text.includes("accuracy");
 }
 
-export function DetectingLocationScreen({ navigation }: any) {
+export function DetectingLocationScreen({ navigation, route }: any) {
+  const isExplicitDetection = route?.name === "DetectingLocation";
   const dispatch = useAppDispatch();
   const authUserId = useAppSelector((s) => s.auth.user?.id ?? 0);
   const authToken = useAppSelector((s) => s.auth.token ?? "");
@@ -200,6 +187,7 @@ export function DetectingLocationScreen({ navigation }: any) {
   const [progressLabel, setProgressLabel] = useState("📍 Detecting GPS");
   const [mockWarning, setMockWarning] = useState<string | null>(null);
   const [gpsHint, setGpsHint] = useState<string | null>(null);
+  const [fallbackAddress, setFallbackAddress] = useState<any | null>(null);
   const retryTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   // Fast Refresh hook-order guard after removing debug state.
   useState<Record<string, never>>({});
@@ -229,6 +217,13 @@ export function DetectingLocationScreen({ navigation }: any) {
     navigation.replace("LocationSearch");
   }, [navigation]);
 
+  const useSavedFallback = useCallback(() => {
+    if (!fallbackAddress) return;
+    dispatch(setCurrentAddressLocal(fallbackAddress));
+    trackLocationEvent("manual_pin_selected", { source: "detecting_screen", target: "saved_location_fallback" });
+    tryNavigateMainIfAvailable();
+  }, [dispatch, fallbackAddress, tryNavigateMainIfAvailable]);
+
   const runBackgroundLocationSync = useCallback(
     (latitude: number, longitude: number, eventTimestampMs?: number) => {
       if (!Number.isFinite(locationUserId) || locationUserId <= 0) return;
@@ -255,9 +250,10 @@ export function DetectingLocationScreen({ navigation }: any) {
     setError(null);
     setMockWarning(null);
     setGpsHint(null);
+    setFallbackAddress(null);
     setProgressLabel("📍 Detecting GPS");
     try {
-      const existingManualAddress = isManualConfirmedAddress(currentAddress);
+      const existingManualAddress = !isExplicitDetection && isManualConfirmedAddress(currentAddress);
       if (existingManualAddress && currentAddress?.latitude && currentAddress?.longitude) {
         tryNavigateMainIfAvailable();
         return () => abortController.abort();
@@ -280,7 +276,6 @@ export function DetectingLocationScreen({ navigation }: any) {
       if (cachedLoc && cachedAge < 10 * 60 * 1000 && cachedAccuracy <= LOCATION_MAX_ACCEPTED_ACCURACY_METERS) {
         setProgressLabel("📍 Using recent location");
         setAddressLine(String(currentAddress?.addressLine ?? "Using recently detected location"));
-        dispatch(setServiceAvailable(true));
       }
 
       const coords = await getBestCurrentCoordinates({
@@ -296,7 +291,7 @@ export function DetectingLocationScreen({ navigation }: any) {
         throw new Error("Mock location detected. Please disable fake GPS and select location manually.");
       }
       const accuracy = Number(coords?.accuracy ?? 9999);
-      const confidence = getLocationConfidence(Math.min(accuracy, LOCATION_MAX_ACCEPTED_ACCURACY_METERS));
+      const confidence = getLocationConfidence(accuracy);
       dispatch(setCurrentLocationLocal({ ...coords, confidence, timestamp: Number(coords?.timestamp ?? Date.now()) }));
       trackLocationEvent("gps_success", { accuracy, confidence });
 
@@ -310,10 +305,11 @@ export function DetectingLocationScreen({ navigation }: any) {
       }
       const quickPincode = extractIndianPincode(quickReverse?.displayName);
       const existingPincode = String(currentAddress?.pincode ?? "").trim();
-      const keepManualPincode = isManualConfirmedAddress(currentAddress) && existingPincode.length > 0;
-      const keepManualAddress = isManualConfirmedAddress(currentAddress);
+      const keepManualPincode = !isExplicitDetection && isManualConfirmedAddress(currentAddress) && existingPincode.length > 0;
+      const keepManualAddress = !isExplicitDetection && isManualConfirmedAddress(currentAddress);
       setAddressLine(quickLine || "Current Location");
       if (!keepManualAddress) {
+        dispatch(clearSelectedAddressId());
         dispatch(
           setCurrentAddressLocal({
             id: `gps-${Date.now()}`,
@@ -344,17 +340,17 @@ export function DetectingLocationScreen({ navigation }: any) {
       }
       const backendLocation = pickBackendLocationData(locationUpdate);
       const effectiveLatitude =
-        Number.isFinite(backendLocation.latitude) && backendLocation.latitude !== 0
+        !isExplicitDetection && Number.isFinite(backendLocation.latitude) && backendLocation.latitude !== 0
           ? backendLocation.latitude
           : coords.latitude;
       const effectiveLongitude =
-        Number.isFinite(backendLocation.longitude) && backendLocation.longitude !== 0
+        !isExplicitDetection && Number.isFinite(backendLocation.longitude) && backendLocation.longitude !== 0
           ? backendLocation.longitude
           : coords.longitude;
 
       let reverse: any = null;
       try {
-        if (!backendLocation.addressLine || !backendLocation.pincode) {
+        if (isExplicitDetection || !backendLocation.addressLine || !backendLocation.pincode) {
           reverse = await reverseGeocode({
             latitude: effectiveLatitude,
             longitude: effectiveLongitude,
@@ -370,7 +366,7 @@ export function DetectingLocationScreen({ navigation }: any) {
       }
       const reverseData = {
         ...(reverse?.data ?? reverse ?? {}),
-        ...(locationUpdate?.data ?? locationUpdate ?? {}),
+        ...(!isExplicitDetection ? (locationUpdate?.data ?? locationUpdate ?? {}) : {}),
         quickArea: quickReverse?.area,
         quickSector: quickReverse?.sector,
         quickCity: quickReverse?.city,
@@ -392,6 +388,7 @@ export function DetectingLocationScreen({ navigation }: any) {
       );
       if (line && !keepManualAddress) {
         setAddressLine(line);
+        dispatch(clearSelectedAddressId());
         dispatch(
           setCurrentAddressLocal({
             id: String(reverseData?.id ?? `gps-${Date.now()}`),
@@ -420,7 +417,7 @@ export function DetectingLocationScreen({ navigation }: any) {
 
       setProgressLabel("✅ Checking service availability");
       const serviceability =
-        typeof backendLocation.serviceAvailable === "boolean"
+        !isExplicitDetection && typeof backendLocation.serviceAvailable === "boolean"
           ? null
           : await checkServiceability({
               latitude: effectiveLatitude,
@@ -429,13 +426,13 @@ export function DetectingLocationScreen({ navigation }: any) {
               lng: effectiveLongitude,
               pincode: resolvedPincode,
               eventTimestampMs: locationEventTimestampMs,
-            });
+            }, { forceRefresh: true });
       const available =
-        typeof backendLocation.serviceAvailable === "boolean"
+        !isExplicitDetection && typeof backendLocation.serviceAvailable === "boolean"
           ? backendLocation.serviceAvailable
           : isServiceable(serviceability?.data ?? serviceability);
-      const backendMatchedPincode = pickBackendPincode(serviceability);
-      const finalPincode = backendMatchedPincode || resolvedPincode;
+      // A service-area match describes coverage, not the customer's GPS address.
+      const finalPincode = resolvedPincode;
       const finalLine = replaceAddressPincode(line || quickLine || "Current Location", finalPincode);
       const finalParsedSector = toAddressText(
         reverseData?.sector ??
@@ -444,6 +441,7 @@ export function DetectingLocationScreen({ navigation }: any) {
       );
       if (finalPincode && !keepManualAddress) {
         setAddressLine(finalLine);
+        dispatch(clearSelectedAddressId());
         dispatch(
           setCurrentAddressLocal({
             id: String(reverseData?.id ?? `gps-${Date.now()}`),
@@ -487,9 +485,10 @@ export function DetectingLocationScreen({ navigation }: any) {
     } catch (e: any) {
       const text = String(e?.message ?? "Unable to detect your location.");
       const fallbackAddress = Array.isArray(savedAddresses) && savedAddresses.length > 0 ? savedAddresses[0] : null;
-      if (fallbackAddress && !isManualConfirmedAddress(currentAddress)) {
-        dispatch(setCurrentAddressLocal(fallbackAddress));
-        tryNavigateMainIfAvailable();
+      if (!isExplicitDetection && fallbackAddress && !isManualConfirmedAddress(currentAddress)) {
+        setFallbackAddress(fallbackAddress);
+        setAddressLine(String(fallbackAddress?.addressLine ?? "Saved location"));
+        setError("Unable to detect current location. You can continue with your saved location or choose manually.");
         setLoading(false);
         return () => abortController.abort();
       }
@@ -512,29 +511,23 @@ export function DetectingLocationScreen({ navigation }: any) {
     navigation,
     runBackgroundLocationSync,
     savedAddresses,
+    isExplicitDetection,
     tryNavigateMainIfAvailable,
   ]);
 
+  // Updating location state during detection must not start another GPS request.
+  const initialDetectionRef = useRef(runDetection);
   useEffect(() => {
     let cleanup: any;
     void (async () => {
-      cleanup = await runDetection();
+      cleanup = await initialDetectionRef.current();
     })();
     return () => {
       if (typeof cleanup === "function") cleanup();
       retryTimersRef.current.forEach((timer) => clearTimeout(timer));
       retryTimersRef.current = [];
     };
-  }, [runDetection]);
-
-  useEffect(() => {
-    if (!loading) return;
-    const id = setTimeout(() => {
-      setLoading(false);
-      setError((prev) => prev ?? "Location detection is taking too long. Please retry or choose location manually.");
-    }, 18000);
-    return () => clearTimeout(id);
-  }, [loading]);
+  }, []);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -556,6 +549,11 @@ export function DetectingLocationScreen({ navigation }: any) {
           <Button mode="contained" buttonColor={COLORS.goldSoft} textColor={COLORS.navyDark} onPress={() => void runDetection()}>
             Retry detection
           </Button>
+          {fallbackAddress ? (
+            <Button mode="contained" buttonColor={COLORS.goldSoft} textColor={COLORS.navyDark} onPress={useSavedFallback}>
+              Use saved location
+            </Button>
+          ) : null}
           {shouldShowSettingsAction(error) ? (
             <Button mode="outlined" textColor={COLORS.goldSoft} style={styles.outlinedBtn} onPress={() => void openLocationSettings()}>
               Open app settings

@@ -36,9 +36,9 @@ export async function getCurrentCoordinates(timeout = 15000): Promise<Coordinate
 
 function positionToCoordinates(position: any): Coordinates {
   return {
-    latitude: Number(position?.coords?.latitude ?? 0),
-    longitude: Number(position?.coords?.longitude ?? 0),
-    accuracy: Number(position?.coords?.accuracy ?? 0),
+    latitude: Number(position?.coords?.latitude ?? Number.NaN),
+    longitude: Number(position?.coords?.longitude ?? Number.NaN),
+    accuracy: Number(position?.coords?.accuracy ?? Number.POSITIVE_INFINITY),
     timestamp: Number(position?.timestamp ?? Date.now()),
     mocked: Boolean((position as any)?.mocked ?? position?.coords?.mocked ?? false),
   };
@@ -85,7 +85,7 @@ function getSinglePosition(timeoutMs: number, enableHighAccuracy: boolean): Prom
       {
         enableHighAccuracy,
         timeout: timeoutMs,
-        maximumAge: 10000,
+        maximumAge: 0,
         forceRequestLocation: true,
         showLocationDialog: true,
       },
@@ -104,7 +104,9 @@ type BestCoordinatesOptions = {
 export async function getBestCurrentCoordinates(options: BestCoordinatesOptions = {}): Promise<Coordinates> {
   const timeoutMs = Number(options.timeoutMs ?? 15000);
   const desiredAccuracyMeters = Number(options.desiredAccuracyMeters ?? 30);
-  const maxAcceptedAccuracyMeters = Number(options.maxAcceptedAccuracyMeters ?? 100);
+  // Android approximate location and indoor GPS commonly report 100-250m accuracy.
+  // Treat that as usable current location instead of failing the flow repeatedly.
+  const maxAcceptedAccuracyMeters = Math.max(250, Number(options.maxAcceptedAccuracyMeters ?? 100));
   const samples = Math.max(1, Number(options.samples ?? 4));
 
   return new Promise((resolve, reject) => {
@@ -139,6 +141,15 @@ export async function getBestCurrentCoordinates(options: BestCoordinatesOptions 
       if (timeoutRef) clearTimeout(timeoutRef);
       if (abortListener) options.signal?.removeEventListener("abort", abortListener);
       if (value) {
+        const accuracy = Number(value.accuracy);
+        if (!Number.isFinite(accuracy) || accuracy <= 0 || accuracy > maxAcceptedAccuracyMeters) {
+          reject(new Error("Location accuracy is too weak. Please move to an open area or confirm your location on the map."));
+          return;
+        }
+        if (Date.now() - Number(value.timestamp ?? 0) > maxLocationAgeMs) {
+          reject(new Error("Location reading is old. Please retry to get your current location."));
+          return;
+        }
         resolve(value);
         return;
       }
@@ -185,6 +196,7 @@ export async function getBestCurrentCoordinates(options: BestCoordinatesOptions 
 
     watchId = (Geolocation as any).watchPosition(
       (position: any) => {
+        if (settled) return;
         const sampleTimestamp = Number(position.timestamp ?? Date.now());
         const ageMs = Math.max(0, Date.now() - sampleTimestamp);
         if (ageMs > maxLocationAgeMs) {
@@ -198,6 +210,9 @@ export async function getBestCurrentCoordinates(options: BestCoordinatesOptions 
         }
 
         const candidate: Coordinates = { ...positionToCoordinates(position), timestamp: sampleTimestamp, mocked: isMocked };
+        if (!Number.isFinite(candidate.latitude) || Math.abs(candidate.latitude) > 90 ||
+            !Number.isFinite(candidate.longitude) || Math.abs(candidate.longitude) > 180 ||
+            !Number.isFinite(candidate.accuracy) || Number(candidate.accuracy) <= 0) return;
 
         const lastAccepted = acceptedSamples[acceptedSamples.length - 1];
         if (lastAccepted) {
@@ -229,7 +244,7 @@ export async function getBestCurrentCoordinates(options: BestCoordinatesOptions 
           finish(
             undefined,
             new Error(
-              `Location accuracy is weak (${Math.round(finalAccuracy)}m). Please move to open area and retry.`,
+              `Location accuracy is too weak (${Math.round(finalAccuracy)}m). Please move to open area and retry.`,
             ),
           );
         }

@@ -29,7 +29,9 @@ export async function detectDeviceSecurityStatus(): Promise<DeviceSecurityStatus
     developerMode = __DEV__;
   }
 
-  const blocked = rooted || developerMode;
+  // Android development emulators need debugging/mock location for local testing.
+  // Release builds retain the device security checks.
+  const blocked = !(__DEV__ && isEmulator) && (rooted || developerMode);
   if (blocked) {
     await trackEvent(PARTNER_ANALYTICS_EVENTS.securityBlocked, {
       rooted,

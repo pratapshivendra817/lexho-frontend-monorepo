@@ -1,20 +1,24 @@
-﻿import type { AdminReviewStatus } from "../types";
+import type { AdminReviewSortDir, AdminReviewStatus } from "../types";
 
 type ReviewsFiltersBarProps = {
   search: string;
   status: AdminReviewStatus | "";
   rating: number | "";
-  partner: string;
-  customer: string;
-  service: string;
+  providerId: string;
+  serviceId: string;
+  sortBy: string;
+  sortDir: AdminReviewSortDir;
+  reported: boolean | "";
   startDate: string;
   endDate: string;
   onSearchChange: (value: string) => void;
   onStatusChange: (value: AdminReviewStatus | "") => void;
   onRatingChange: (value: number | "") => void;
-  onPartnerChange: (value: string) => void;
-  onCustomerChange: (value: string) => void;
-  onServiceChange: (value: string) => void;
+  onProviderIdChange: (value: string) => void;
+  onServiceIdChange: (value: string) => void;
+  onSortByChange: (value: string) => void;
+  onSortDirChange: (value: AdminReviewSortDir) => void;
+  onReportedChange: (value: boolean | "") => void;
   onStartDateChange: (value: string) => void;
   onEndDateChange: (value: string) => void;
   onReset: () => void;
@@ -24,17 +28,21 @@ export function ReviewsFiltersBar({
   search,
   status,
   rating,
-  partner,
-  customer,
-  service,
+  providerId,
+  serviceId,
+  sortBy,
+  sortDir,
+  reported,
   startDate,
   endDate,
   onSearchChange,
   onStatusChange,
   onRatingChange,
-  onPartnerChange,
-  onCustomerChange,
-  onServiceChange,
+  onProviderIdChange,
+  onServiceIdChange,
+  onSortByChange,
+  onSortDirChange,
+  onReportedChange,
   onStartDateChange,
   onEndDateChange,
   onReset,
@@ -74,25 +82,42 @@ export function ReviewsFiltersBar({
       </select>
 
       <input
-        value={partner}
-        onChange={(event) => onPartnerChange(event.target.value)}
-        placeholder="Partner"
+        value={providerId}
+        onChange={(event) => onProviderIdChange(event.target.value.replace(/\D/g, ""))}
+        placeholder="Provider ID"
         className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
       />
 
       <input
-        value={customer}
-        onChange={(event) => onCustomerChange(event.target.value)}
-        placeholder="Customer"
+        value={serviceId}
+        onChange={(event) => onServiceIdChange(event.target.value.replace(/\D/g, ""))}
+        placeholder="Service ID"
         className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
       />
 
-      <input
-        value={service}
-        onChange={(event) => onServiceChange(event.target.value)}
-        placeholder="Service"
+      <select value={sortBy} onChange={(event) => onSortByChange(event.target.value)} className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm">
+        <option value="createdAt">Sort: Created</option>
+        <option value="rating">Sort: Rating</option>
+        <option value="status">Sort: Status</option>
+      </select>
+
+      <select value={sortDir} onChange={(event) => onSortDirChange(event.target.value as AdminReviewSortDir)} className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm">
+        <option value="desc">Newest first</option>
+        <option value="asc">Oldest first</option>
+      </select>
+
+      <select
+        value={reported === "" ? "" : reported ? "true" : "false"}
+        onChange={(event) => {
+          const value = event.target.value;
+          onReportedChange(value === "" ? "" : value === "true");
+        }}
         className="rounded-lg border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-      />
+      >
+        <option value="">All report states</option>
+        <option value="true">Reported only</option>
+        <option value="false">Non-reported only</option>
+      </select>
 
       <input
         type="date"
@@ -115,5 +140,3 @@ export function ReviewsFiltersBar({
     </div>
   );
 }
-
-

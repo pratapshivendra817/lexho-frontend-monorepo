@@ -18,6 +18,20 @@ jest.mock("../../../features/shift/useShiftController", () => ({
   useShiftController: () => mockControllerState,
 }));
 
+jest.mock("../../../context/AppLanguageContext", () => ({
+  useAppLanguage: () => ({
+    t: (key: string) => ({
+      "shift.start": "Start Shift",
+      "shift.go_online": "Go Online",
+      "shift.select_schedule": "Select Schedule",
+      "shift.start_shift": "Start Shift",
+      "shift.location_accuracy_modal_body": "For a better experience, your device will need to use Location Accuracy",
+      "common.dismiss": "Dismiss",
+      "common.open_settings": "Open Settings",
+    }[key] ?? key),
+  }),
+}));
+
 jest.mock("@react-native-community/datetimepicker", () => {
   const React = require("react");
   const { Text, TouchableOpacity, View } = require("react-native");

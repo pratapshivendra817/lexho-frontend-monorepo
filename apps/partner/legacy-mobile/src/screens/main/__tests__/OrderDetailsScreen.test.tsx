@@ -2,10 +2,11 @@ import React from "react";
 import { Share } from "react-native";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import OrderDetailsScreen from "../OrderDetailsScreen";
-import { fetchPartnerRequestById, getPartnerOrderById } from "../../../services/partnerService";
+import { fetchPartnerRequestById, getCanonicalPartnerOrderId, getPartnerOrderById } from "../../../services/partnerService";
 
 jest.mock("../../../services/partnerService", () => ({
   fetchPartnerRequestById: jest.fn(),
+  getCanonicalPartnerOrderId: jest.fn((item) => item.requestId ?? item.id),
   getPartnerOrderById: jest.fn(),
 }));
 
@@ -20,12 +21,14 @@ jest.mock("../../../components/common/OrderLifecycleTimeline", () => ({
 jest.spyOn(Share, "share").mockResolvedValue({ action: "sharedAction" } as any);
 
 const mockFetchPartnerRequestById = fetchPartnerRequestById as jest.MockedFunction<typeof fetchPartnerRequestById>;
+const mockGetCanonicalPartnerOrderId = getCanonicalPartnerOrderId as jest.MockedFunction<typeof getCanonicalPartnerOrderId>;
 const mockGetPartnerOrderById = getPartnerOrderById as jest.MockedFunction<typeof getPartnerOrderById>;
 
 describe("OrderDetailsScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetchPartnerRequestById.mockReset();
+    mockGetCanonicalPartnerOrderId.mockImplementation((item) => item.requestId ?? item.id);
     mockGetPartnerOrderById.mockReset();
   });
 

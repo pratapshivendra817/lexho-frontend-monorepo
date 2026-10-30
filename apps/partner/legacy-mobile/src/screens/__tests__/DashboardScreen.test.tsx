@@ -104,7 +104,7 @@ describe("DashboardScreen", () => {
 
     expect(await findByText("Aarav Sharma")).toBeTruthy();
     expect(getByText("#101 | Deep Cleaning | INR 799")).toBeTruthy();
-    expect(getAllByText("Status: PENDING")).toHaveLength(2);
+    expect(getAllByText("Status: Pending")).toHaveLength(2);
     expect(getByText("Customer")).toBeTruthy();
     expect(getByText("#202 | Service | INR 0")).toBeTruthy();
     expect(getAllByText("Accept")).toHaveLength(2);

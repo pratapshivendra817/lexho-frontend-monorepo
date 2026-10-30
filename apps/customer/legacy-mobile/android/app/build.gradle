@@ -61,7 +61,24 @@ react {
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = true
+def releaseSigningStoreFile = System.getenv("LEXHO_RELEASE_STORE_FILE")
+def releaseSigningStorePassword = System.getenv("LEXHO_RELEASE_STORE_PASSWORD")
+def releaseSigningKeyAlias = System.getenv("LEXHO_RELEASE_KEY_ALIAS")
+def releaseSigningKeyPassword = System.getenv("LEXHO_RELEASE_KEY_PASSWORD")
+def releaseVersionCode = System.getenv("LEXHO_ANDROID_VERSION_CODE")
+def releaseTaskRequested = gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") }
+def missingReleaseInputs = [
+    "LEXHO_RELEASE_STORE_FILE": releaseSigningStoreFile,
+    "LEXHO_RELEASE_STORE_PASSWORD": releaseSigningStorePassword,
+    "LEXHO_RELEASE_KEY_ALIAS": releaseSigningKeyAlias,
+    "LEXHO_RELEASE_KEY_PASSWORD": releaseSigningKeyPassword,
+    "LEXHO_ANDROID_VERSION_CODE": releaseVersionCode,
+].findAll { _, value -> !value?.trim() }.keySet()
+
+if (releaseTaskRequested && !missingReleaseInputs.isEmpty()) {
+    throw new GradleException("Release builds require: ${missingReleaseInputs.join(', ')}")
+}
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -86,7 +103,7 @@ android {
         applicationId "com.lexhocustomer"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        versionCode Integer.parseInt(releaseVersionCode ?: "1")
         versionName "1.0"
         manifestPlaceholders = [
             usesCleartextTraffic: "false",
@@ -99,6 +116,12 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            storeFile file(releaseSigningStoreFile ?: "missing-release-keystore")
+            storePassword releaseSigningStorePassword ?: ""
+            keyAlias releaseSigningKeyAlias ?: ""
+            keyPassword releaseSigningKeyPassword ?: ""
+        }
     }
     buildTypes {
         debug {
@@ -108,13 +131,12 @@ android {
             ]
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             manifestPlaceholders = [
                 usesCleartextTraffic: "false",
             ]
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             firebaseCrashlytics {
                 mappingFileUploadEnabled true

@@ -1,3 +1,5 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 const mockGet = jest.fn();
 const mockParseApiError = jest.fn(
   (_error: unknown, fallback: string) => fallback,
@@ -79,20 +81,14 @@ const emptyLocationState = {
 };
 
 describe("homeApi", () => {
-  let consoleLogSpy: jest.SpyInstance;
-
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
+    await AsyncStorage.clear();
     mockGetToken.mockResolvedValue(null);
     mockGetState.mockReturnValue(emptyLocationState);
     mockParseApiError.mockImplementation(
       (_error: unknown, fallback: string) => fallback,
     );
-    consoleLogSpy = jest.spyOn(console, "log").mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    consoleLogSpy.mockRestore();
   });
 
   describe("getDashboard", () => {
@@ -130,6 +126,14 @@ describe("homeApi", () => {
   });
 
   describe("getBanners", () => {
+    it("loads all five home campaigns before the single category banner feed", async () => {
+      const campaigns = [5, 4, 3, 2, 1].map(priority => ({ id: priority, priority, title: `Campaign ${priority}`, imageUrl: `/banner-${priority}.png` }));
+      mockGet.mockImplementation(async (path: string) => ({ data: { data: path === "/api/customer/home/banners" ? campaigns : [{ id: 14 }] } }));
+      const banners = await getBanners();
+      expect(banners.map(item => item.id)).toEqual([1, 2, 3, 4, 5]);
+      expect(mockGet).toHaveBeenCalledTimes(1);
+      expect(mockGet).toHaveBeenCalledWith("/api/customer/home/banners", expect.any(Object));
+    });
     it("uses stored authentication, maps image aliases and sorts banners", async () => {
       mockGetToken.mockResolvedValue("stored-token");
       mockGetState.mockReturnValue({
@@ -187,7 +191,7 @@ describe("homeApi", () => {
           imageUrl: undefined,
         }),
       ]);
-      expect(mockGet).toHaveBeenCalledWith("/api/banners", {
+      expect(mockGet).toHaveBeenCalledWith("/api/customer/home/banners", {
         headers: { Authorization: "Bearer stored-token" },
         params: {
           audience: "CUSTOMER",
@@ -196,10 +200,6 @@ describe("homeApi", () => {
           size: 20,
         },
       });
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        "[homeApi:getBanners:missingImageUrl]",
-        { missingImageIds: ["4"] },
-      );
     });
 
     it("uses the Redux token when storage is empty", async () => {
@@ -214,7 +214,7 @@ describe("homeApi", () => {
       await getBanners();
 
       expect(mockGet).toHaveBeenCalledWith(
-        "/api/banners",
+        "/api/customer/home/banners",
         expect.objectContaining({
           headers: { Authorization: "Bearer redux-token" },
         }),
@@ -251,7 +251,7 @@ describe("homeApi", () => {
           });
 
         await expect(getBanners()).resolves.toHaveLength(1);
-        expect(mockGet).toHaveBeenNthCalledWith(2, "/api/banners", {
+        expect(mockGet).toHaveBeenNthCalledWith(2, "/api/customer/home/banners", {
           params: {
             audience: "CUSTOMER",
             page: 0,
@@ -276,7 +276,7 @@ describe("homeApi", () => {
       ]);
       expect(mockGet).toHaveBeenNthCalledWith(
         4,
-        "/api/customer/home/banners",
+        "/api/customer/banners",
         expect.any(Object),
       );
     });

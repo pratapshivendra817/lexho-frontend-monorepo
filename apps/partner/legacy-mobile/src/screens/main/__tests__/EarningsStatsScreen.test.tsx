@@ -70,7 +70,7 @@ describe("EarningsStatsScreen", () => {
     expect(view.getByText("Refund")).toBeTruthy();
     expect(view.getByText("INR 300.00")).toBeTruthy();
 
-    fireEvent.press(view.getByLabelText("Payouts"));
+    fireEvent.press(view.getByLabelText("Payout"));
     fireEvent.press(view.getByLabelText("Bank Account"));
     fireEvent.press(view.getByLabelText("Withdraw"));
     fireEvent.press(view.getByLabelText("Go back"));

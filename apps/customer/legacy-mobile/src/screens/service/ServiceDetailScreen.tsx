@@ -16,19 +16,6 @@ import { trackServiceAddedToCart, trackServiceViewed } from "../../services/cust
 
 type LoadState = "idle" | "loading" | "success" | "error";
 type AddonSelection = Record<number, { selected: boolean; quantity: number }>;
-type CookCoverageOption = {
-  key: CookFamilySize;
-  label: string;
-  subtitle: string;
-  items: string[];
-};
-
-const COOK_COVERAGE_OPTIONS: CookCoverageOption[] = [
-  { key: "SMALL", label: "1-2 Members", subtitle: "Small family", items: ["Dal", "Rice", "1 Sabzi", "8-10 Rotis"] },
-  { key: "MEDIUM", label: "3-4 Members", subtitle: "Most popular", items: ["Dal", "Rice", "2 Sabzi", "12-15 Rotis", "Salad"] },
-  { key: "LARGE", label: "5-6 Members", subtitle: "Medium family", items: ["Dal", "Rice", "2-3 Sabzi", "18-20 Rotis", "Salad"] },
-  { key: "XLARGE", label: "6-8 Members", subtitle: "Large family", items: ["Dal", "Rice", "3 Sabzi", "25+ Rotis", "Salad", "Basic meal prep"] },
-];
 const MIN_SUBSCRIPTION_VISITS = 3;
 
 function clampQuantity(value: number, addon: ServiceAddonDto) {
@@ -415,7 +402,9 @@ export function ServiceDetailScreen({ route, navigation }: any) {
   }, [categoryNameParam, details?.serviceName, requiresCookFamilySize, serviceNameParam, showCookCoverageParam]);
   const shouldShowCleaningCoverage = useMemo(() => {
     const normalized = normalizeSearch(`${categoryNameParam} ${details?.serviceName ?? serviceNameParam}`);
-    return showCleaningCoverageParam || normalized.includes("clean");
+    return showCleaningCoverageParam || normalized.includes("clean")
+      || /\b(vehicle|vehical|car|bike)\s*wash\b/.test(normalized)
+      || /\b(fitness|wellness)\b/.test(normalized);
   }, [categoryNameParam, details?.serviceName, serviceNameParam, showCleaningCoverageParam]);
   const cookFamilySizeQuery = useQuery({
     queryKey: ["customer-cook-family-sizes"],
@@ -502,6 +491,8 @@ export function ServiceDetailScreen({ route, navigation }: any) {
     try {
       await dispatch(addToCartThunk({
         serviceId: resolvedServiceId,
+        categoryId: categoryIdParam || undefined,
+        categoryName: categoryNameParam || undefined,
         quantity: 1,
         addons: selectedAddonPayload,
         familySizeId: resolvedCookFamilySizeId,
@@ -522,6 +513,8 @@ export function ServiceDetailScreen({ route, navigation }: any) {
         dispatch(setScheduledTime(null));
       }
       navigation.navigate("CartCrud", {
+        recurringBooking: null,
+        categoryName: categoryNameParam || undefined,
         bookingMode: bookingModeParam || (isScheduleWizardSource ? "SCHEDULED" : undefined),
         scheduleMode: scheduleModeParam || undefined,
         serviceId: resolvedServiceId,
@@ -589,27 +582,16 @@ export function ServiceDetailScreen({ route, navigation }: any) {
     shouldShowCleaningCoverage,
     shouldShowCookCoverage,
   ]);
-  const selectedAddonPayload = useMemo(
-    () =>
-      (details?.addons ?? [])
-        .filter((addon) => {
-          const selection = selectedAddons[addon.addonId];
-          return addon.required || Boolean(selection?.selected);
-        })
-        .map((addon) => ({
-          addonId: addon.addonId,
-          quantity: clampQuantity(selectedAddons[addon.addonId]?.quantity ?? addon.minQuantity, addon),
-        })),
-    [details?.addons, selectedAddons],
-  );
-  const addonsTotal = useMemo(
-    () =>
-      (details?.addons ?? []).reduce((sum, addon) => {
-        const selected = selectedAddonPayload.find((item) => item.addonId === addon.addonId);
-        return selected ? sum + addon.price * selected.quantity : sum;
-      }, 0),
-    [details?.addons, selectedAddonPayload],
-  );
+  const selectedAddonPayload = (details?.addons ?? [])
+    .filter((addon) => addon.required || Boolean(selectedAddons[addon.addonId]?.selected))
+    .map((addon) => ({
+      addonId: addon.addonId,
+      quantity: clampQuantity(selectedAddons[addon.addonId]?.quantity ?? addon.minQuantity, addon),
+    }));
+  const addonsTotal = (details?.addons ?? []).reduce((sum, addon) => {
+    const selected = selectedAddonPayload.find((item) => item.addonId === addon.addonId);
+    return selected ? sum + addon.price * selected.quantity : sum;
+  }, 0);
   const totalAmount = serviceBaseAmount + addonsTotal;
   const serviceHeadlinePriceLabel = serviceBaseAmount > 0 ? formatAmount(serviceBaseAmount) : servicePriceLabelParam || "Rs --";
   const hasAddons = (details?.addons?.length ?? 0) > 0;
@@ -774,7 +756,7 @@ export function ServiceDetailScreen({ route, navigation }: any) {
                 <View style={styles.cleaningDurationSection}>
                   <View>
                     <Text style={styles.sectionTitle}>Time Based</Text>
-                    <Text style={styles.cleaningDurationSubtitle}>Select cleaning duration.</Text>
+                    <Text style={styles.cleaningDurationSubtitle}>Select service duration.</Text>
                   </View>
                   <View style={styles.cleaningDurationGrid}>
                     {cleaningDurationOptions.map((option) => {

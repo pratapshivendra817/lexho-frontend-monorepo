@@ -87,7 +87,7 @@ describe("ScheduleBookingWizardScreen", () => {
     expect(view.getByText("Scheduled Cleaning")).toBeTruthy();
     expect(view.getByText("Rs. 750")).toBeTruthy();
     expect(view.getByText("4.0")).toBeTruthy();
-    expect(view.getByText("Price pending")).toBeTruthy();
+    expect(view.getByText("Check details")).toBeTruthy();
 
     await fireEvent.press(view.getByLabelText("Open Scheduled Cleaning details"));
     expect(mockNavigate).toHaveBeenCalledWith("ServiceDetail", {

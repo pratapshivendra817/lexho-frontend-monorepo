@@ -4,12 +4,18 @@ import Config from 'react-native-config';
 const MANUAL_REAL_DEVICE_API_HOST = String(
   Config.MANUAL_REAL_DEVICE_API_HOST ?? '',
 ).trim();
-const USE_ADB_REVERSE_FOR_REAL_ANDROID_DEVICE = true;
-const LAN_HOST = String(Config.DEV_LAN_HOST ?? 'localhost').trim();
+const USE_ADB_REVERSE_FOR_REAL_ANDROID_DEVICE =
+  __DEV__ && Platform.OS === 'android'
+    ? true
+    : String(Config.USE_ADB_REVERSE_FOR_REAL_ANDROID_DEVICE ?? 'false')
+      .trim()
+      .toLowerCase() === 'true';
+const LAN_HOST = String(Config.DEV_LAN_HOST ?? '192.168.31.38').trim();
 const EMULATOR_HOST = String(
-  Config.ANDROID_EMULATOR_HOST ?? 'localhost',
+  Config.ANDROID_EMULATOR_HOST ?? '10.0.2.2',
 ).trim();
 const CONFIGURED_API_BASE_URL = String(Config.API_BASE_URL ?? '').trim();
+const PRODUCTION_API_BASE_URL = 'https://api.lexho.com';
 
 function removeTrailingSlashes(value: string): string {
   let end = value.length;
@@ -58,8 +64,13 @@ function resolveHost() {
 
 const HOST = resolveHost();
 const DEFAULT_BASE_URL = `http://${HOST}:8082`;
-export const API_BASE_URL = removeTrailingSlashes(CONFIGURED_API_BASE_URL) || DEFAULT_BASE_URL;
+const EFFECTIVE_CONFIGURED_API_BASE_URL =
+  __DEV__ && removeTrailingSlashes(CONFIGURED_API_BASE_URL) === PRODUCTION_API_BASE_URL
+    ? ''
+    : CONFIGURED_API_BASE_URL;
+export const API_BASE_URL = removeTrailingSlashes(EFFECTIVE_CONFIGURED_API_BASE_URL) || DEFAULT_BASE_URL;
 export const LOCATION_API_BASE_URL = `${API_BASE_URL}/api/v1/customer/location`;
+export const WEBSITE_BASE_URL = removeTrailingSlashes(String(Config.WEBSITE_BASE_URL ?? '').trim()) || (__DEV__ ? `http://${HOST}:5173` : 'https://lexho.com');
 export const DEV_IMAGE_HOST = HOST;
 export const AUTH_FALLBACK_BASE_URLS = String(
   Config.AUTH_FALLBACK_BASE_URLS ?? '',
@@ -99,7 +110,7 @@ export const MAPBOX_PUBLIC_TOKEN = String(
 export const SSL_PINNING_ENABLED = String(Config.SSL_PINNING_ENABLED ?? "false").trim().toLowerCase() === "true";
 export const SSL_PINNING_CERT_NAME = String(Config.SSL_PINNING_CERT_NAME ?? "lexho_api").trim() || "lexho_api";
 
-export const LOCATION_DETECT_TIMEOUT_MS = 20000;
-export const LOCATION_DESIRED_ACCURACY_METERS = 25;
-export const LOCATION_MAX_ACCEPTED_ACCURACY_METERS = 100;
-export const LOCATION_ACCURACY_SAMPLE_COUNT = 5;
+export const LOCATION_DETECT_TIMEOUT_MS = 25000;
+export const LOCATION_DESIRED_ACCURACY_METERS = 50;
+export const LOCATION_MAX_ACCEPTED_ACCURACY_METERS = 250;
+export const LOCATION_ACCURACY_SAMPLE_COUNT = 4;

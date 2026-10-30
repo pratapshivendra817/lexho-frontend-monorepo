@@ -144,7 +144,7 @@ export default function SupportPage() {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4 p-4 lg:p-6">
       <SegmentedTabs items={supportModeTabs} value={mode} onChange={setMode} />
 
       <h1 className="text-2xl font-bold">{requesterType === "PARTNER" ? "Partner Support Tickets" : "Customer Support Tickets"}</h1>
@@ -167,7 +167,7 @@ export default function SupportPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." className="border rounded px-3 py-2" />
         <select value={status} onChange={(e) => setStatus(e.target.value as TicketStatus | "")} className="border rounded px-3 py-2">
           <option value="">All Status</option>
@@ -243,12 +243,12 @@ export default function SupportPage() {
         <>
           <StatsCards tickets={tickets} />
 
-          <div className="grid grid-cols-3 gap-4 h-[600px]">
-            <div className="col-span-2">
+          <div className="grid min-h-0 grid-cols-1 gap-4 xl:h-[640px] xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,1fr)]">
+            <section className="min-w-0 overflow-auto rounded-xl xl:h-full" aria-label="Support ticket list">
               <TicketTable tickets={displayedTickets} onSelect={setSelected} selectedId={selected?.id} />
-            </div>
+            </section>
 
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow">
+            <aside className="min-h-[560px] overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow xl:min-h-0 xl:h-full" aria-label="Selected ticket details">
               {selected ? (
                 <div className="border-b border-[var(--color-border)] p-3 text-xs">
                   <div className="grid gap-1">
@@ -262,7 +262,7 @@ export default function SupportPage() {
                 </div>
               ) : null}
               <TicketDetail ticket={(detailQuery.data ?? selected) as Ticket | null} onStatusChange={updateStatus} onReply={reply} />
-            </div>
+            </aside>
           </div>
 
           <div className="flex items-center justify-end gap-2">

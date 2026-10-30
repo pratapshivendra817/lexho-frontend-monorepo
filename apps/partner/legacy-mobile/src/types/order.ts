@@ -2,8 +2,12 @@ export type OrderStatus =
   | "NEW"
   | "CREATED"
   | "ASSIGNED"
+  | "PARTNER_ASSIGNED"
+  | "PARTNER_ACCEPTED"
   | "PENDING"
   | "ACCEPTED"
+  | "ARRIVED"
+  | "IN_PROGRESS"
   | "REJECTED"
   | "EXPIRED"
   | "STARTED"
@@ -28,15 +32,21 @@ export type PartnerOrder = {
   customerName?: string;
   customerPhone?: string;
   address?: string;
+  serviceName?: string;
   serviceType?: string;
   serviceCategory?: string;
   subService?: string;
   distance?: number;
   etaMinutes?: number;
   payout?: number;
-  bookingType?: "INSTANT" | "SCHEDULED";
+  servicePrice?: number;
+  bookingType?: "INSTANT" | "SCHEDULED" | "SUBSCRIPTION";
+  subscriptionId?: number;
+  subscriptionVisitId?: number;
   assignmentStatus?: string;
   promisedStartTime?: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
   slaMinutes?: number;
   unavailableReason?: string;
   available?: boolean;

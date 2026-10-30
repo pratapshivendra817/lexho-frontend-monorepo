@@ -114,6 +114,8 @@ describe("SubscriptionDetailsPage", () => {
   let detailQuery: QueryState;
   let calendarQuery: QueryState;
   let assignmentQuery: QueryState;
+  let eligiblePartnersQuery: QueryState;
+  let changeRequestsQuery: QueryState;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -121,6 +123,14 @@ describe("SubscriptionDetailsPage", () => {
     detailQuery = createQueryState();
     calendarQuery = createQueryState();
     assignmentQuery = createQueryState();
+    eligiblePartnersQuery = createQueryState({
+      data: [
+        { partnerId: 12, partnerName: "Primary" },
+        { partnerId: 25, partnerName: "Backup" },
+        { partnerId: 77, partnerName: "Visit partner" },
+      ],
+    });
+    changeRequestsQuery = createQueryState();
 
     mocks.useParams.mockReturnValue({ id: "15" });
     mocks.useQueryClient.mockReturnValue(queryClient);
@@ -133,6 +143,10 @@ describe("SubscriptionDetailsPage", () => {
           return calendarQuery;
         case "admin-subscription-assignment":
           return assignmentQuery;
+        case "admin-subscription-eligible-partners":
+          return eligiblePartnersQuery;
+        case "admin-subscription-change-requests":
+          return changeRequestsQuery;
         default:
           throw new Error(`Unexpected query key: ${queryKey[0]}`);
       }
@@ -242,21 +256,20 @@ describe("SubscriptionDetailsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Update Status" }));
 
     const assignForm = screen.getByText("Assign Subscription Partner").closest("form");
-    const assignInputs = within(assignForm as HTMLFormElement).getAllByRole("textbox");
-    fireEvent.change(assignInputs[0], { target: { value: "abc12" } });
-    fireEvent.change(assignInputs[1], { target: { value: "  Primary coverage  " } });
+    const assignControls = within(assignForm as HTMLFormElement).getAllByRole("combobox");
+    fireEvent.change(assignControls[0], { target: { value: "12" } });
+    fireEvent.change(within(assignForm as HTMLFormElement).getByPlaceholderText("Reason"), { target: { value: "  Primary coverage  " } });
     fireEvent.submit(assignForm as HTMLFormElement);
 
     const replaceForm = screen.getByText("Replace Subscription Partner").closest("form");
-    const replaceInputs = within(replaceForm as HTMLFormElement).getAllByRole("textbox");
-    fireEvent.change(replaceInputs[0], { target: { value: "x25" } });
-    fireEvent.change(replaceInputs[1], { target: { value: "  Backup shift  " } });
+    const replaceControls = within(replaceForm as HTMLFormElement).getAllByRole("combobox");
+    fireEvent.change(replaceControls[0], { target: { value: "25" } });
+    fireEvent.change(within(replaceForm as HTMLFormElement).getByPlaceholderText("Reason"), { target: { value: "  Backup shift  " } });
     fireEvent.submit(replaceForm as HTMLFormElement);
 
-    fireEvent.change(screen.getAllByRole("combobox")[1], { target: { value: "SKIPPED" } });
-
     const visitRow = screen.getByTestId("visit-row-9");
-    fireEvent.change(within(visitRow).getByPlaceholderText("Partner ID"), { target: { value: "partner77" } });
+    fireEvent.change(within(visitRow).getAllByRole("combobox")[0], { target: { value: "SKIPPED" } });
+    fireEvent.change(within(visitRow).getAllByRole("combobox")[1], { target: { value: "77" } });
     fireEvent.change(within(visitRow).getByPlaceholderText("Reason"), { target: { value: "  One-off visit  " } });
     fireEvent.submit(within(visitRow).getByRole("button", { name: "Assign" }).closest("form") as HTMLFormElement);
 
@@ -310,19 +323,19 @@ describe("SubscriptionDetailsPage", () => {
     expect(mocks.error).toHaveBeenCalledTimes(3);
 
     fireEvent.click(screen.getByRole("button", { name: "Update Status" }));
-    fireEvent.change(screen.getAllByRole("combobox")[1], { target: { value: "CANCELLED" } });
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "CANCELLED" } });
 
-    const assignInputs = within(assignForm as HTMLFormElement).getAllByRole("textbox");
-    fireEvent.change(assignInputs[0], { target: { value: "16" } });
-    fireEvent.change(assignInputs[1], { target: { value: "Regular assignment" } });
+    fireEvent.change(within(visitRow).getAllByRole("combobox")[0], { target: { value: "COMPLETED" } });
+
+    fireEvent.change(within(assignForm as HTMLFormElement).getByRole("combobox"), { target: { value: "12" } });
+    fireEvent.change(within(assignForm as HTMLFormElement).getByPlaceholderText("Reason"), { target: { value: "Regular assignment" } });
     fireEvent.submit(assignForm as HTMLFormElement);
 
-    const replaceInputs = within(replaceForm as HTMLFormElement).getAllByRole("textbox");
-    fireEvent.change(replaceInputs[0], { target: { value: "21" } });
-    fireEvent.change(replaceInputs[1], { target: { value: "Replacement assignment" } });
+    fireEvent.change(within(replaceForm as HTMLFormElement).getByRole("combobox"), { target: { value: "25" } });
+    fireEvent.change(within(replaceForm as HTMLFormElement).getByPlaceholderText("Reason"), { target: { value: "Replacement assignment" } });
     fireEvent.submit(replaceForm as HTMLFormElement);
 
-    fireEvent.change(within(visitRow).getByPlaceholderText("Partner ID"), { target: { value: "31" } });
+    fireEvent.change(within(visitRow).getAllByRole("combobox")[1], { target: { value: "77" } });
     fireEvent.change(within(visitRow).getByPlaceholderText("Reason"), { target: { value: "Visit replacement" } });
     fireEvent.submit(within(visitRow).getByRole("button", { name: "Assign" }).closest("form") as HTMLFormElement);
 

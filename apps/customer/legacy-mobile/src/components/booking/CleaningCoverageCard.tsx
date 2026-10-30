@@ -64,10 +64,6 @@ export function CleaningCoverageCard({ durationHours }: { durationHours?: number
                     <MaterialCommunityIcon name={getTaskIcon(task)} size={26} color={COLORS.goldSoft} />
                   </View>
                   <Text style={styles.taskName} numberOfLines={2}>{task.name}</Text>
-                  <View style={styles.timeBadge}>
-                    <MaterialCommunityIcon name="clock-outline" size={12} color={COLORS.navyDark} />
-                    <Text style={styles.timeText}>{task.estimatedMinutes} mins</Text>
-                  </View>
                 </View>
               ))}
             </ScrollView>
@@ -125,7 +121,7 @@ const styles = StyleSheet.create({
   body: { paddingBottom: 14 },
   taskRow: { gap: 10, paddingHorizontal: 14, paddingBottom: 12 },
   taskCard: {
-    minHeight: 138,
+    minHeight: 112,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: "rgba(224,169,75,0.48)",
@@ -144,17 +140,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   taskName: { color: COLORS.white, fontSize: 13, fontWeight: "900", lineHeight: 18, minHeight: 36 },
-  timeBadge: {
-    alignSelf: "flex-start",
-    borderRadius: radii.pill,
-    backgroundColor: COLORS.goldSoft,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  timeText: { color: COLORS.navyDark, fontSize: 11, fontWeight: "900" },
   emptyState: {
     marginHorizontal: 14,
     borderRadius: radii.md,

@@ -25,6 +25,27 @@ jest.mock("../../../context/AppFeedbackContext", () => ({
   useAppFeedback: () => ({ toast: mockToast }),
 }));
 
+jest.mock("../../../context/AppLanguageContext", () => ({
+  useAppLanguage: () => ({
+    t: (key: string) => ({
+      "common.currency_inr": "INR",
+      "withdrawals.screen_title": "Withdrawals",
+      "withdrawals.empty_history": "No withdrawal requests yet.",
+      "withdrawals.settled_balance": "Settled balance",
+      "withdrawals.amount_accessibility": "Withdrawal amount",
+      "withdrawals.status_pending": "Pending",
+      "withdrawals.status_approved": "Approved",
+      "withdrawals.status_rejected": "Rejected",
+      "withdrawals.status_completed": "Completed",
+      "withdrawals.caption_requested": "Requested",
+      "withdrawals.caption_awaiting_approval": "Awaiting approval",
+      "withdrawals.caption_no_rejection": "No rejection",
+      "withdrawals.caption_settlement_pending": "Settlement pending",
+      "payouts.request": "Request Withdrawal",
+    }[key] ?? key),
+  }),
+}));
+
 jest.mock("../../../components/payments/PaymentHeader", () => {
   const React = require("react");
   const { Text, TouchableOpacity, View } = require("react-native");
@@ -96,7 +117,7 @@ describe("WithdrawalsScreen", () => {
     const view = await render(<WithdrawalsScreen navigation={{ goBack: jest.fn() }} />);
 
     await waitFor(() => {
-      expect(view.getByText("Withdrawal History")).toBeTruthy();
+      expect(view.getByText("Withdrawals")).toBeTruthy();
     });
     expect(mockToast).toHaveBeenCalledWith("Unable to load withdrawals");
   });
@@ -114,7 +135,7 @@ describe("WithdrawalsScreen", () => {
   });
 
   it("formats money and normalizes withdrawal amount input", () => {
-    expect(money(12)).toBe("INR 12.00");
+    expect(money(12, "INR")).toBe("INR 12.00");
     expect(normalizeWithdrawalAmountInput("1a2b.3-4")).toBe("12.34");
   });
 

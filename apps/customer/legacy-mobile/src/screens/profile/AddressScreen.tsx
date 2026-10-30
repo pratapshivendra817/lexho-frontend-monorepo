@@ -71,7 +71,10 @@ export function AddressScreen({ navigation }: any) {
   const onSelectForCart = async (addressId: string | number) => {
     const sourceAddress = savedAddresses.find((row: any) => String(row?.id ?? "") === String(addressId ?? ""));
     const sourceText = normalizeText(formatAddressLine(sourceAddress));
-    let mappedCartAddressId: number | null = null;
+    let mappedCartAddressId: number | string | null = null;
+
+    const savedMatch = cartAddresses.find((row: any) => String(row.id) === String(addressId));
+    if (savedMatch) mappedCartAddressId = savedMatch.id;
 
     const rawSelectedId = Number(addressId ?? 0);
     if (Number.isFinite(rawSelectedId) && rawSelectedId > 0) {
@@ -79,9 +82,9 @@ export function AddressScreen({ navigation }: any) {
       if (direct?.id != null) mappedCartAddressId = Number(direct.id);
     }
 
-    if (Array.isArray(cartAddresses) && cartAddresses.length > 0) {
+    if (!mappedCartAddressId && Array.isArray(cartAddresses) && cartAddresses.length > 0) {
       const exact = cartAddresses.find((row: any) => normalizeText(`${row?.fullAddress ?? ""} ${row?.city ?? ""} ${row?.pincode ?? ""}`) === sourceText);
-      if (exact?.id != null) mappedCartAddressId = Number(exact.id);
+      if (exact?.id != null) mappedCartAddressId = exact.id;
       if (!mappedCartAddressId) {
         const fuzzy = cartAddresses.find((row: any) => {
           const target = normalizeText(`${row?.fullAddress ?? ""} ${row?.city ?? ""} ${row?.pincode ?? ""}`);
@@ -89,22 +92,22 @@ export function AddressScreen({ navigation }: any) {
           const hasPin = String(sourceAddress?.pincode ?? "").trim().length > 0 && String(row?.pincode ?? "").trim() === String(sourceAddress?.pincode ?? "").trim();
           return hasLine || hasPin;
         });
-        if (fuzzy?.id != null) mappedCartAddressId = Number(fuzzy.id);
+        if (fuzzy?.id != null) mappedCartAddressId = fuzzy.id;
       }
     }
 
-    if (!mappedCartAddressId || !Number.isFinite(mappedCartAddressId) || mappedCartAddressId <= 0) {
+    if (!mappedCartAddressId) {
       const refreshedCartAddresses = (await dispatch(fetchCustomerAddressesThunk()).unwrap().catch(() => [])) as any[];
-      const directAfterRefresh = refreshedCartAddresses.find((row: any) => Number(row?.id ?? 0) === rawSelectedId);
-      if (directAfterRefresh?.id != null) mappedCartAddressId = Number(directAfterRefresh.id);
+      const directAfterRefresh = refreshedCartAddresses.find((row: any) => String(row?.id ?? "") === String(addressId));
+      if (directAfterRefresh?.id != null) mappedCartAddressId = directAfterRefresh.id;
       const fallback = refreshedCartAddresses.find((row: any) => {
         const target = normalizeText(`${row?.fullAddress ?? ""} ${row?.city ?? ""} ${row?.pincode ?? ""}`);
         return sourceText.length > 0 && (target.includes(sourceText) || sourceText.includes(target));
       });
-      if (!mappedCartAddressId && fallback?.id != null) mappedCartAddressId = Number(fallback.id);
+      if (!mappedCartAddressId && fallback?.id != null) mappedCartAddressId = fallback.id;
     }
 
-    if (!mappedCartAddressId || !Number.isFinite(mappedCartAddressId) || mappedCartAddressId <= 0) {
+    if (!mappedCartAddressId) {
       setSnack("Unable to map selected address to booking address. Please open cart once and retry.");
       return;
     }
@@ -164,7 +167,7 @@ export function AddressScreen({ navigation }: any) {
         renderItem={({ item }) => {
           const id = String(item?.id ?? "");
           const isDefaultAddress = id.length > 0 && id === currentAddressId;
-          const isCartSelected = Number(id || 0) > 0 && Number(id) === Number(cartSelectedAddressId);
+          const isCartSelected = Boolean(id) && String(id) === String(cartSelectedAddressId);
           const isSelected = isCartSelected || isDefaultAddress;
           return (
             <Card style={[styles.itemCard, isSelected ? styles.itemCardSelected : null]} onPress={() => void onSelectForCart(id)}>

@@ -3,6 +3,7 @@ import { api } from "@/api/axios";
 import type {
   AdminSubscriptionAssignment,
   AdminSubscriptionDetail,
+  AdminEligiblePartner,
   AdminSubscriptionListItem,
   AdminSubscriptionsResponse,
   AdminSubscriptionStatus,
@@ -102,6 +103,10 @@ function normalizeDetail(data: unknown): AdminSubscriptionDetail {
     instructions: asString(source.serviceInstructions ?? source.instructions),
     addOns: Array.isArray(addOnsRaw) ? addOnsRaw.map((item) => String(item)).filter(Boolean) : undefined,
     visitsList,
+    paymentStatus: asString(source.paymentStatus),
+    paymentBookingId: asNumber(source.paymentBookingId),
+    assignmentStatus: asString(source.assignmentStatus),
+    partnerName: asString(source.partnerName),
   };
 }
 
@@ -127,6 +132,63 @@ function normalizeAssignment(data: unknown): AdminSubscriptionAssignment {
       assignedAt: asString(row.assignedAt),
     })),
   };
+}
+
+const ADMIN_SUBSCRIPTION_CHANGE_REQUESTS_PATH = "/api/subscriptions/change-requests";
+
+const ADMIN_SUBSCRIPTION_STATUSES = new Set<AdminSubscriptionStatus>([
+  "PENDING",
+  "PENDING_ADMIN_REVIEW",
+  "UNDER_REVIEW",
+  "PENDING_PARTNER_ASSIGNMENT",
+  "PENDING_PARTNER_ACCEPTANCE",
+  "CONFIRMED",
+  "ACTIVE",
+  "PAUSED",
+  "REJECTED",
+  "CANCELLED",
+  "COMPLETED",
+]);
+
+function normalizeAdminSubscriptionStatus(status: AdminSubscriptionStatus): AdminSubscriptionStatus {
+  const normalized = String(status ?? "").trim().toUpperCase() as AdminSubscriptionStatus;
+  if (!ADMIN_SUBSCRIPTION_STATUSES.has(normalized)) {
+    throw new Error("Invalid subscription status");
+  }
+  return normalized;
+}
+
+export async function getAdminSubscriptionChangeRequests(subscriptionId: string) {
+  const { data } = await api.get(`${ADMIN_SUBSCRIPTION_CHANGE_REQUESTS_PATH}/admin`);
+  const rows = readRows(data).map((row) => {
+    const subscription = asRecord(row.subscription);
+    const customer = asRecord(row.customer);
+
+    return {
+      id: asNumber(row.id ?? row.requestId) ?? 0,
+      subscriptionId: asNumber(row.subscriptionId ?? subscription.id),
+      customerId: asNumber(row.customerId ?? customer.id),
+      reasonCategory: asString(row.reasonCategory ?? row.category),
+      description: asString(row.description ?? row.reason),
+      status: asString(row.status),
+      adminReason: asString(row.adminReason ?? row.reviewReason),
+      createdAt: asString(row.createdAt),
+      updatedAt: asString(row.updatedAt),
+    };
+  });
+
+  return rows.filter((row) => {
+    if (!subscriptionId) return true;
+    return row.subscriptionId == null || String(row.subscriptionId) === String(subscriptionId);
+  });
+}
+
+export async function reviewAdminSubscriptionChangeRequest(
+  requestId: number,
+  payload: { status: "APPROVED" | "REJECTED"; reason?: string },
+) {
+  const { data } = await api.patch(`${ADMIN_SUBSCRIPTION_CHANGE_REQUESTS_PATH}/${requestId}/review`, payload);
+  return data;
 }
 
 export async function getAdminSubscriptions(params: {
@@ -164,7 +226,9 @@ export async function getAdminSubscriptionCalendar(subscriptionId: string): Prom
 }
 
 export async function updateAdminSubscriptionStatus(subscriptionId: string, status: AdminSubscriptionStatus) {
-  const { data } = await api.patch(`/api/admin/subscriptions/${subscriptionId}/status`, { status });
+  const { data } = await api.patch(`/api/admin/subscriptions/${subscriptionId}/status`, {
+    status: normalizeAdminSubscriptionStatus(status),
+  });
   return data;
 }
 
@@ -180,6 +244,14 @@ export async function updateAdminSubscriptionVisitStatus(
 export async function getAdminSubscriptionAssignment(subscriptionId: string): Promise<AdminSubscriptionAssignment> {
   const { data } = await api.get(`/api/admin/subscriptions/${subscriptionId}/assignment`);
   return normalizeAssignment(data);
+}
+
+export async function getAdminSubscriptionEligiblePartners(subscriptionId: string): Promise<AdminEligiblePartner[]> {
+  const { data } = await api.get(`/api/admin/subscriptions/${subscriptionId}/eligible-partners`);
+  return readRows(data).map((row) => ({
+    partnerId: asNumber(row.partnerId ?? row.id) ?? 0,
+    partnerName: asString(row.partnerName ?? row.name) ?? `Partner #${row.partnerId ?? row.id}`,
+  }));
 }
 
 export async function assignAdminSubscriptionPartner(

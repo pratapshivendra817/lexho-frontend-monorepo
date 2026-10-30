@@ -5,8 +5,7 @@ import { isValidEmail } from "@lexho/utils";
 import { validateOtpPayload } from "@lexho/auth";
 import toast from "react-hot-toast";
 
-import { setAccessToken } from "@/utils/authSession";
-import { setRefreshToken } from "@/utils/authSession";
+import { clearAccessToken, setAccessToken, setRefreshToken } from "@/utils/authSession";
 import { requestAdminOtp, verifyAdminOtp } from "../api";
 
 function extractAdminToken(payload: Record<string, unknown> | undefined): string | null {
@@ -78,6 +77,8 @@ export const AdminLoginScreen = () => {
       return;
     }
 
+    // An Admin sign-in must never inherit a token from an earlier browser session.
+    clearAccessToken();
     void requestAdminOtp({ email: normalizedIdentifier, password })
       .then(() => {
         toast.success("OTP sent");

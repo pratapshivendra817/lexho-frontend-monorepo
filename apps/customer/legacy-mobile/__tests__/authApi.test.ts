@@ -57,22 +57,23 @@ describe("authApi", () => {
       accessToken: "access-1",
     });
 
-    expect(mockApiPost).toHaveBeenNthCalledWith(1, "/otp/send", {
+    expect(mockApiPost).toHaveBeenNthCalledWith(1, "/customer/otp/send", {
       mobile: "9876543210",
       role: "CUSTOMER",
     });
-    expect(mockApiPost).toHaveBeenNthCalledWith(2, "/otp/verify", {
+    expect(mockApiPost).toHaveBeenNthCalledWith(2, "/customer/otp/verify", {
       mobile: "9876543210",
       otp: "1234",
+      role: "CUSTOMER",
     });
   });
 
   it.each([
-    [{ message: "Network Error" }, "http://localhost:8082/otp/send"],
-    [{ code: "ERR_NETWORK" }, "http://localhost:8082/otp/send"],
-    [{ code: "ECONNABORTED" }, "http://localhost:8082/otp/send"],
-    [{ response: { status: 404 } }, "http://localhost:8082/otp/send"],
-    [{ response: { status: 405 } }, "http://localhost:8082/otp/send"],
+    [{ message: "Network Error" }, "http://localhost:8082/customer/otp/send"],
+    [{ code: "ERR_NETWORK" }, "http://localhost:8082/customer/otp/send"],
+    [{ code: "ECONNABORTED" }, "http://localhost:8082/customer/otp/send"],
+    [{ response: { status: 404 } }, "http://localhost:8082/customer/otp/send"],
+    [{ response: { status: 405 } }, "http://localhost:8082/customer/otp/send"],
   ])("retries fallback URLs for retryable errors", async (error, firstUrl) => {
     mockApiPost.mockRejectedValue(error);
     mockAxiosPost.mockResolvedValueOnce({ data: { requestId: "fallback" } });
@@ -122,7 +123,7 @@ describe("authApi", () => {
     });
 
     await expect(sendOtp("9876543210")).rejects.toThrow(
-      "cannot reach http://localhost:8082/otp/send",
+      "cannot reach http://localhost:8082/customer/otp/send",
     );
   });
 

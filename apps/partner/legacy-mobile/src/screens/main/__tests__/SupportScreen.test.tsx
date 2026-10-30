@@ -20,6 +20,27 @@ jest.mock("../../../services/supportService", () => ({
   createPartnerSupportTicket: (...args: any[]) => mockCreatePartnerSupportTicket(...args),
 }));
 
+jest.mock("../../../context/AppLanguageContext", () => ({
+  useAppLanguage: () => ({
+    t: (key: string) =>
+      ({
+        "support.title": "Support",
+        "support.faq_title": "FAQ",
+        "support.raise_ticket_title": "Raise Ticket",
+        "support.contact_us": "Contact Us",
+        "support.call_support": "Call Support",
+        "support.email_support": "Email Support",
+        "support.new_ticket_title": "New Ticket",
+        "support.subject": "Subject",
+        "support.description": "Description",
+        "support.create_ticket": "Create Ticket",
+        "support.ticket_created": "Support ticket created",
+        "support.ticket_history_title": "Ticket History",
+        "support.ticket_detail_title": "Ticket Detail",
+      }[key] ?? key),
+  }),
+}));
+
 describe("SupportScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -74,11 +95,14 @@ describe("SupportScreen", () => {
     expect(successView.queryByText("Performance Dashboard")).toBeNull();
     expect(successView.queryByText("Leave Management")).toBeNull();
     expect(successView.queryByText("Logout")).toBeNull();
+    expect(successView.getByPlaceholderText("Subject")).toBeTruthy();
+    expect(successView.getByPlaceholderText("Description")).toBeTruthy();
 
     fireEvent.changeText(successView.getByTestId("support-subject-input"), "Need help");
     fireEvent.changeText(successView.getByTestId("support-message-input"), "App is stuck");
     await waitFor(() => expect(successView.getByDisplayValue("Need help")).toBeTruthy());
     await waitFor(() => expect(successView.getByDisplayValue("App is stuck")).toBeTruthy());
+    expect(successView.getByText("Create Ticket")).toBeTruthy();
     fireEvent.press(successView.getByTestId("support-submit-button"));
     await waitFor(() =>
       expect(mockCreatePartnerSupportTicket).toHaveBeenCalledWith(

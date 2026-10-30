@@ -103,3 +103,6 @@ tmp*
 
 # Firebase local config
 **/google-services.json
+
+# Generated output
+output/

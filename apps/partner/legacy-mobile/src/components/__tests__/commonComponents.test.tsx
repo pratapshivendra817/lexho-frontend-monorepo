@@ -81,7 +81,8 @@ describe("common components", () => {
 
     expect(view.getByText("Order Created")).toBeTruthy();
     expect(view.getByText("Accepted")).toBeTruthy();
-    expect(view.getByText("Started")).toBeTruthy();
+    expect(view.getByText("Arrived")).toBeTruthy();
+    expect(view.getByText("In Progress")).toBeTruthy();
     expect(view.getByText("Completed")).toBeTruthy();
     expect(view.getAllByText("Pending")).toHaveLength(2);
   });
@@ -113,7 +114,7 @@ describe("common components", () => {
     const view = await render(<OrderLifecycleTimeline order={null} />);
 
     expect(view.getByText("Order Created")).toBeTruthy();
-    expect(view.getAllByText("Pending")).toHaveLength(4);
+    expect(view.getAllByText("Pending")).toHaveLength(5);
     expect(view.queryByText("Rejected")).toBeNull();
   });
 });

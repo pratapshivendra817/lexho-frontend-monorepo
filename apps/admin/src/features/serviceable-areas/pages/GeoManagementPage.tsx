@@ -117,6 +117,7 @@ export default function GeoManagementPage() {
   });
 
   const cities = useMemo(() => toCities(citiesQuery.data), [citiesQuery.data]);
+  const zoneCity = cities.find((city) => city.id === Number(zoneForm.cityId || selectedCityId));
   const zones = useMemo(() => toZones(zonesQuery.data), [zonesQuery.data]);
 
   const refreshCities = async () => {
@@ -339,7 +340,7 @@ export default function GeoManagementPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4">
         <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           <h3 className="mb-3 text-sm font-semibold text-[var(--color-text)]">City Form</h3>
           <div className="grid gap-2">
@@ -382,6 +383,7 @@ export default function GeoManagementPage() {
             <input placeholder="Zone Name" value={zoneForm.name} onChange={(e) => setZoneForm((p) => ({ ...p, name: e.target.value }))} className={inputClass} />
             <textarea placeholder='Polygon JSON (GeoJSON): {"type":"Polygon","coordinates":[...]}' value={zoneForm.polygonJson} onChange={(e) => setZoneForm((p) => ({ ...p, polygonJson: e.target.value }))} rows={4} className={inputClass} />
             <MapboxPolygonEditor
+              cityQuery={zoneCity ? [zoneCity.name, zoneCity.state, zoneCity.country].filter(Boolean).join(", ") : undefined}
               value={zoneForm.polygonJson}
               onChange={(nextPolygonJson) => setZoneForm((previous) => ({ ...previous, polygonJson: nextPolygonJson }))}
               onSave={(nextPolygonJson) => {
@@ -391,7 +393,7 @@ export default function GeoManagementPage() {
               autoSaveOnChange={Boolean(zoneForm.id)}
               isSaving={zoneMutation.isPending}
               saveLabel={zoneForm.id ? "Update Zone Polygon" : "Create Zone Polygon"}
-              height={220}
+              height={500}
             />
             <PolygonPreview polygonJson={zoneForm.polygonJson} height={180} />
             <label className="inline-flex items-center gap-2 text-sm text-[var(--color-text)]">

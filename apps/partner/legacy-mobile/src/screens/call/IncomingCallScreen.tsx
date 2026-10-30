@@ -6,6 +6,17 @@ import { useAppDispatch, useAppSelector } from "../../hooks/useRedux";
 import { acceptIncomingCall, clearCurrentCall, rejectIncomingCall, timeoutIncomingCall } from "../../redux/slices/callSlice";
 
 const RING_SECONDS = 30;
+const INCOMING_CALL_COPY = {
+  noLongerAvailable: "Call is no longer available.",
+  incomingOrderCall: "Incoming order call",
+  order: "Order",
+  ringing: "Ringing",
+  connectingSecureCall: "Connecting secure call...",
+  declineAccessibility: "Decline call",
+  decline: "Decline",
+  acceptAccessibility: "Accept call",
+  accept: "Accept",
+} as const;
 
 export default function IncomingCallScreen({ navigation }: any) {
   const dispatch = useAppDispatch();
@@ -35,30 +46,38 @@ export default function IncomingCallScreen({ navigation }: any) {
     navigation.goBack();
   });
 
-  if (!current) return <View style={styles.container}><Text style={styles.status}>Call is no longer available.</Text></View>;
+  if (!current) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.status}>{INCOMING_CALL_COPY.noLongerAvailable}</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.eyebrow}>Incoming order call</Text>
+      <Text style={styles.eyebrow}>{INCOMING_CALL_COPY.incomingOrderCall}</Text>
       <View style={styles.avatar}><Text style={styles.avatarText}>{current.customerName.slice(0, 1).toUpperCase()}</Text></View>
       <Text style={styles.name}>{current.customerName}</Text>
-      <Text style={styles.order}>{`Order #${current.orderId}`}</Text>
-      <Text style={styles.status}>{offerSdp ? `Ringing • ${seconds}s` : "Connecting secure call..."}</Text>
+      <Text style={styles.order}>{`${INCOMING_CALL_COPY.order} #${current.orderId}`}</Text>
+      <Text style={styles.status}>
+        {offerSdp ? `${INCOMING_CALL_COPY.ringing} - ${seconds}s` : INCOMING_CALL_COPY.connectingSecureCall}
+      </Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <View style={styles.actions}>
-        <TouchableOpacity style={[styles.action, styles.decline]} onPress={decline} accessibilityLabel="Decline call">
+        <TouchableOpacity style={[styles.action, styles.decline]} onPress={decline} accessibilityLabel={INCOMING_CALL_COPY.declineAccessibility}>
           <MaterialCommunityIcons name="phone-hangup" size={30} color={COLORS.white} />
-          <Text style={styles.actionLabel}>Decline</Text>
+          <Text style={styles.actionLabel}>{INCOMING_CALL_COPY.decline}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.action, styles.accept, (!offerSdp || loading) && styles.disabled]}
           disabled={!offerSdp || loading}
           onPress={() => dispatch(acceptIncomingCall())}
-          accessibilityLabel="Accept call"
+          accessibilityLabel={INCOMING_CALL_COPY.acceptAccessibility}
         >
           {loading ? <ActivityIndicator color={COLORS.background} /> : <MaterialCommunityIcons name="phone" size={30} color={COLORS.background} />}
-          <Text style={[styles.actionLabel, styles.acceptLabel]}>Accept</Text>
+          <Text style={[styles.actionLabel, styles.acceptLabel]}>{INCOMING_CALL_COPY.accept}</Text>
         </TouchableOpacity>
       </View>
     </View>

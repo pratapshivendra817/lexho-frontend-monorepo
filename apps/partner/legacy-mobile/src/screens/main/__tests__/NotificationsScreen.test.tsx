@@ -1,6 +1,6 @@
 import React from "react";
 import { Share } from "react-native";
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import NotificationsScreen from "../NotificationsScreen";
 import { useAppDispatch, useAppSelector } from "../../../hooks/useRedux";
 import { useFocusEffect } from "@react-navigation/native";
@@ -15,6 +15,10 @@ jest.mock("@react-navigation/native", () => ({
 jest.mock("../../../hooks/useRedux", () => ({
   useAppDispatch: jest.fn(),
   useAppSelector: jest.fn(),
+}));
+
+jest.mock("../../../context/AppLanguageContext", () => ({
+  useAppLanguage: () => ({ t: (key: string) => ({ "common.something_went_wrong": "Sync failed", "common.loading": "Syncing...", "common.done": "Synced", "notifications.unread": "Unread", "common.retry": "Retry API", "notifications.empty": "No notifications", "notifications.last_sync": "Last", "common.id": "ID", "common.title": "Title", "common.time": "Time", "notifications.share_title": "Partner Notification", "notifications.title_fallback": "Notification", "support.message": "Message", "notifications.share_accessibility": "Share notification" }[key] ?? key) }),
 }));
 
 jest.mock("../../../services/notificationsService", () => ({
@@ -47,10 +51,9 @@ describe("NotificationsScreen", () => {
     jest.clearAllMocks();
     mockUseAppDispatch.mockReturnValue(mockDispatch as any);
     mockUseFocusEffect.mockImplementation((callback: any) => {
-      const React = require("react");
       React.useEffect(() => {
-        callback();
-      }, [callback]);
+        void callback();
+      }, []);
     });
   });
 
@@ -78,6 +81,7 @@ describe("NotificationsScreen", () => {
 
     expect(await view.findByText("New Warning Issued")).toBeTruthy();
     expect(view.getByText("Unread: 2")).toBeTruthy();
+    expect(view.getByText(/^Last:/)).toBeTruthy();
 
     fireEvent.press(view.getByText("New Warning Issued"));
     await waitFor(() => {
@@ -86,7 +90,10 @@ describe("NotificationsScreen", () => {
     expect(mockMarkNotificationReadLocal).toHaveBeenCalledWith("warning:w1");
 
     fireEvent.press(view.getByLabelText("Share notification"));
-    expect(Share.share).toHaveBeenCalled();
+    expect(Share.share).toHaveBeenCalledWith(expect.objectContaining({
+      title: "New Warning Issued",
+      message: expect.stringContaining("ID: warning:w1"),
+    }));
   });
 
   it("shows error state and retries", async () => {
@@ -103,7 +110,9 @@ describe("NotificationsScreen", () => {
     expect(await view.findByText("sync broke")).toBeTruthy();
     expect(view.getByText("Sync failed")).toBeTruthy();
 
-    fireEvent.press(view.getByText("Retry API"));
+    await act(async () => {
+      fireEvent.press(view.getByText("Retry API"));
+    });
 
     await waitFor(() => {
       expect(mockFetchNotifications).toHaveBeenCalledTimes(2);

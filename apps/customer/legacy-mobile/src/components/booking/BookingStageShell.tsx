@@ -9,13 +9,15 @@ export function BookingStageShell({
   title,
   subtitle,
   children,
+  fullWidth = false,
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
+  fullWidth?: boolean;
 }) {
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, fullWidth && styles.fullWidth]}>
       <View style={styles.header}>
         <Text style={styles.title}>{title}</Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
@@ -26,6 +28,7 @@ export function BookingStageShell({
 }
 
 const styles = StyleSheet.create({
+  fullWidth: { paddingHorizontal: 0 },
   root: { flex: 1, backgroundColor: bookingTheme.colors.pageBg, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 18, gap: 14 },
   header: {
     gap: 8,

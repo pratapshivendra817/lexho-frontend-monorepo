@@ -4,6 +4,10 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 import { RecurringBookingScreen } from "../src/screens/booking/RecurringBookingScreen";
 import { getPopularCookServices } from "../src/api/popularServicesApi";
+import { getCategories } from "../src/api/homeApi";
+import { fetchCustomerServicesByCategory } from "../src/api/serviceApi";
+jest.mock("../src/api/homeApi", () => ({ getCategories: jest.fn() }));
+jest.mock("../src/api/serviceApi", () => ({ fetchCustomerServicesByCategory: jest.fn() }));
 import {
   getCookSubscriptionPriceQuote,
   getSubscriptionPriceQuote,
@@ -124,7 +128,7 @@ describe("RecurringBookingScreen", () => {
   let queryConfigs: any[];
 
   beforeEach(() => {
-    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate", "setTimeout", "clearTimeout"] });
+    jest.useFakeTimers();
     jest.setSystemTime(new Date("2026-06-12T08:00:00.000Z"));
     jest.clearAllMocks();
 
@@ -180,6 +184,47 @@ describe("RecurringBookingScreen", () => {
     await cleanup();
     await AsyncStorage.clear();
     jest.useRealTimers();
+  });
+
+  it.each([
+    ["Vehicle Wash", "VEHICLE_WASH"],
+    ["Fitness & Wellness", "FITNESS_WELLNESS"],
+  ])("books %s with duration and no cleaning coverage", async (label, serviceType) => {
+    queryResults["subscription-category-service"] = { data: 88, isFetching: false, isError: false };
+    (getCategories as jest.Mock).mockResolvedValue([{ id: "9", name: label }]);
+    (fetchCustomerServicesByCategory as jest.Mock).mockResolvedValue([{ serviceId: 88 }]);
+    const { navigation } = await renderScreen({ serviceId: 0 });
+    await pressText(label);
+    expect(screen.queryByTestId("cleaning-coverage")).toBeNull();
+    expect(screen.getByText("Duration Per Visit")).toBeTruthy();
+    expect(screen.queryByText("Select Family Size")).toBeNull();
+    const serviceConfig = [...queryConfigs].reverse().find(config => config.queryKey[0] === "subscription-category-service");
+    expect(await serviceConfig.queryFn()).toBe(88);
+    expect(fetchCustomerServicesByCategory).toHaveBeenCalledWith({ categoryId: "9" });
+    await pressText("1 hr");
+    await pressText("7:00 AM");
+    const quoteConfig = [...queryConfigs].reverse().find(config => config.queryKey[0] === "subscription-price-quote");
+    await quoteConfig.queryFn();
+    expect(mockGetSubscriptionPriceQuote).toHaveBeenCalledWith({ serviceId: 88, durationHours: 1, visits: 30 });
+    await pressText("Continue booking | Rs. 6750");
+    expect(navigation.navigate).toHaveBeenCalledWith("CartCrud", { recurringBooking: expect.objectContaining({
+      serviceId: 88, serviceName: `${label} Subscription`, subscriptionServiceType: serviceType,
+      durationHours: 1, visits: 30, timeSlot: "7:00 AM",
+    }) });
+    await pressText("Cleaning");
+    expect(screen.getByTestId("cleaning-coverage")).toBeTruthy();
+    expect(screen.getByText("No duration selected")).toBeTruthy();
+  });
+
+  it("prevents booking a new category until its service is available", async () => {
+    const { navigation } = await renderScreen({ serviceId: 0 });
+    await pressText("Vehicle Wash");
+    await pressText("1 hr");
+    await pressText("7:00 AM");
+    await pressText("Continue booking | Rs. 6750");
+    expect(navigation.navigate).not.toHaveBeenCalled();
+    const pricingConfig = [...queryConfigs].reverse().find(config => config.queryKey[0] === "subscription-pricing");
+    expect(pricingConfig.enabled).toBe(false);
   });
 
   it("renders the initial cleaning form and loading state with submit disabled", async () => {

@@ -10,6 +10,7 @@ const mapboxMocks = vi.hoisted(() => {
     on: ReturnType<typeof vi.fn>;
     addControl: ReturnType<typeof vi.fn>;
     fitBounds: ReturnType<typeof vi.fn>;
+    jumpTo: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
     trigger: (event: string) => void;
   };
@@ -34,6 +35,7 @@ const mapboxMocks = vi.hoisted(() => {
         }),
         addControl: vi.fn(),
         fitBounds: vi.fn(),
+        jumpTo: vi.fn(),
         remove: vi.fn(),
         trigger: (event: string) => {
           instance.handlers[event]?.();
@@ -85,6 +87,8 @@ vi.mock("mapbox-gl", () => {
         return mapboxMocks.createMap(options);
       },
       LngLatBounds: MockLngLatBounds,
+      NavigationControl: class {},
+      FullscreenControl: class {},
       get accessToken() {
         return mapboxMocks.accessToken;
       },
@@ -168,6 +172,19 @@ describe("admin map components", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("centers a new zone on the selected city without replacing existing geometry", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ features: [{ geometry: { coordinates: [72.8777, 19.076] } }] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { rerender } = render(<MapboxPolygonEditor cityQuery="Mumbai, Maharashtra, India" />);
+    await waitFor(() => expect(mapboxMocks.maps[0].jumpTo).toHaveBeenCalledWith({ center: [72.8777, 19.076], zoom: 11 }));
+    rerender(<MapboxPolygonEditor value={polygonJson} cityQuery="Delhi, India" />);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("renders PolygonPreview fallback states for empty, invalid, and unsupported polygon data", () => {
@@ -242,7 +259,7 @@ describe("admin map components", () => {
       expect.objectContaining({
         displayControlsDefault: false,
         controls: { polygon: true, trash: true },
-        defaultMode: "draw_polygon",
+        defaultMode: "simple_select",
       }),
     );
 

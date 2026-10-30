@@ -8,6 +8,26 @@ import { fetchNotifications, fetchUnreadNotificationCount, markNotificationRead,
 import { COLORS } from "../../constants/colors";
 import type { PartnerNotification } from "../../types/notification";
 
+const NOTIFICATIONS_COPY = {
+  fetchError: "Unable to fetch notifications",
+  shareTitle: "Partner Notification",
+  title: "Title",
+  titleFallback: "Notification",
+  message: "Message",
+  time: "Time",
+  id: "ID",
+  syncFailed: "Sync failed",
+  syncing: "Syncing...",
+  synced: "Synced",
+  unread: "Unread",
+  last: "Last",
+  retry: "Retry API",
+  empty: "No notifications",
+  openWarningAccessibility: "Open warning notification",
+  openAccessibility: "Open notification",
+  shareAccessibility: "Share notification",
+} as const;
+
 export default function NotificationsScreen() {
   const navigation = useNavigation<any>();
   const dispatch = useAppDispatch();
@@ -26,11 +46,11 @@ export default function NotificationsScreen() {
         fetchNotifications(),
         fetchUnreadNotificationCount(),
       ]);
-      dispatch(setNotifications(rows));
+      dispatch(setNotifications(rows.map((item) => ({ ...item, read: Boolean(item.read) }))));
       setServerUnreadCount(unread);
       setLastSyncAt(Date.now());
     } catch (e: any) {
-      setError(String(e?.message ?? "Unable to fetch notifications"));
+      setError(String(e?.message ?? NOTIFICATIONS_COPY.fetchError));
     } finally {
       setLoading(false);
     }
@@ -44,13 +64,13 @@ export default function NotificationsScreen() {
 
   const onShareNotification = async (item: { id: string; title: string; message: string; createdAt?: string }) => {
     const message = [
-      "Partner Notification",
-      `Title: ${item.title ?? "Notification"}`,
-      `Message: ${item.message ?? "-"}`,
-      `Time: ${item.createdAt ?? "-"}`,
-      `ID: ${item.id}`,
+      NOTIFICATIONS_COPY.shareTitle,
+      `${NOTIFICATIONS_COPY.title}: ${item.title ?? NOTIFICATIONS_COPY.titleFallback}`,
+      `${NOTIFICATIONS_COPY.message}: ${item.message ?? "-"}`,
+      `${NOTIFICATIONS_COPY.time}: ${item.createdAt ?? "-"}`,
+      `${NOTIFICATIONS_COPY.id}: ${item.id}`,
     ].join("\n");
-    await Share.share({ title: item.title ?? "Notification", message });
+    await Share.share({ title: item.title ?? NOTIFICATIONS_COPY.titleFallback, message });
   };
 
   const onOpenNotification = React.useCallback(async (item: PartnerNotification) => {
@@ -66,6 +86,15 @@ export default function NotificationsScreen() {
 
     if (item.source === "warning" || item.redirectType === "WARNING" || item.redirectType === "WARNINGS") {
       navigation.navigate("WarningCenter");
+      return;
+    }
+
+    if (
+      item.redirectType === "ONBOARDING" ||
+      item.redirectType === "PARTNER_ONBOARDING" ||
+      item.redirectType === "ONBOARDING_STATUS"
+    ) {
+      navigation.navigate("Main", { screen: "OnboardingTab" });
     }
   }, [dispatch, navigation]);
 
@@ -78,12 +107,12 @@ export default function NotificationsScreen() {
             error ? styles.syncChipError : loading ? styles.syncChipLoading : styles.syncChipOk,
           ]}
         >
-          {error ? "Sync failed" : loading ? "Syncing..." : "Synced"}
+          {error ? NOTIFICATIONS_COPY.syncFailed : loading ? NOTIFICATIONS_COPY.syncing : NOTIFICATIONS_COPY.synced}
         </Text>
-        <Text style={styles.unreadChip}>{`Unread: ${Math.max(unreadCount, serverUnreadCount)}`}</Text>
+        <Text style={styles.unreadChip}>{`${NOTIFICATIONS_COPY.unread}: ${Math.max(unreadCount, serverUnreadCount)}`}</Text>
         {__DEV__ ? (
           <Text style={styles.debugChip}>
-            {`Last: ${lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : "-"}`}
+            {`${NOTIFICATIONS_COPY.last}: ${lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : "-"}`}
           </Text>
         ) : null}
       </View>
@@ -92,7 +121,7 @@ export default function NotificationsScreen() {
         <View style={styles.errorCard}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity style={styles.retryBtn} onPress={() => loadNotifications().catch(() => null)}>
-            <Text style={styles.retryText}>Retry API</Text>
+            <Text style={styles.retryText}>{NOTIFICATIONS_COPY.retry}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -102,15 +131,15 @@ export default function NotificationsScreen() {
         data={items}
         keyExtractor={(item) => item.id}
         style={{ flex: 1, backgroundColor: COLORS.background }}
-        contentContainerStyle={{ padding: 16, gap: 10 }}
-        ListEmptyComponent={<Text style={styles.empty}>No notifications</Text>}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={<Text style={styles.empty}>{NOTIFICATIONS_COPY.empty}</Text>}
         renderItem={({ item }) => (
           <TouchableOpacity
             style={[styles.card, !item.read && styles.cardUnread]}
             activeOpacity={0.92}
             onPress={() => onOpenNotification(item)}
             accessibilityRole="button"
-            accessibilityLabel={item.source === "warning" ? "Open warning notification" : "Open notification"}
+            accessibilityLabel={item.source === "warning" ? NOTIFICATIONS_COPY.openWarningAccessibility : NOTIFICATIONS_COPY.openAccessibility}
           >
             <View style={styles.cardHeader}>
               <View style={styles.titleRow}>
@@ -121,7 +150,7 @@ export default function NotificationsScreen() {
                 style={styles.shareIconButton}
                 onPress={() => onShareNotification(item)}
                 accessibilityRole="button"
-                accessibilityLabel="Share notification"
+                accessibilityLabel={NOTIFICATIONS_COPY.shareAccessibility}
               >
                 <MaterialCommunityIcons name="share-variant-outline" size={18} color={COLORS.textPrimary} />
               </TouchableOpacity>
@@ -129,7 +158,7 @@ export default function NotificationsScreen() {
             <Text style={styles.body}>{item.message}</Text>
             <View style={styles.metaRow}>
               <Text style={styles.time}>{item.createdAt ?? "-"}</Text>
-              {__DEV__ ? <Text style={styles.idChip}>{`ID: ${item.id}`}</Text> : null}
+              {__DEV__ ? <Text style={styles.idChip}>{`${NOTIFICATIONS_COPY.id}: ${item.id}`}</Text> : null}
             </View>
           </TouchableOpacity>
         )}
@@ -191,6 +220,7 @@ const styles = StyleSheet.create({
   errorText: { color: COLORS.danger, fontSize: 12 },
   retryBtn: { alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: COLORS.surfaceElevated },
   retryText: { color: COLORS.textPrimary, fontWeight: "700", fontSize: 12 },
+  listContent: { paddingVertical: 16, gap: 10 },
   card: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 14, padding: 12, gap: 4 },
   cardUnread: { borderColor: COLORS.secondary, backgroundColor: COLORS.surfaceElevated },
   cardHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },

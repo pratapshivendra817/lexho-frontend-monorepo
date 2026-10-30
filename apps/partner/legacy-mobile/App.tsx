@@ -11,6 +11,7 @@ import AppNavigator from "./src/navigation/AppNavigator";
 import { persistor, store } from "./src/redux/store";
 import { partnerTheme } from "./src/theme/theme";
 import { AppFeedbackProvider, useAppFeedback } from "./src/context/AppFeedbackContext";
+import { AppLanguageProvider } from "./src/context/AppLanguageContext";
 import { GlobalLoader } from "./src/components/common/GlobalLoader";
 import { ToastMessage } from "./src/components/common/ToastMessage";
 import { OfflineBanner } from "./src/components/common/OfflineBanner";
@@ -18,6 +19,7 @@ import { useNetworkStatus } from "./src/hooks/useNetworkStatus";
 import { initializeCrashlytics } from "./src/services/crashlyticsService";
 import { navigationTrackingRef, handleNavigationStateChange } from "./src/services/screenTrackingService";
 import { useOnlineHoursSync } from "./src/hooks/useOnlineHoursSync";
+import { useAvailabilityHeartbeat } from "./src/hooks/useAvailabilityHeartbeat";
 import { useSecurityGuard } from "./src/hooks/useSecurityGuard";
 import RootDetectionWarningScreen from "./src/screens/system/RootDetectionWarningScreen";
 import { getOfflineQueueSize, startOfflineQueueAutoRetry } from "./src/services/offlineQueue";
@@ -34,6 +36,7 @@ function AppChrome() {
   const isOnline = useNetworkStatus();
   const securityStatus = useSecurityGuard();
   useOnlineHoursSync();
+  useAvailabilityHeartbeat();
 
   React.useEffect(() => {
     void initializeCrashlytics();
@@ -75,16 +78,18 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <PaperProvider theme={partnerTheme}>
             <AppFeedbackProvider>
-              <SafeAreaProvider>
-                <NavigationContainer
-                  ref={navigationTrackingRef}
-                  onReady={() => { void handleNavigationStateChange(); }}
-                  onStateChange={() => { void handleNavigationStateChange(); }}
-                >
-                  <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} />
-                  <AppChrome />
-                </NavigationContainer>
-              </SafeAreaProvider>
+              <AppLanguageProvider>
+                <SafeAreaProvider>
+                  <NavigationContainer
+                    ref={navigationTrackingRef}
+                    onReady={() => { void handleNavigationStateChange(); }}
+                    onStateChange={() => { void handleNavigationStateChange(); }}
+                  >
+                    <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} />
+                    <AppChrome />
+                  </NavigationContainer>
+                </SafeAreaProvider>
+              </AppLanguageProvider>
             </AppFeedbackProvider>
           </PaperProvider>
         </QueryClientProvider>

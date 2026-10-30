@@ -108,7 +108,7 @@ describe("ChatListScreen", () => {
     const view = await render(<ChatListScreen navigation={navigation} />);
 
     expect(view.getByText("Riya")).toBeTruthy();
-    expect(view.getByText("Order #77 • Cleaning")).toBeTruthy();
+    expect(view.getByText("Order #77 - Cleaning")).toBeTruthy();
     expect(view.getByText("3")).toBeTruthy();
 
     await act(async () => {

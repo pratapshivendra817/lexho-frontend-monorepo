@@ -6,9 +6,11 @@ import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIc
 
 import { getCookCoverage, getDisplayCookCoverageItems } from "../../api/cookCoverageApi";
 import { getPopularCookServices } from "../../api/popularServicesApi";
+import { getCategories } from "../../api/homeApi";
+import { fetchCustomerServicesByCategory } from "../../api/serviceApi";
 import { getCookSubscriptionPriceQuote, getSubscriptionPriceQuote, getSubscriptionPricing, type CookFamilySize } from "../../api/subscriptionPricingApi";
 import { CleaningCoverageCard } from "../../components/booking/CleaningCoverageCard";
-import { radii, shadows, spacing } from "../../constants/theme";
+import { shadows } from "../../constants/theme";
 import { COLORS } from "../../theme/colors";
 import { trackSubscriptionPurchased } from "../../services/customerAnalyticsEvents";
 
@@ -19,7 +21,13 @@ type Weekday = {
 };
 
 type DatePickerMode = "start" | "end";
-type RepeatServiceMode = "CLEANING" | "COOK";
+type RepeatServiceMode = "CLEANING" | "COOK" | "VEHICLE_WASH" | "FITNESS_WELLNESS";
+const REPEAT_SERVICES = {
+  COOK: { label: "Cook", icon: "chef-hat" },
+  CLEANING: { label: "Cleaning", icon: "spray-bottle" },
+  VEHICLE_WASH: { label: "Vehicle Wash", icon: "car-wash" },
+  FITNESS_WELLNESS: { label: "Fitness & Wellness", icon: "yoga" },
+} as const;
 type CookFamilySizeOption = {
   key: CookFamilySize;
   members: string;
@@ -30,7 +38,6 @@ type CookFamilySizeOption = {
 };
 
 const GREEN = "#0DB36B";
-const GREEN_SOFT = "rgba(13,179,107,0.08)";
 const SCREEN_BG = COLORS.navy;
 const PANEL_BG = COLORS.navyDark;
 const SHEET_BG = COLORS.navyDark;
@@ -164,6 +171,33 @@ export function RecurringBookingScreen({ route, navigation }: { route?: any; nav
   const serviceId = Number(route?.params?.serviceId ?? 0);
   const isCleaningMode = repeatServiceMode === "CLEANING";
   const isCookMode = repeatServiceMode === "COOK";
+  const isAdditionalDurationMode = !isCleaningMode && !isCookMode;
+  const categoryServiceQuery = useQuery({
+    queryKey: ["subscription-category-service", repeatServiceMode],
+    queryFn: async () => {
+      const categories = await getCategories();
+      const category = categories.find(item => {
+        const name = String(item.categoryName ?? item.name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        if (repeatServiceMode === "CLEANING") return /clean/.test(name);
+        if (repeatServiceMode === "COOK") return /cook|chef|kitchen/.test(name);
+        return repeatServiceMode === "VEHICLE_WASH"
+          ? /^(vehicle|vehical) wash( services?)?$/.test(name)
+          : /^fitness (and )?wellness( services?)?$/.test(name);
+      });
+      const categoryId = category?.categoryId ?? category?.id;
+      if (!categoryId) throw new Error("This service category is currently unavailable.");
+      const services = await fetchCustomerServicesByCategory({ categoryId });
+      const service = services.find(item => toPositiveNumber(item.serviceId ?? item.id) > 0
+        && [...(item.bookingModes ?? []), ...(item.supportedBookingModes ?? []), item.bookingMode ?? ""].some(mode => String(mode).toUpperCase() === "SUBSCRIPTION"))
+        ?? services.find(item => toPositiveNumber(item.serviceId ?? item.id) > 0 && (item.bookingModes ?? []).includes("HOURLY"))
+        ?? services.find(item => toPositiveNumber(item.serviceId ?? item.id) > 0);
+      if (!service) throw new Error("No services are currently available in this category.");
+      return toPositiveNumber(service.serviceId ?? service.id);
+    },
+    enabled: (isAdditionalDurationMode || isCleaningMode || isCookMode) && !serviceId,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
   const cookServiceQuery = useQuery({
     queryKey: ["subscription-cook-service"],
     queryFn: getPopularCookServices,
@@ -175,11 +209,15 @@ export function RecurringBookingScreen({ route, navigation }: { route?: any; nav
     const firstCookService = (cookServiceQuery.data ?? []).find((item) => toPositiveNumber(item.serviceId ?? item.id) > 0);
     return toPositiveNumber(firstCookService?.serviceId ?? firstCookService?.id);
   }, [cookServiceQuery.data]);
-  const effectiveServiceId = isCookMode ? (serviceId || fallbackCookServiceId) : serviceId;
+  const effectiveServiceId = isAdditionalDurationMode
+    ? (categoryServiceQuery.data ?? 0)
+    : isCookMode
+      ? (serviceId || fallbackCookServiceId || categoryServiceQuery.data || 0)
+      : (serviceId || categoryServiceQuery.data || 0);
   const pricingQuery = useQuery({
-    queryKey: ["subscription-pricing", effectiveServiceId || "global"],
+    queryKey: ["subscription-pricing", effectiveServiceId || "global", repeatServiceMode],
     queryFn: () => getSubscriptionPricing(effectiveServiceId || undefined),
-    enabled: isCleaningMode,
+    enabled: !isCookMode && (!isAdditionalDurationMode || effectiveServiceId > 0),
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
@@ -191,9 +229,9 @@ export function RecurringBookingScreen({ route, navigation }: { route?: any; nav
     : weekdays.filter((day) => selectedWeekdays.includes(day.key)).map((day) => day.label).join(", ");
   const selectedDuration = durationOptions.find((item) => item.hours === durationHours) ?? null;
   const priceQuoteQuery = useQuery({
-    queryKey: ["subscription-price-quote", effectiveServiceId || "global", durationHours, visits],
+    queryKey: ["subscription-price-quote", effectiveServiceId || "global", durationHours, visits, repeatServiceMode],
     queryFn: () => getSubscriptionPriceQuote({ serviceId: effectiveServiceId || undefined, durationHours: Number(durationHours), visits }),
-    enabled: isCleaningMode && durationHours != null && visits >= MIN_SUBSCRIPTION_VISITS,
+    enabled: !isCookMode && (!isAdditionalDurationMode || effectiveServiceId > 0) && durationHours != null && visits >= MIN_SUBSCRIPTION_VISITS,
     retry: false,
     staleTime: 60 * 1000,
   });
@@ -281,7 +319,8 @@ export function RecurringBookingScreen({ route, navigation }: { route?: any; nav
   const hasRequiredSelections = selectedWeekdays.length > 0
     && visits >= MIN_SUBSCRIPTION_VISITS
     && timeSlot.length > 0
-    && (isCleaningMode ? durationHours != null : familySize != null);
+    && (isCookMode ? familySize != null : durationHours != null)
+    && effectiveServiceId > 0;
   const canContinue = hasRequiredSelections;
   const isPriceResolving = hasRequiredSelections && finalPrice <= 0 && (priceQuoteQuery.isFetching || cookPriceQuoteQuery.isFetching || cookServiceQuery.isFetching);
   const continueLabel = finalPrice > 0 ? `Continue booking | ${formatMoney(finalPrice)}` : isPriceResolving ? "Fetching price..." : "Continue booking";
@@ -327,8 +366,8 @@ export function RecurringBookingScreen({ route, navigation }: { route?: any; nav
       serviceId: effectiveServiceId || undefined,
       frequencyDays: selectedWeekdays.map((day) => weekdays.find((item) => item.key === day)?.label).filter(Boolean),
       frequencyLabel,
-      startDate: startDate.toISOString().slice(0, 10),
-      endDate: endDate.toISOString().slice(0, 10),
+      startDate: `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(startDate.getDate()).padStart(2, "0")}`,
+      endDate: `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`,
       visits,
       timeSlot,
       price: finalPrice,
@@ -344,8 +383,8 @@ export function RecurringBookingScreen({ route, navigation }: { route?: any; nav
         }
       : {
           ...commonPayload,
-          serviceName: "Hourly Services",
-          subscriptionServiceType: "CLEANING",
+          serviceName: isCleaningMode ? "Hourly Services" : `${REPEAT_SERVICES[repeatServiceMode].label} Subscription`,
+          subscriptionServiceType: repeatServiceMode,
           durationHours,
           durationLabel: formatDurationLabel(durationHours),
           perVisitPrice,
@@ -373,27 +412,33 @@ export function RecurringBookingScreen({ route, navigation }: { route?: any; nav
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.modeSwitch}>
-          {(["CLEANING", "COOK"] as RepeatServiceMode[]).map((item) => {
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.modeSwitch} contentContainerStyle={styles.modeSwitchContent}>
+          {(Object.keys(REPEAT_SERVICES) as RepeatServiceMode[]).map((item) => {
             const active = repeatServiceMode === item;
             return (
               <Pressable
                 key={item}
                 style={[styles.modeButton, active && styles.modeButtonActive]}
-                onPress={() => setRepeatServiceMode(item)}
+                accessibilityRole="button"
+                accessibilityLabel={REPEAT_SERVICES[item].label}
+                accessibilityState={{ selected: active }}
+                onPress={() => {
+                  setRepeatServiceMode(item);
+                  setDurationHours(null);
+                }}
               >
                 <MaterialCommunityIcon
-                  name={item === "CLEANING" ? "spray-bottle" : "chef-hat"}
+                  name={REPEAT_SERVICES[item].icon}
                   size={17}
                   color={active ? COLORS.navyDark : COLORS.goldSoft}
                 />
-                <Text style={[styles.modeButtonText, active && styles.modeButtonTextActive]}>
-                  {item === "CLEANING" ? "Cleaning" : "Cook"}
+                <Text numberOfLines={1} style={[styles.modeButtonText, active && styles.modeButtonTextActive]}>
+                  {REPEAT_SERVICES[item].label}
                 </Text>
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
 
         <Text style={styles.sectionTitle}>Choose Service Days</Text>
         <Text style={styles.sectionSub}>Pick the days you need this service?</Text>
@@ -415,7 +460,13 @@ export function RecurringBookingScreen({ route, navigation }: { route?: any; nav
           <Text style={styles.minimumVisitsHint}>Minimum {MIN_SUBSCRIPTION_VISITS} visits required for subscription.</Text>
         ) : null}
 
-        {isCleaningMode ? (
+        {isAdditionalDurationMode && categoryServiceQuery.isFetching ? <Text style={styles.inlineLoadingText}>Loading services...</Text> : null}
+        {isAdditionalDurationMode && categoryServiceQuery.isError ? (
+          <Pressable onPress={() => void categoryServiceQuery.refetch()}>
+            <Text style={styles.minimumVisitsHint}>Could not load services. Tap to retry.</Text>
+          </Pressable>
+        ) : null}
+        {!isCookMode ? (
           <>
             <Text style={styles.sectionBlockTitle}>Duration Per Visit</Text>
             {pricingQuery.isFetching ? (
@@ -441,7 +492,7 @@ export function RecurringBookingScreen({ route, navigation }: { route?: any; nav
                 );
               })}
             </View>
-            <CleaningCoverageCard durationHours={durationHours} />
+            {isCleaningMode ? <CleaningCoverageCard durationHours={durationHours} /> : null}
           </>
         ) : null}
 
@@ -762,14 +813,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.gold,
     backgroundColor: PANEL_BG,
+    marginBottom: 10,
+    flexGrow: 0,
+    ...shadows.sm,
+  },
+  modeSwitchContent: {
     padding: 5,
     flexDirection: "row",
     gap: 6,
-    marginBottom: 10,
-    ...shadows.sm,
   },
   modeButton: {
-    flex: 1,
+    flexShrink: 0,
+    paddingHorizontal: 14,
+    minHeight: 42,
     borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",

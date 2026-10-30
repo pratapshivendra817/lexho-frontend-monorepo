@@ -45,6 +45,7 @@ jest.mock("../src/hooks/useSecurityGuard", () => ({
 jest.mock("../src/hooks/useOnlineHoursSync", () => ({
   useOnlineHoursSync: () => undefined,
 }));
+jest.mock("../src/hooks/useAvailabilityHeartbeat", () => ({ useAvailabilityHeartbeat: jest.fn() }));
 jest.mock("../src/services/crashlyticsService", () => ({
   initializeCrashlytics: () => mockInitializeCrashlytics(),
 }));
@@ -90,6 +91,10 @@ jest.mock("../src/components/common/ToastMessage", () => {
 jest.mock("../src/context/AppFeedbackContext", () => ({
   AppFeedbackProvider: ({ children }: any) => children,
   useAppFeedback: () => mockFeedbackState,
+}));
+jest.mock("../src/context/AppLanguageContext", () => ({
+  AppLanguageProvider: ({ children }: any) => children,
+  useAppLanguage: () => ({ t: (key: string) => key }),
 }));
 jest.mock("../src/screens/system/RootDetectionWarningScreen", () => {
   const React = require("react");

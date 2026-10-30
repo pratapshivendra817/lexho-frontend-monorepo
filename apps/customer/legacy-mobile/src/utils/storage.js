@@ -7,6 +7,7 @@ const DEVICE_ID_KEY = "@lexho/customer/device-id";
 const LEGACY_TOKEN_KEY = "@customer/auth-token";
 const LEGACY_USER_KEY = "@customer/user";
 const PENDING_PAYMENT_BOOKING_KEY = "@lexho/customer/pending-payment-booking-id";
+const PENDING_REFERRAL_CODE_KEY = "@lexho/customer/pending-referral-code";
 let fallbackDeviceIdSequence = 0;
 
 const asString = (value) => (typeof value === "string" ? value : value == null ? "" : String(value));
@@ -134,6 +135,27 @@ export async function getPendingPaymentBookingId() {
 export async function clearPendingPaymentBookingId() {
   if (typeof AsyncStorage?.removeItem !== "function") return;
   await AsyncStorage.removeItem(PENDING_PAYMENT_BOOKING_KEY);
+}
+
+function normalizeReferralCode(value) {
+  return asString(value).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+}
+
+export async function savePendingReferralCode(code) {
+  const normalized = normalizeReferralCode(code);
+  if (!normalized || typeof AsyncStorage?.setItem !== "function") return;
+  await AsyncStorage.setItem(PENDING_REFERRAL_CODE_KEY, normalized);
+}
+
+export async function getPendingReferralCode() {
+  if (typeof AsyncStorage?.getItem !== "function") return null;
+  const value = await AsyncStorage.getItem(PENDING_REFERRAL_CODE_KEY);
+  return normalizeReferralCode(value) || null;
+}
+
+export async function clearPendingReferralCode() {
+  if (typeof AsyncStorage?.removeItem !== "function") return;
+  await AsyncStorage.removeItem(PENDING_REFERRAL_CODE_KEY);
 }
 
 

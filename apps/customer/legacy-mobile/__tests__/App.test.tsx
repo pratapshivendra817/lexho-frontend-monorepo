@@ -25,6 +25,7 @@ const mockNavigate = jest.fn();
 const mockUseAuthBootstrap = jest.fn();
 const mockTrackAppOpen = jest.fn().mockResolvedValue(undefined);
 const mockSaveSession = jest.fn().mockResolvedValue(undefined);
+const mockSavePendingReferralCode = jest.fn().mockResolvedValue(undefined);
 const mockGetPendingPaymentBookingId = jest.fn().mockResolvedValue(null);
 const mockClearPendingPaymentBookingId = jest.fn().mockResolvedValue(undefined);
 const mockGetBookingDetails = jest.fn();
@@ -34,6 +35,7 @@ const mockSetupPushNotificationListeners = jest.fn();
 const mockSetAnalyticsUser = jest.fn().mockResolvedValue(undefined);
 const mockTrackAnalyticsEvent = jest.fn().mockResolvedValue(undefined);
 const mockSetCrashlyticsUser = jest.fn().mockResolvedValue(undefined);
+const mockInitializeCrashlytics = jest.fn().mockResolvedValue(undefined);
 const mockLogCrashlyticsMessage = jest.fn().mockResolvedValue(undefined);
 const mockRecordNonFatalError = jest.fn().mockResolvedValue(undefined);
 const mockCaptureFrontendError = jest.fn();
@@ -68,7 +70,11 @@ jest.mock("../src/redux/store", () => ({ store: { dispatch: jest.fn() } }));
 
 jest.mock("../src/redux/hooks", () => ({
   useAppSelector: (selector: (state: any) => unknown) =>
-    selector({ auth: mockAuthState }),
+    selector({
+      auth: mockAuthState,
+      offline: { isOffline: false },
+      notification: {},
+    }),
 }));
 
 jest.mock("@react-navigation/native", () => ({
@@ -128,6 +134,10 @@ jest.mock("../src/hooks/useCustomerNotificationSocket", () => ({
   },
 }));
 
+jest.mock("../src/modules/calling", () => ({
+  useCallSocket: jest.fn(),
+}));
+
 jest.mock("../src/services/notificationsService", () => ({
   initializePushNotifications: (...args: any[]) =>
     mockInitializePushNotifications(...args),
@@ -143,6 +153,7 @@ jest.mock("../src/services/firebaseAnalytics", () => ({
 }));
 
 jest.mock("../src/services/firebaseCrashlytics", () => ({
+  initializeCrashlytics: (...args: any[]) => mockInitializeCrashlytics(...args),
   logCrashlyticsMessage: (...args: any[]) => mockLogCrashlyticsMessage(...args),
   recordNonFatalError: (...args: any[]) => mockRecordNonFatalError(...args),
   setCrashlyticsUser: (...args: any[]) => mockSetCrashlyticsUser(...args),
@@ -157,6 +168,8 @@ jest.mock("../src/utils/storage", () => ({
     mockClearPendingPaymentBookingId(...args),
   getPendingPaymentBookingId: (...args: any[]) =>
     mockGetPendingPaymentBookingId(...args),
+  savePendingReferralCode: (...args: any[]) =>
+    mockSavePendingReferralCode(...args),
   saveSession: (...args: any[]) => mockSaveSession(...args),
 }));
 

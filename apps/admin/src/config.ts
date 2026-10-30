@@ -7,16 +7,23 @@ const isKnownEnvironment = (value: string | undefined): value is AppEnvironment 
 
 const rawEnv = import.meta.env.VITE_APP_ENV?.trim()
 const env = isKnownEnvironment(rawEnv) ? rawEnv : AppEnvironment.DEV
-const explicitApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
+const normalizeApiBaseUrl = (value: string | undefined): string | undefined => {
+  if (value == null) return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  if (trimmed === '/') return ''
+  return trimmed.replace(/\/+$/, '')
+}
+const explicitApiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL)
 const explicitImageUploadEndpoint = import.meta.env.VITE_ADMIN_IMAGE_UPLOAD_ENDPOINT?.trim()
 const fallbackApiBaseUrl =
   env === AppEnvironment.DEV
-    ? 'http://localhost:8082'
+    ? 'http://192.168.31.38:8082'
     : API_BASE_URL_BY_ENV[env]
 
 export const appConfig = {
   env,
-  apiBaseUrl: explicitApiBaseUrl && explicitApiBaseUrl.length > 0 ? explicitApiBaseUrl : fallbackApiBaseUrl,
+  apiBaseUrl: explicitApiBaseUrl ?? fallbackApiBaseUrl,
   adminImageUploadEndpoint:
     explicitImageUploadEndpoint && explicitImageUploadEndpoint.length > 0
       ? explicitImageUploadEndpoint

@@ -1,4 +1,6 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,6 +8,15 @@ const adminMocks = vi.hoisted(() => ({
   mapboxOnSave: undefined as ((value: string) => void) | undefined,
   mapboxOnChange: undefined as ((value: string) => void) | undefined,
 }));
+
+const boundary = JSON.stringify({ type: "Polygon", coordinates: [[[72.8, 19.1], [72.9, 19.1], [72.9, 19.2], [72.8, 19.1]]] });
+const geoMocks = vi.hoisted(() => ({ cities: vi.fn(), zones: vi.fn() }));
+vi.mock("@/features/serviceable-areas/api/geoApi", () => ({ getGeoCities: geoMocks.cities, getGeoZones: geoMocks.zones }));
+
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
 
 vi.mock("@/components/admin", () => ({
   ModalFormLayout: ({ open, title, onClose, submitLabel, isSubmitting, children, formId }: any) =>
@@ -49,6 +60,8 @@ describe("serviceable-areas components", () => {
     vi.clearAllMocks();
     adminMocks.mapboxOnChange = undefined;
     adminMocks.mapboxOnSave = undefined;
+    geoMocks.cities.mockResolvedValue({ data: [{ id: 6, name: "Mumbai", state: "Maharashtra", country: "India" }, { id: 7, name: "Pune", state: "Maharashtra" }] });
+    geoMocks.zones.mockImplementation(async (cityId: number) => ({ data: cityId === 6 ? [{ id: 10, cityId: 6, name: "Versova", polygonJson: boundary }] : [] }));
   });
 
   it("renders and interacts with search, pagination, table, skeleton and toggle components", async () => {
@@ -160,8 +173,6 @@ describe("serviceable-areas components", () => {
     await user.type(inputs[1], "654321");
     await user.type(inputs[2], "Noida");
     await user.type(inputs[3], "UP");
-    await user.type(inputs[4], "0");
-    await user.type(inputs[5], "12");
     await user.type(screen.getByPlaceholderText('Polygon JSON: {"type":"Polygon","coordinates":[...]}'), "  {json}  ");
     duplicateCheck.mockReturnValueOnce(true);
 
@@ -178,7 +189,7 @@ describe("serviceable-areas components", () => {
         city: "Noida",
         state: "UP",
         cityId: null,
-        zoneId: 12,
+        zoneId: null,
         polygonJson: null,
         active: true,
       },
@@ -205,7 +216,7 @@ describe("serviceable-areas components", () => {
     act(() => {
       adminMocks.mapboxOnSave?.("  {saved-json} ");
     });
-    expect(onSubmit).toHaveBeenCalledWith(
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(
       {
         name: "Updated Name",
         pincode: "123456",
@@ -217,7 +228,7 @@ describe("serviceable-areas components", () => {
         active: false,
       },
       "9",
-    );
+    ));
 
     act(() => {
       adminMocks.mapboxOnChange?.("{preview-json}");
@@ -239,5 +250,33 @@ describe("serviceable-areas components", () => {
     );
     expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
     expect(screen.getAllByRole("textbox")[0]).toHaveValue("");
+  });
+
+  it("reuses a saved zone boundary and clears the mapping when switching cities", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<AddEditServiceableAreaModal open editingItem={null} isSubmitting={false} duplicateCheck={() => false} onClose={vi.fn()} onSubmit={onSubmit} />);
+    await screen.findByRole("option", { name: "Mumbai — Maharashtra" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Saved City" }), "6");
+    await screen.findByRole("option", { name: "Versova" });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Saved Zone" }), "10");
+    expect(screen.getByTestId("polygon-preview")).toHaveTextContent(boundary);
+    expect(screen.getByTestId("mapbox-editor")).toHaveTextContent(boundary);
+    expect(onSubmit).not.toHaveBeenCalled();
+    await user.type(screen.getByRole("textbox", { name: "Pincode" }), "400061");
+    await user.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ cityId: 6, zoneId: 10, city: "Mumbai", state: "Maharashtra", name: "Versova", pincode: "400061", polygonJson: boundary }), undefined));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Saved City" }), "7");
+    expect(screen.getByRole("combobox", { name: "Saved Zone" })).toHaveValue("");
+    expect(screen.getByTestId("polygon-preview")).toBeEmptyDOMElement();
+    await screen.findByText(/No zones found/);
+    expect(geoMocks.zones).toHaveBeenCalledWith(7);
+  });
+
+  it("preserves an existing area boundary while loading its linked zone", async () => {
+    const existingBoundary = boundary.replaceAll("72.8", "72.7");
+    render(<AddEditServiceableAreaModal open editingItem={{ id: "1", name: "Custom Versova", city: "Mumbai", state: "Maharashtra", country: "India", pincode: "400061", cityId: 6, zoneId: 10, polygonJson: existingBoundary, active: true }} isSubmitting={false} duplicateCheck={() => false} onClose={vi.fn()} onSubmit={vi.fn()} />);
+    await screen.findByRole("option", { name: "Versova" });
+    expect(screen.getByTestId("polygon-preview")).toHaveTextContent(existingBoundary);
   });
 });

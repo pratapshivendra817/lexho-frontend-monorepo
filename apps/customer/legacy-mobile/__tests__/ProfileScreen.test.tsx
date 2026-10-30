@@ -23,7 +23,6 @@ jest.mock("../src/redux/hooks", () => ({
 jest.mock("../src/redux/customerProfileSlice", () => ({
   fetchCustomerProfileThunk: () => ({ type: "profile/fetch" }),
   refreshProfileBundleThunk: () => ({ type: "profile/refresh" }),
-  requestAccountDeleteThunk: () => ({ type: "profile/delete" }),
 }));
 
 jest.mock("../src/redux/authSlice", () => ({
@@ -114,42 +113,36 @@ describe("ProfileScreen", () => {
     expect(view.getByText("Shiv Kumar")).toBeTruthy();
     expect(view.getByText("9999999999")).toBeTruthy();
     expect(view.getByText("Saved address (2)")).toBeTruthy();
-    expect(view.getByText("Delete request submitted.")).toBeTruthy();
     expect(mockDispatch).toHaveBeenCalledWith({ type: "profile/refresh" });
 
     await fireEvent.press(view.getByLabelText("Go back"));
     await fireEvent.press(view.getByLabelText("Edit profile"));
     await fireEvent.press(view.getByText("My bookings"));
+    await fireEvent.press(view.getByText("Refer & earn"));
     await fireEvent.press(view.getByText("Help & Support"));
+    await fireEvent.press(view.getByText("FAQs"));
     await fireEvent.press(view.getByText("Saved address (2)"));
-    await fireEvent.press(view.getByText("About us"));
-    await fireEvent.press(view.getByText("Terms of service"));
-    await fireEvent.press(view.getByText("Privacy policy"));
+    await fireEvent.press(view.getByText("Legal & Policies"));
 
     expect(mockGoBack).toHaveBeenCalled();
     expect(mockNavigate).toHaveBeenCalledWith("EditProfile");
     expect(mockNavigate).toHaveBeenCalledWith("Bookings");
+    expect(mockNavigate).toHaveBeenCalledWith("Referral");
     expect(mockNavigate).toHaveBeenCalledWith("Support");
+    expect(mockNavigate).toHaveBeenCalledWith("Faq");
     expect(mockNavigate).toHaveBeenCalledWith("Address");
-    expect(mockNavigate).toHaveBeenCalledWith("AboutUs", { content: "About content" });
-    expect(mockNavigate).toHaveBeenCalledWith("TermsOfService", { content: "Terms content" });
-    expect(mockNavigate).toHaveBeenCalledWith("PrivacyPolicy", { content: "Privacy content" });
+    expect(mockNavigate).toHaveBeenCalledWith("LegalDocuments");
   });
 
-  it("handles delete and logout confirmations including best-effort failures", async () => {
+  it("handles logout confirmations including best-effort failures", async () => {
     mockUnregister.mockRejectedValueOnce(new Error("notification failure"));
     mockClearSession.mockRejectedValueOnce(new Error("storage failure"));
     const view = await render(
       <ProfileScreen navigation={{ navigate: mockNavigate, goBack: mockGoBack }} />,
     );
 
-    await fireEvent.press(view.getByText("Delete account"));
-    let actions = (Alert.alert as jest.Mock).mock.calls.at(-1)?.[2];
-    actions[1].onPress();
-    expect(mockDispatch).toHaveBeenCalledWith({ type: "profile/delete" });
-
     await fireEvent.press(view.getByText("Logout"));
-    actions = (Alert.alert as jest.Mock).mock.calls.at(-1)?.[2];
+    const actions = (Alert.alert as jest.Mock).mock.calls.at(-1)?.[2];
     actions[1].onPress();
     await waitFor(() => expect(mockDispatch).toHaveBeenCalledWith({ type: "auth/clear" }));
   });

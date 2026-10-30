@@ -6,18 +6,20 @@ import { ScheduledRescheduleScreen } from "../src/screens/booking/ScheduledResch
 import { ScheduledBookingStatusScreen } from "../src/screens/booking/ScheduledBookingStatusScreen";
 import { PartnerArrivedScreen } from "../src/screens/booking/PartnerArrivedScreen";
 import { ServiceInProgressScreen } from "../src/screens/booking/ServiceInProgressScreen";
+import { ServiceCompletedScreen } from "../src/screens/booking/ServiceCompletedScreen";
 import { BookingStatusFallbackScreen } from "../src/screens/booking/BookingStatusFallbackScreen";
-import { RatePartnerScreen } from "../src/screens/booking/RatePartnerScreen";
 
 const mockNavigate = jest.fn();
 const mockReplace = jest.fn();
 const mockRefetch = jest.fn();
 const mockReschedule = jest.fn();
 const mockCancel = jest.fn();
-const mockAddReview = jest.fn();
+const mockSubmitCustomerReview = jest.fn();
 const mockCapture = jest.fn();
 const mockTrackRescheduled = jest.fn();
 const mockTrackCancelled = jest.fn();
+const mockTrackCompleted = jest.fn();
+const mockInvalidateQueries = jest.fn();
 let mockLifecycle: any;
 let mockMeta: any;
 let mockPending = false;
@@ -47,17 +49,6 @@ jest.mock("../src/components/cart/TimePicker", () => ({
     return <Pressable onPress={() => onChange(mockSelectedTime)}><Text>Select new slot</Text></Pressable>;
   },
 }));
-jest.mock("../src/components/booking/RatingModal", () => ({
-  RatingModal: ({ visible, onChange, onClose, onSubmit }: any) => {
-    if (!visible) return null;
-    const { Pressable, Text, View } = require("react-native");
-    return <View>
-      <Pressable onPress={() => onChange(4)}><Text>Choose 4 stars</Text></Pressable>
-      <Pressable onPress={onSubmit}><Text>Submit rating</Text></Pressable>
-      <Pressable onPress={onClose}><Text>Close rating</Text></Pressable>
-    </View>;
-  },
-}));
 jest.mock("../src/hooks/useInstantBookingLifecycle", () => ({
   useInstantBookingLifecycle: () => mockLifecycle,
 }));
@@ -72,7 +63,7 @@ jest.mock("../src/api/bookingExtrasApi", () => ({
   cancelBooking: (...args: any[]) => mockCancel(...args),
 }));
 jest.mock("../src/api/reviewApi", () => ({
-  addReview: (...args: any[]) => mockAddReview(...args),
+  submitCustomerReview: (...args: any[]) => mockSubmitCustomerReview(...args),
 }));
 jest.mock("../src/api/client", () => ({
   getApiErrorCode: () => "API_FAILURE",
@@ -80,11 +71,15 @@ jest.mock("../src/api/client", () => ({
 jest.mock("../src/services/customerAnalyticsEvents", () => ({
   trackBookingRescheduled: (...args: any[]) => mockTrackRescheduled(...args),
   trackBookingCancelled: (...args: any[]) => mockTrackCancelled(...args),
+  trackBookingCompleted: (...args: any[]) => mockTrackCompleted(...args),
 }));
 jest.mock("../src/services/monitoring", () => ({
   captureFrontendError: (...args: any[]) => mockCapture(...args),
 }));
 jest.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({
+    invalidateQueries: (...args: any[]) => mockInvalidateQueries(...args),
+  }),
   useMutation: (options: any) => ({
     isPending: mockPending,
     mutate: async () => {
@@ -131,7 +126,7 @@ describe("remaining booking screens", () => {
     mockRefetch.mockResolvedValue({});
     mockReschedule.mockResolvedValue({ id: "B2" });
     mockCancel.mockResolvedValue({});
-    mockAddReview.mockResolvedValue({});
+    mockSubmitCustomerReview.mockResolvedValue({});
     jest.spyOn(Alert, "alert").mockImplementation(jest.fn());
     jest.spyOn(Linking, "openURL").mockResolvedValue(undefined as never);
   });
@@ -213,25 +208,35 @@ describe("remaining booking screens", () => {
     expect(view.getByText("Tracking Screen: LIVE_TRACKING")).toBeTruthy();
   });
 
-  it("submits ratings with explicit and fallback comments and reports missing service", async () => {
-    let view = await render(<RatePartnerScreen route={{ params: { bookingId: "B1" } }} />);
+  it("submits review from the completed service flow and hides review when booking is unresolved", async () => {
+    mockLifecycle = {
+      data: {
+        ...mockLifecycle.data,
+        status: "COMPLETED",
+        meta: { canReview: true, reviewSubmitted: false },
+      },
+      refetch: mockRefetch,
+    };
+
+    let view = await render(<ServiceCompletedScreen route={{ params: { bookingId: "B1" } }} navigation={{}} />);
     await fireEvent.changeText(view.getByDisplayValue(""), "Helpful partner");
-    await fireEvent.press(view.getByText("Choose 4 stars"));
-    await fireEvent.press(view.getByText("Submit rating"));
+    await fireEvent.press(view.getByLabelText("4 star rating"));
+    await fireEvent.press(view.getByText("Submit Review"));
     await waitFor(() =>
-      expect(mockAddReview).toHaveBeenCalledWith({
-        serviceId: "S1",
+      expect(mockSubmitCustomerReview).toHaveBeenCalledWith({
+        bookingId: "B1",
         rating: 4,
-        comment: "Helpful partner",
+        reviewText: "Helpful partner",
       }),
     );
-    expect(Alert.alert).toHaveBeenCalledWith("Thank you", "Your rating has been submitted.");
+    expect(view.getByText("Your review has been submitted")).toBeTruthy();
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["instant-booking-status", "B1"] });
+    expect(mockTrackCompleted).toHaveBeenCalled();
 
     await cleanup();
-    mockLifecycle = { data: { id: "B2" }, refetch: mockRefetch };
-    view = await render(<RatePartnerScreen route={{ params: { bookingId: "B2" } }} />);
-    expect(view.getByText(/Service details are loading/)).toBeTruthy();
-    await fireEvent.press(view.getByText("Submit rating"));
-    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Rating failed", "Service id not available yet."));
+    mockLifecycle = { data: {}, refetch: mockRefetch };
+    view = await render(<ServiceCompletedScreen route={{ params: {} }} navigation={{}} />);
+    expect(view.getByText("Service Completed")).toBeTruthy();
+    expect(view.queryByText("Submit Review")).toBeNull();
   });
 });

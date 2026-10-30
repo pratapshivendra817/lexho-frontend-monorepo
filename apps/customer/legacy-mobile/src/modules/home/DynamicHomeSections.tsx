@@ -114,13 +114,6 @@ function visualValue(value?: string | null) {
   return raw.length > 0 ? raw : undefined;
 }
 
-function sectionCardVisual(section: HomeSection) {
-  return {
-    borderColor: visualValue(section.borderColor),
-    backgroundColor: visualValue(section.backgroundColor),
-  };
-}
-
 function darkSectionCardVisual(section: HomeSection) {
   return {
     borderColor: visualValue(section.borderColor) || COLORS.goldSoft,

@@ -13,6 +13,10 @@ const config = {
     blockList: [
       /android[/\\]app[/\\]\.cxx[/\\].*/,
       /android[/\\]app[/\\]build[/\\].*/,
+      // Native dependencies generate and remove CMake files while Gradle
+      // builds. Metro must not try to watch those transient directories.
+      /node_modules[/\\].*[/\\]android[/\\]\.cxx[/\\].*/,
+      /node_modules[/\\]@react-native[/\\]gradle-plugin[/\\].*[/\\]build[/\\].*/,
     ],
     extraNodeModules: {
       "@react-navigation/core": path.resolve(__dirname, "node_modules/@react-navigation/core"),

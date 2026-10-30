@@ -198,7 +198,7 @@ export async function reverseGeocode(payload) {
   }
 }
 
-export async function checkServiceability(payload) {
+export async function checkServiceability(payload, options = {}) {
   const latitude = Number(payload?.latitude ?? payload?.lat ?? 0);
   const longitude = Number(payload?.longitude ?? payload?.lng ?? 0);
   const pincode = String(payload?.pincode ?? payload?.postalCode ?? "").trim();
@@ -207,7 +207,7 @@ export async function checkServiceability(payload) {
 
   await hydrateCacheFromStorage(SERVICEABILITY_CACHE_KEY, inMemoryServiceabilityCache, "serviceability");
   const cached = cacheKey ? inMemoryServiceabilityCache.get(cacheKey) : null;
-  if (cached?.expiresAt && cached.expiresAt > nowMs()) {
+  if (!options.forceRefresh && cached?.expiresAt && cached.expiresAt > nowMs()) {
     return cached.value;
   }
 

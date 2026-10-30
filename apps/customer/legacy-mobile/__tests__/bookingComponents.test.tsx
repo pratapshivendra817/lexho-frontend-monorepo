@@ -194,7 +194,7 @@ describe("booking components", () => {
     const view = await render(<CleaningCoverageCard durationHours={2} />);
     expect(view.getByText("Fans")).toBeTruthy();
     expect(view.getByText("Custom")).toBeTruthy();
-    expect(view.getByText("20 mins")).toBeTruthy();
+    expect(view.queryByText(/\d+ mins/)).toBeNull();
     await fireEvent.press(view.getByText("How much can be covered?"));
     expect(view.queryByText("Fans")).toBeNull();
     await fireEvent.press(view.getByText("How much can be covered?"));

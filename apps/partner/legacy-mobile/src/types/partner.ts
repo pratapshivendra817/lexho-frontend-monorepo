@@ -1,22 +1,3 @@
-export type PartnerProfile = {
-  id?: string;
-  name?: string;
-  fullName?: string;
-  email?: string;
-  mobile?: string;
-  phone?: string;
-  city?: string;
-  pincode?: string;
-  address?: string;
-  serviceCategory?: string;
-  profileImageUrl?: string;
-  kycStatus?: string;
-  kycRejectionReason?: string;
-  bankVerificationStatus?: string;
-  bankRejectionReason?: string;
-  accountStatus?: "ACTIVE" | "WARNING" | "SUSPENSION" | "BLOCKED" | string;
-};
-
 export type PartnerDashboardStats = {
   todayEarnings: number;
   totalCompletedOrders: number;
@@ -74,4 +55,14 @@ export type PartnerWarningItem = {
   active?: boolean;
   notificationTitle?: string;
   notificationMessage?: string;
+};
+
+export type PartnerScreeningCentre = {
+  name: string;
+  address: string;
+  landmark?: string;
+  entranceInfo?: string;
+  latitude: number;
+  longitude: number;
+  phone?: string;
 };

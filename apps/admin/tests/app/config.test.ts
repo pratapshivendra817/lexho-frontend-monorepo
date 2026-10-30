@@ -80,6 +80,18 @@ describe("config", () => {
     });
   });
 
+  it("treats a root-path API base URL as a relative dev proxy instead of a malformed double-slash URL", async () => {
+    const { appConfig } = await loadConfigWithEnv({
+      VITE_APP_ENV: "development",
+      VITE_API_BASE_URL: "/",
+      VITE_ADMIN_IMAGE_UPLOAD_ENDPOINT: "",
+    });
+
+    expect(appConfig.env).toBe("development");
+    expect(appConfig.apiBaseUrl).toBe("");
+    expect(appConfig.adminImageUploadEndpoint).toBe("/api/admin/upload/image");
+  });
+
   it("falls back to the environment base URL map when explicit endpoints are blank", async () => {
     const { appConfig } = await loadConfigWithEnv({
       VITE_APP_ENV: "production",

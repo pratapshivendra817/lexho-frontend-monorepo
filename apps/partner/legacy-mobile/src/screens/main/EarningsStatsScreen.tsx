@@ -8,10 +8,30 @@ import type { PartnerEarningsSummary, PartnerEarningsTransaction } from "../../t
 import { useAppFeedback } from "../../context/AppFeedbackContext";
 import PaymentHeader from "../../components/payments/PaymentHeader";
 
-const money = (value: number) => `INR ${value.toFixed(2)}`;
+const money = (value: number, currencyLabel: string) => `${currencyLabel} ${value.toFixed(2)}`;
+const EARNINGS_COPY = {
+  currency: "INR",
+  loadError: "Unable to load earnings",
+  title: "Earnings",
+  subtitle: "Settled income after commission and refund reversals",
+  today: "Today",
+  thisWeek: "This Week",
+  thisMonth: "This Month",
+  available: "Available",
+  pending: "Pending",
+  lifetime: "Lifetime",
+  payouts: "Payout",
+  bankAccount: "Bank Account",
+  withdraw: "Withdraw",
+  recentTransactions: "Recent Transactions",
+  noTransactions: "No earnings transactions yet.",
+  booking: "Booking",
+  settlement: "Settlement",
+} as const;
 
 export default function EarningsStatsScreen({ navigation }: any) {
   const { toast } = useAppFeedback();
+  const currencyLabel = EARNINGS_COPY.currency;
   const [summary, setSummary] = useState<PartnerEarningsSummary | null>(null);
   const [transactions, setTransactions] = useState<PartnerEarningsTransaction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,7 +57,7 @@ export default function EarningsStatsScreen({ navigation }: any) {
       setSummary(nextSummary);
       setTransactions(nextTransactions);
     } catch (error: any) {
-      toast(error?.message ?? "Unable to load earnings");
+      toast(error?.message ?? EARNINGS_COPY.loadError);
     } finally {
       setLoading(false);
     }
@@ -54,38 +74,38 @@ export default function EarningsStatsScreen({ navigation }: any) {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load()} />}
     >
-      <PaymentHeader title="Earnings" onBack={() => navigation.goBack()} />
-      <Text style={styles.subtitle}>Settled income after commission and refund reversals</Text>
+      <PaymentHeader title={EARNINGS_COPY.title} onBack={() => navigation.goBack()} />
+      <Text style={styles.subtitle}>{EARNINGS_COPY.subtitle}</Text>
 
       {!summary && loading ? <ActivityIndicator color={COLORS.secondary} /> : null}
       <View style={styles.summaryGrid}>
-        <Summary label="Today" value={summary?.todaySettlement ?? 0} />
-        <Summary label="This Week" value={summary?.weekSettlement ?? 0} />
-        <Summary label="This Month" value={summary?.monthSettlement ?? 0} />
-        <Summary label="Available" value={summary?.availableBalance ?? 0} />
-        <Summary label="Pending" value={summary?.pendingSettlement ?? 0} />
-        <Summary label="Lifetime" value={summary?.lifetimeSettlement ?? 0} />
+        <Summary label={EARNINGS_COPY.today} value={summary?.todaySettlement ?? 0} currencyLabel={currencyLabel} />
+        <Summary label={EARNINGS_COPY.thisWeek} value={summary?.weekSettlement ?? 0} currencyLabel={currencyLabel} />
+        <Summary label={EARNINGS_COPY.thisMonth} value={summary?.monthSettlement ?? 0} currencyLabel={currencyLabel} />
+        <Summary label={EARNINGS_COPY.available} value={summary?.availableBalance ?? 0} currencyLabel={currencyLabel} />
+        <Summary label={EARNINGS_COPY.pending} value={summary?.pendingSettlement ?? 0} currencyLabel={currencyLabel} />
+        <Summary label={EARNINGS_COPY.lifetime} value={summary?.lifetimeSettlement ?? 0} currencyLabel={currencyLabel} />
       </View>
 
       <View style={styles.actions}>
-        <Action icon="bank-transfer" label="Payouts" onPress={() => navigation.navigate("Payouts")} />
-        <Action icon="bank-outline" label="Bank Account" onPress={() => navigation.navigate("BankAccount")} />
-        <Action icon="cash-fast" label="Withdraw" onPress={() => navigation.navigate("Withdrawals")} />
+        <Action icon="bank-transfer" label={EARNINGS_COPY.payouts} onPress={() => navigation.navigate("Payouts")} />
+        <Action icon="bank-outline" label={EARNINGS_COPY.bankAccount} onPress={() => navigation.navigate("BankAccount")} />
+        <Action icon="cash-fast" label={EARNINGS_COPY.withdraw} onPress={() => navigation.navigate("Withdrawals")} />
       </View>
 
-      <Text style={styles.sectionTitle}>Recent Transactions</Text>
-      {transactions.length === 0 && !loading ? <Text style={styles.empty}>No earnings transactions yet.</Text> : null}
+      <Text style={styles.sectionTitle}>{EARNINGS_COPY.recentTransactions}</Text>
+      {transactions.length === 0 && !loading ? <Text style={styles.empty}>{EARNINGS_COPY.noTransactions}</Text> : null}
       {transactions.map((item) => (
         <View key={item.id} style={styles.row}>
           <View style={styles.rowCopy}>
             <Text style={styles.rowTitle}>{item.description}</Text>
             <Text style={styles.meta}>
-              {item.bookingId ? `Booking #${item.bookingId}` : item.type ?? "Settlement"}
+              {item.bookingId ? `${EARNINGS_COPY.booking} #${item.bookingId}` : item.type ?? EARNINGS_COPY.settlement}
               {item.createdAt ? ` | ${new Date(item.createdAt).toLocaleDateString()}` : ""}
             </Text>
           </View>
           <View style={styles.amountWrap}>
-            <Text style={[styles.amount, item.amount < 0 && styles.negative]}>{money(item.amount)}</Text>
+            <Text style={[styles.amount, item.amount < 0 && styles.negative]}>{money(item.amount, currencyLabel)}</Text>
             {item.status ? <Text style={styles.meta}>{item.status}</Text> : null}
           </View>
         </View>
@@ -94,11 +114,11 @@ export default function EarningsStatsScreen({ navigation }: any) {
   );
 }
 
-function Summary({ label, value }: { label: string; value: number }) {
+function Summary({ label, value, currencyLabel }: { label: string; value: number; currencyLabel: string }) {
   return (
     <View style={styles.summary}>
       <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryValue}>{money(value)}</Text>
+      <Text style={styles.summaryValue}>{money(value, currencyLabel)}</Text>
     </View>
   );
 }

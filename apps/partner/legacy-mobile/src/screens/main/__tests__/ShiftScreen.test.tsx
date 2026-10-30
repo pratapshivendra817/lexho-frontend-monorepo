@@ -154,11 +154,11 @@ describe("ShiftScreen", () => {
 
     const view = await render(<ShiftScreen />);
 
-    expect(view.getByText("Online: false")).toBeTruthy();
+    expect(view.getByText("ONLINE: false")).toBeTruthy();
     expect(view.getByText("Shift Start: 09:00")).toBeTruthy();
     expect(view.getByText("Shift End: 18:00")).toBeTruthy();
     expect(view.getByText("Max Active Jobs: 4")).toBeTruthy();
-    expect(view.getByText(/Last location updated:/)).toBeTruthy();
+    expect(view.getByText(/Last Location Updated:/)).toBeTruthy();
 
     const tree = view.toJSON() as any;
     await act(async () => {

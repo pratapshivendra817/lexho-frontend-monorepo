@@ -7,6 +7,7 @@ jest.setTimeout(15_000);
 
 const mockSendOtp = jest.fn();
 const mockVerifyOtp = jest.fn();
+const mockApplyReferral = jest.fn();
 const mockDispatch = jest.fn();
 const mockSaveSession = jest.fn();
 const mockSetAnalyticsUser = jest.fn();
@@ -15,13 +16,22 @@ const mockTrackAnalyticsEvent = jest.fn();
 const mockTrackUserLogin = jest.fn();
 const mockTrackUserRegistration = jest.fn();
 const mockLegalContent = jest.fn();
+const mockGetPendingReferralCode = jest.fn();
+const mockClearPendingReferralCode = jest.fn();
+let mockPendingReferralCode: string | null = null;
 
 let mockLegalQuery: any;
 
 jest.mock("@tanstack/react-query", () => {
   const ReactModule = require("react");
   return {
-    useQuery: () => mockLegalQuery,
+    useQuery: ({ queryKey }: any) => {
+      const key = Array.isArray(queryKey) ? queryKey[0] : queryKey;
+      if (key === "pending-referral-code") {
+        return { data: mockPendingReferralCode };
+      }
+      return mockLegalQuery;
+    },
     useMutation: (options: any) => {
       const [state, setState] = ReactModule.useState({
         isPending: false,
@@ -97,6 +107,10 @@ jest.mock("../src/api/authApi", () => ({
   verifyOtp: (...args: any[]) => mockVerifyOtp(...args),
 }));
 
+jest.mock("../src/api/referralApi", () => ({
+  applyReferral: (...args: any[]) => mockApplyReferral(...args),
+}));
+
 jest.mock("../src/api/customerProfileApi", () => ({
   getCustomerProfileContent: (...args: any[]) => mockLegalContent(...args),
 }));
@@ -115,6 +129,8 @@ jest.mock("../src/redux/locationSlice", () => ({
 
 jest.mock("../src/utils/storage", () => ({
   saveSession: (...args: any[]) => mockSaveSession(...args),
+  getPendingReferralCode: (...args: any[]) => mockGetPendingReferralCode(...args),
+  clearPendingReferralCode: (...args: any[]) => mockClearPendingReferralCode(...args),
 }));
 
 jest.mock("../src/services/firebaseAnalytics", () => ({
@@ -141,7 +157,11 @@ describe("LoginScreen", () => {
         privacyPolicy: "Backend privacy",
       },
     };
+    mockPendingReferralCode = null;
+    mockGetPendingReferralCode.mockResolvedValue(null);
+    mockClearPendingReferralCode.mockResolvedValue(undefined);
     mockSendOtp.mockResolvedValue({ success: true });
+    mockApplyReferral.mockResolvedValue({ status: "PENDING" });
   });
 
   afterEach(async () => {
@@ -176,7 +196,7 @@ describe("LoginScreen", () => {
     await fireEvent.press(view.getByLabelText("Send OTP to verify mobile number"));
 
     await waitFor(() => expect(mockSendOtp).toHaveBeenCalledWith("9876543210"));
-    expect(navigate).toHaveBeenCalledWith("Otp", { mobile: "9876543210" });
+    expect(navigate).toHaveBeenCalledWith("Otp", { mobile: "9876543210", referralCode: undefined });
   });
 
   it("shows API/network errors, supports retry, and dismisses the snackbar", async () => {
@@ -193,7 +213,7 @@ describe("LoginScreen", () => {
     await fireEvent.press(view.getByLabelText("Dismiss error"));
     expect(view.queryByText("Network Error")).toBeNull();
     await fireEvent.press(view.getByLabelText("Send OTP to verify mobile number"));
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith("Otp", { mobile: "9876543210" }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith("Otp", { mobile: "9876543210", referralCode: undefined }));
   });
 
   it("opens backend legal content and safely handles a missing parent navigator", async () => {
@@ -326,6 +346,27 @@ describe("OtpScreen", () => {
       method: "otp",
       user_id_present: false,
     });
+  });
+
+  it("applies pending referral code after OTP login and clears it after success", async () => {
+    mockPendingReferralCode = "LEXHO8F4K2";
+    mockGetPendingReferralCode.mockResolvedValue("LEXHO8F4K2");
+    mockVerifyOtp.mockResolvedValue({
+      data: {
+        token: "nested-token",
+        refreshToken: "nested-refresh",
+        isNewUser: true,
+      },
+    });
+    const { view } = await renderOtp();
+
+    await waitFor(() => expect(view.getByText(/Referral code/i)).toBeTruthy());
+    await fireEvent.changeText(view.getByLabelText("OTP"), "1234");
+    await fireEvent.press(view.getByText("Verify & Continue"));
+
+    await waitFor(() => expect(mockVerifyOtp).toHaveBeenCalledWith("9876543210", "1234"));
+    await waitFor(() => expect(mockApplyReferral).toHaveBeenCalledWith({ code: "LEXHO8F4K2" }));
+    expect(mockClearPendingReferralCode).toHaveBeenCalled();
   });
 
   it.each([

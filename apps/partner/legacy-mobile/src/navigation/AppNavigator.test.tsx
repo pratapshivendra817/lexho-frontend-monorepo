@@ -80,25 +80,11 @@ jest.mock("../screens/main/NewOrdersScreen", () => {
     return ReactLocal.createElement(RNText, null, "NewOrdersScreen");
   };
 });
-jest.mock("../screens/main/OnboardingSubmitScreen", () => {
-  const ReactLocal = require("react");
-  const { Text: RNText } = require("react-native");
-  return function MockOnboardingSubmitScreen() {
-    return ReactLocal.createElement(RNText, null, "OnboardingSubmitScreen");
-  };
-});
 jest.mock("../screens/main/ActiveJobScreen", () => {
   const ReactLocal = require("react");
   const { Text: RNText } = require("react-native");
   return function MockActiveJobScreen() {
     return ReactLocal.createElement(RNText, null, "ActiveJobScreen");
-  };
-});
-jest.mock("../screens/main/DocumentUploadScreen", () => {
-  const ReactLocal = require("react");
-  const { Text: RNText } = require("react-native");
-  return function MockDocumentUploadScreen() {
-    return ReactLocal.createElement(RNText, null, "DocumentUploadScreen");
   };
 });
 jest.mock("../screens/main/SupportScreen", () => {
@@ -175,11 +161,32 @@ jest.mock("../screens/main/WithdrawalsScreen", () => {
     return ReactLocal.createElement(RNText, null, "WithdrawalsScreen");
   };
 });
-jest.mock("../screens/main/ProfileScreen", () => {
+jest.mock("../screens/main/AppSettingsScreen", () => {
   const ReactLocal = require("react");
   const { Text: RNText } = require("react-native");
-  return function MockProfileScreen() {
-    return ReactLocal.createElement(RNText, null, "ProfileScreen");
+  return function MockAppSettingsScreen() {
+    return ReactLocal.createElement(RNText, null, "AppSettingsScreen");
+  };
+});
+jest.mock("../screens/main/LanguageSelectionScreen", () => {
+  const ReactLocal = require("react");
+  const { Text: RNText } = require("react-native");
+  return function MockLanguageSelectionScreen() {
+    return ReactLocal.createElement(RNText, null, "LanguageSelectionScreen");
+  };
+});
+jest.mock("../screens/main/ScreeningCentreScreen", () => {
+  const ReactLocal = require("react");
+  const { Text: RNText } = require("react-native");
+  return function MockScreeningCentreScreen() {
+    return ReactLocal.createElement(RNText, null, "ScreeningCentreScreen");
+  };
+});
+jest.mock("../modules/legal/screens/LegalDocumentScreen", () => {
+  const ReactLocal = require("react");
+  const { Text: RNText } = require("react-native");
+  return function MockLegalDocumentScreen() {
+    return ReactLocal.createElement(RNText, null, "LegalDocumentScreen");
   };
 });
 jest.mock("../screens/main/ChatListScreen", () => {
@@ -194,13 +201,6 @@ jest.mock("../screens/main/ChatScreen", () => {
   const { Text: RNText } = require("react-native");
   return function MockChatScreen() {
     return ReactLocal.createElement(RNText, null, "ChatScreen");
-  };
-});
-jest.mock("../screens/main/KycStatusScreen", () => {
-  const ReactLocal = require("react");
-  const { Text: RNText } = require("react-native");
-  return function MockKycStatusScreen() {
-    return ReactLocal.createElement(RNText, null, "KycStatusScreen");
   };
 });
 jest.mock("../screens/main/PartnerOperationsScreens", () => {
@@ -518,13 +518,12 @@ describe("AppNavigator", () => {
 
     expect(saveToken).toHaveBeenCalledWith("jwt-token");
     expect(saveRefreshToken).toHaveBeenCalledWith("refresh-token");
-    expect(saveAdminProfile).toHaveBeenCalledWith({ email: "9876543210@partner.local" });
+    expect(saveAdminProfile).toHaveBeenCalledWith({ email: "9876543210@partner.local", mobile: "9876543210" });
     expect(initializePushNotifications).toHaveBeenCalled();
     expect(identifyPartnerAnalytics).toHaveBeenCalledWith("partner-1");
     expect(trackAuthenticationEvent).toHaveBeenCalledWith(true, { mobile: "9876543210" });
     expect(mockTabScreenProps.map((item) => item.name)).toEqual([
       "HomeTab",
-      "ProfileTab",
       "NotificationsTab",
       "ChatTab",
       "SupportTab",
@@ -546,7 +545,7 @@ describe("AppNavigator", () => {
     expect(saveToken).toHaveBeenCalledWith("nested-token");
     expect(saveRefreshToken).not.toHaveBeenCalled();
     expect(identifyPartnerAnalytics).toHaveBeenCalledWith("nested-partner");
-    expect(saveAdminProfile).toHaveBeenCalledWith({ email: "9999999999@partner.local" });
+    expect(saveAdminProfile).toHaveBeenCalledWith({ email: "9999999999@partner.local", mobile: "9999999999" });
   });
 
   it("uses payload user id as the analytics identifier when partner ids are absent", async () => {
@@ -629,7 +628,21 @@ describe("AppNavigator", () => {
     expect(mockNavigation.navigate).toHaveBeenCalledWith("IncomingCall", { callId: "offer-1", orderId: 91 });
   });
 
-  it("handles bootstrap failure by recording a crash and showing the auth flow", async () => {
+  it("keeps the saved session when bootstrap health fails", async () => {
+    mockAuthToken = "existing-token";
+    mockHealthImplementation = async () => {
+      throw new Error("health failed");
+    };
+    await render(<AppNavigator />);
+
+    await waitFor(() => {
+      expect(screen.getByText("HomeScreen")).toBeTruthy();
+    });
+
+    expect(recordCrash).toHaveBeenCalled();
+  });
+
+  it("shows the auth flow when bootstrap health fails and no saved token exists", async () => {
     mockHealthImplementation = async () => {
       throw new Error("health failed");
     };
@@ -1129,7 +1142,7 @@ describe("AppNavigator", () => {
     const view = await render(<AppNavigator />);
 
     await act(async () => {
-      resolveHealth();
+      resolveToken("existing-token");
       await Promise.resolve();
     });
 
@@ -1138,7 +1151,7 @@ describe("AppNavigator", () => {
     });
 
     await act(async () => {
-      resolveToken("existing-token");
+      resolveHealth();
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();

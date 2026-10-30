@@ -7,7 +7,34 @@ import type { PartnerWithdrawal, PartnerWithdrawalBalance } from "../../types/pa
 import { useAppFeedback } from "../../context/AppFeedbackContext";
 import PaymentHeader from "../../components/payments/PaymentHeader";
 
-export const money = (value: number) => `INR ${value.toFixed(2)}`;
+export const money = (value: number, currencyLabel: string) => `${currencyLabel} ${value.toFixed(2)}`;
+const WITHDRAWALS_COPY = {
+  currencyLabel: "INR",
+  screenTitle: "Withdrawals",
+  balanceHint: "Available balance already accounts for refund reversals and reserved withdrawals.",
+  available: "Available",
+  reserved: "Reserved",
+  settledBalance: "Settled balance",
+  request: "Request Withdrawal",
+  enterAmount: "Enter Amount",
+  amountAccessibility: "Withdrawal amount",
+  submitting: "Submitting...",
+  history: "Withdrawal History",
+  emptyHistory: "No withdrawal requests yet.",
+  rowTitle: "Withdrawal",
+  requested: "Requested",
+  requestedToast: "Withdrawal requested",
+  loadError: "Unable to load withdrawals",
+  requestError: "Unable to request withdrawal",
+  statusPending: "Pending",
+  statusApproved: "Approved",
+  statusRejected: "Rejected",
+  statusCompleted: "Completed",
+  captionRequested: "Requested",
+  captionAwaitingApproval: "Awaiting approval",
+  captionNoRejection: "No rejection",
+  captionSettlementPending: "Settlement pending",
+} as const;
 
 export function normalizeWithdrawalAmountInput(value: string) {
   return value.replace(/[^0-9.]/g, "");
@@ -27,8 +54,11 @@ export function validateWithdrawalAmount(amount: string, availableBalance: numbe
   return { error: null, value };
 }
 
+type TranslationResolver = (key: string, fallback: string) => string;
+
 export default function WithdrawalsScreen({ navigation }: any) {
   const { toast } = useAppFeedback();
+  const currencyLabel = WITHDRAWALS_COPY.currencyLabel;
   const [balance, setBalance] = useState<PartnerWithdrawalBalance | null>(null);
   const [rows, setRows] = useState<PartnerWithdrawal[]>([]);
   const [amount, setAmount] = useState("");
@@ -45,7 +75,7 @@ export default function WithdrawalsScreen({ navigation }: any) {
       setBalance(nextBalance);
       setRows(nextRows);
     } catch (error: any) {
-      toast(error?.message ?? "Unable to load withdrawals");
+      toast(error?.message ?? WITHDRAWALS_COPY.loadError);
     } finally {
       setLoading(false);
     }
@@ -66,10 +96,10 @@ export default function WithdrawalsScreen({ navigation }: any) {
     try {
       await createPartnerWithdrawal(value);
       setAmount("");
-      toast("Withdrawal requested");
+      toast(WITHDRAWALS_COPY.requestedToast);
       await load();
     } catch (error: any) {
-      toast(error?.message ?? "Unable to request withdrawal");
+      toast(error?.message ?? WITHDRAWALS_COPY.requestError);
     } finally {
       setSubmitting(false);
     }
@@ -83,39 +113,39 @@ export default function WithdrawalsScreen({ navigation }: any) {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load()} />}
       >
-        <PaymentHeader title="Withdrawals" onBack={() => navigation.goBack()} />
-        <Text style={styles.subtitle}>Available balance already accounts for refund reversals and reserved withdrawals.</Text>
+        <PaymentHeader title={WITHDRAWALS_COPY.screenTitle} onBack={() => navigation.goBack()} />
+        <Text style={styles.subtitle}>{WITHDRAWALS_COPY.balanceHint}</Text>
         <View style={[styles.balanceRow, styles.fullBleed]}>
-          <Balance label="Available" value={balance?.availableBalance ?? 0} emphasis />
-          <Balance label="Reserved" value={balance?.reservedBalance ?? 0} />
+          <Balance label={WITHDRAWALS_COPY.available} value={balance?.availableBalance ?? 0} emphasis currencyLabel={currencyLabel} />
+          <Balance label={WITHDRAWALS_COPY.reserved} value={balance?.reservedBalance ?? 0} currencyLabel={currencyLabel} />
         </View>
-        <Text style={styles.meta}>Settled balance: {money(balance?.settledBalance ?? 0)}</Text>
+        <Text style={styles.meta}>{`${WITHDRAWALS_COPY.settledBalance}: ${money(balance?.settledBalance ?? 0, currencyLabel)}`}</Text>
 
-        <Text style={styles.sectionTitle}>Request Withdrawal</Text>
+        <Text style={styles.sectionTitle}>{WITHDRAWALS_COPY.request}</Text>
         <TextInput
           value={amount}
           onChangeText={(value) => setAmount(normalizeWithdrawalAmountInput(value))}
           keyboardType="decimal-pad"
-          placeholder="Amount"
+          placeholder={WITHDRAWALS_COPY.enterAmount}
           placeholderTextColor={COLORS.textMuted}
           style={[styles.input, styles.fullBleed]}
-          accessibilityLabel="Withdrawal amount"
+          accessibilityLabel={WITHDRAWALS_COPY.amountAccessibility}
         />
         <TouchableOpacity style={[styles.button, styles.fullBleed, submitting && styles.disabled]} disabled={submitting} onPress={submit}>
-          <Text style={styles.buttonText}>{submitting ? "Submitting..." : "Request Withdrawal"}</Text>
+          <Text style={styles.buttonText}>{submitting ? WITHDRAWALS_COPY.submitting : WITHDRAWALS_COPY.request}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.sectionTitle}>Withdrawal History</Text>
-        {rows.length === 0 && !loading ? <Text style={styles.meta}>No withdrawal requests yet.</Text> : null}
+        <Text style={styles.sectionTitle}>{WITHDRAWALS_COPY.history}</Text>
+        {rows.length === 0 && !loading ? <Text style={styles.meta}>{WITHDRAWALS_COPY.emptyHistory}</Text> : null}
         {rows.map((item) => (
           <View key={item.id} style={[styles.historyCard, styles.fullBleed]}>
             <View style={styles.historyRow}>
               <View style={styles.historyCopy}>
-                <Text style={styles.rowTitle}>Withdrawal #{item.id}</Text>
-                <Text style={styles.meta}>{item.requestedAt ? new Date(item.requestedAt).toLocaleDateString() : "Requested"}</Text>
+                <Text style={styles.rowTitle}>{`${WITHDRAWALS_COPY.rowTitle} #${item.id}`}</Text>
+                <Text style={styles.meta}>{item.requestedAt ? new Date(item.requestedAt).toLocaleDateString() : WITHDRAWALS_COPY.requested}</Text>
               </View>
               <View style={styles.amountWrap}>
-                <Text style={styles.rowAmount}>{money(item.amount)}</Text>
+                <Text style={styles.rowAmount}>{money(item.amount, currencyLabel)}</Text>
                 <StatusPill status={item.status} />
               </View>
             </View>
@@ -138,11 +168,11 @@ export default function WithdrawalsScreen({ navigation }: any) {
   );
 }
 
-function Balance({ label, value, emphasis = false }: { label: string; value: number; emphasis?: boolean }) {
+function Balance({ label, value, emphasis = false, currencyLabel }: { label: string; value: number; emphasis?: boolean; currencyLabel: string }) {
   return (
     <View style={styles.balance}>
       <Text style={styles.meta}>{label}</Text>
-      <Text style={[styles.balanceValue, emphasis && styles.emphasis]}>{money(value)}</Text>
+      <Text style={[styles.balanceValue, emphasis && styles.emphasis]}>{money(value, currencyLabel)}</Text>
     </View>
   );
 }
@@ -151,21 +181,35 @@ function StatusPill({ status }: { status?: string }) {
   const value = String(status || "PENDING").toUpperCase();
   const success = value === "APPROVED" || value === "COMPLETED";
   const rejected = value === "REJECTED";
+  const label = getWithdrawalStatusLabel(value);
   return (
     <View style={[styles.statusPill, success && styles.statusSuccess, rejected && styles.statusRejected]}>
-      <Text style={[styles.statusText, success && styles.statusSuccessText, rejected && styles.statusRejectedText]}>{value}</Text>
+      <Text style={[styles.statusText, success && styles.statusSuccessText, rejected && styles.statusRejectedText]}>{label}</Text>
     </View>
   );
 }
 
-export function withdrawalTimeline(item: PartnerWithdrawal) {
+export function withdrawalTimeline(item: PartnerWithdrawal, tr?: TranslationResolver) {
   const status = String(item.status || "PENDING").toUpperCase();
   return [
-    { label: "Pending", done: true, at: item.requestedAt, caption: "Requested" },
-    { label: "Approved", done: ["APPROVED", "COMPLETED"].includes(status), caption: "Awaiting approval" },
-    { label: "Rejected", done: status === "REJECTED", caption: "No rejection" },
-    { label: "Completed", done: status === "COMPLETED", at: item.processedAt, caption: "Settlement pending" },
+    { label: WITHDRAWALS_COPY.statusPending, done: true, at: item.requestedAt, caption: WITHDRAWALS_COPY.captionRequested },
+    { label: WITHDRAWALS_COPY.statusApproved, done: ["APPROVED", "COMPLETED"].includes(status), caption: WITHDRAWALS_COPY.captionAwaitingApproval },
+    { label: WITHDRAWALS_COPY.statusRejected, done: status === "REJECTED", caption: WITHDRAWALS_COPY.captionNoRejection },
+    { label: WITHDRAWALS_COPY.statusCompleted, done: status === "COMPLETED", at: item.processedAt, caption: WITHDRAWALS_COPY.captionSettlementPending },
   ];
+}
+
+function getWithdrawalStatusLabel(status: string) {
+  switch (status) {
+    case "APPROVED":
+      return WITHDRAWALS_COPY.statusApproved;
+    case "REJECTED":
+      return WITHDRAWALS_COPY.statusRejected;
+    case "COMPLETED":
+      return WITHDRAWALS_COPY.statusCompleted;
+    default:
+      return WITHDRAWALS_COPY.statusPending;
+  }
 }
 
 const styles = StyleSheet.create({

@@ -40,6 +40,18 @@ vi.mock("@/features/banners/pages/BannersPage", () => ({
   default: () => <div>banners-page</div>,
 }));
 
+vi.mock("@/features/legal-content/pages/LegalContentPage", () => ({
+  default: () => <div>legal-content-page</div>,
+}));
+
+vi.mock("@/features/screening-centre/pages/ScreeningCentrePage", () => ({
+  default: () => <div>screening-centre-page</div>,
+}));
+
+vi.mock("@/features/website-cities/pages/WebsiteCitiesPage", () => ({
+  default: () => <div>website-cities-page</div>,
+}));
+
 describe("feature modules", () => {
   it("exposes notifications routes, route meta, and barrel exports", async () => {
     const feature = await import("@/features/notifications");
@@ -133,5 +145,61 @@ describe("feature modules", () => {
     expect(feature.getBanners).toBeTypeOf("function");
     expect(feature.useBannersQuery).toBeTypeOf("function");
     expect(feature.BannerStatusBadge).toBeTypeOf("function");
+  });
+
+  it("exposes legal content route config", async () => {
+    const feature = await import("@/features/legal-content");
+
+    expect(feature.legalContentRoutes).toEqual([
+      { path: "/legal-content", element: expect.any(Object) },
+    ]);
+    expect(feature.legalContentNavItems).toEqual([
+      { path: "/legal-content", label: "Legal Content" },
+    ]);
+    expect(feature.legalContentRouteMeta).toEqual([
+      {
+        pathPrefix: "/legal-content",
+        title: "Legal Content",
+        breadcrumb: "Configuration / Legal Content",
+      },
+    ]);
+  });
+
+  it("exposes screening centre route config", async () => {
+    const feature = await import("@/features/screening-centre");
+
+    expect(feature.screeningCentreRoutes).toEqual([
+      { path: "/screening-centre", element: expect.any(Object) },
+    ]);
+    expect(feature.screeningCentreNavItems).toEqual([
+      { path: "/screening-centre", label: "Screening Centre" },
+    ]);
+    expect(feature.screeningCentreRouteMeta).toEqual([
+      {
+        pathPrefix: "/screening-centre",
+        title: "Screening Centre",
+        breadcrumb: "Configuration / Screening Centre",
+      },
+    ]);
+  });
+
+  it("exposes website cities route config", async () => {
+    const feature = await import("@/features/website-cities");
+
+    expect(feature.websiteCitiesRoutes).toEqual([
+      { path: "/website/header-navigation/cities", element: expect.any(Object) },
+    ]);
+    expect(feature.websiteCitiesNavItems).toEqual([
+      { path: "/website/header-navigation/cities", label: "Website Cities" },
+    ]);
+    expect(feature.websiteCitiesRouteMeta).toEqual([
+      {
+        pathPrefix: "/website/header-navigation/cities",
+        title: "Website Cities",
+        breadcrumb: "Website / Header Navigation / Cities",
+      },
+    ]);
+    expect(feature.getWebsiteCities).toBeTypeOf("function");
+    expect(feature.useWebsiteCitiesQuery).toBeTypeOf("function");
   });
 });

@@ -11,16 +11,15 @@ const mockTrackPaused = jest.fn();
 const mockTrackCancelled = jest.fn();
 const mockTrackEvent = jest.fn();
 const mockCaptureError = jest.fn();
+const mockCreateChangeRequest = jest.fn();
 let mockVisitsQuery: any;
 let mockDetailsQuery: any;
-let mutationIndex = 0;
 
 jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: mockInvalidate }),
   useQuery: (options: any) =>
     options.queryKey[0] === "subscription-visits" ? mockVisitsQuery : mockDetailsQuery,
   useMutation: (options: any) => {
-    mutationIndex += 1;
     return {
       mutate: async () => {
         try {
@@ -39,6 +38,7 @@ jest.mock("../src/api/subscriptionApi", () => ({
   pauseSubscription: (...args: any[]) => mockPause(...args),
   resumeSubscription: (...args: any[]) => mockResume(...args),
   cancelSubscription: (...args: any[]) => mockCancel(...args),
+  createSubscriptionChangeRequest: (...args: any[]) => mockCreateChangeRequest(...args),
 }));
 
 jest.mock("../src/api/subscriptionVisitsApi", () => ({
@@ -69,11 +69,11 @@ jest.mock("../src/components/booking/BookingTimeline", () => ({
 describe("SubscriptionPlanScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mutationIndex = 0;
     mockInvalidate.mockResolvedValue(undefined);
     mockPause.mockResolvedValue({});
     mockResume.mockResolvedValue({});
     mockCancel.mockResolvedValue({});
+    mockCreateChangeRequest.mockResolvedValue({ ok: true });
     mockDetailsQuery = {
       data: {
         planName: "Weekly",
@@ -112,6 +112,7 @@ describe("SubscriptionPlanScreen", () => {
       <SubscriptionPlanScreen route={{ params: { subscriptionId: "SUB-1" } }} navigation={{}} />,
     );
 
+    expect(view.getByText("Status: ACTIVE")).toBeTruthy();
     expect(view.getByText("Plan: Weekly")).toBeTruthy();
     expect(view.getByText("Upcoming Visits")).toBeTruthy();
     expect(view.getByText("Completed Visits")).toBeTruthy();
@@ -128,6 +129,43 @@ describe("SubscriptionPlanScreen", () => {
     expect(mockTrackEvent).toHaveBeenCalledWith("subscription_resumed", { subscription_id: "SUB-1" });
     expect(mockTrackCancelled).toHaveBeenCalledWith({ subscription_id: "SUB-1" });
     expect(mockInvalidate).toHaveBeenCalled();
+  });
+
+  it("shows the admin-controlled lifecycle message for review and assignment states", async () => {
+    mockDetailsQuery = {
+      data: {
+        status: "PENDING_PARTNER_ACCEPTANCE",
+        planName: "Weekly",
+        nextVisitDate: "2026-06-15",
+        canPause: false,
+        canResume: false,
+        canCancel: false,
+      },
+    };
+    const view = await render(
+      <SubscriptionPlanScreen route={{ params: { subscriptionId: "SUB-3" } }} navigation={{}} />,
+    );
+
+    expect(view.getByText("Status: PENDING_PARTNER_ACCEPTANCE")).toBeTruthy();
+    expect(view.getByText("Partner decision pending")).toBeTruthy();
+    expect(view.getByText("A partner has been selected and is deciding whether to accept the job.")).toBeTruthy();
+    expect(view.queryByText("Pause")).toBeNull();
+  });
+
+  it("lets a customer request a professional change for an active subscription", async () => {
+    const view = await render(
+      <SubscriptionPlanScreen route={{ params: { subscriptionId: "SUB-4" } }} navigation={{}} />,
+    );
+
+    await fireEvent.press(view.getByText("Request professional change"));
+
+    await waitFor(() => expect(mockCreateChangeRequest).toHaveBeenCalledWith(
+      "SUB-4",
+      expect.objectContaining({
+        reasonCategory: "PROFESSIONAL_PREFERENCE",
+        description: expect.stringContaining("professional"),
+      }),
+    ));
   });
 
   it("renders loading and empty states and reports mutation failures", async () => {

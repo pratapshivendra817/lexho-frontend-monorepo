@@ -10,11 +10,10 @@ import BackgroundLocationEducationScreen from "../screens/system/BackgroundLocat
 import SplashScreen from "../screens/system/SplashScreen";
 import HomeScreen from "../screens/main/HomeScreen";
 import NewOrdersScreen from "../screens/main/NewOrdersScreen";
-import OnboardingSubmitScreen from "../screens/main/OnboardingSubmitScreen";
 import ActiveJobScreen from "../screens/main/ActiveJobScreen";
-import DocumentUploadScreen from "../screens/main/DocumentUploadScreen";
 import SupportScreen from "../screens/main/SupportScreen";
 import NotificationsScreen from "../screens/main/NotificationsScreen";
+import PartnerOnboardingScreen from "../screens/main/PartnerOnboardingScreen";
 import OrderHistoryScreen from "../screens/main/OrderHistoryScreen";
 import ShiftScreen from "../screens/main/ShiftScreen";
 import OrderDetailsScreen from "../screens/main/OrderDetailsScreen";
@@ -23,13 +22,16 @@ import PayoutsScreen from "../screens/main/PayoutsScreen";
 import PayoutDetailScreen from "../screens/main/PayoutDetailScreen";
 import BankAccountScreen from "../screens/main/BankAccountScreen";
 import WithdrawalsScreen from "../screens/main/WithdrawalsScreen";
-import ProfileScreen from "../screens/main/ProfileScreen";
+import AppSettingsScreen from "../screens/main/AppSettingsScreen";
+import LanguageSelectionScreen from "../screens/main/LanguageSelectionScreen";
+import ScreeningCentreScreen from "../screens/main/ScreeningCentreScreen";
+import LegalDocumentScreen from "../modules/legal/screens/LegalDocumentScreen";
+import { PartnerDeleteAccountScreen, PartnerDeleteConfirmScreen, PartnerDeleteStatusScreen, PartnerFaqScreen, PartnerLegalAcceptanceScreen, PartnerLegalDetailScreen, PartnerLegalScreen, PartnerSupportContactScreen } from "../screens/main/PartnerComplianceScreens";
 import ChatListScreen from "../screens/main/ChatListScreen";
 import ChatScreen from "../screens/main/ChatScreen";
 import { ActiveCallScreen, IncomingCallScreen, MissedCallScreen, OutgoingCallScreen, callActions, useCallSocket } from "../modules/calling";
 import { LiveTrackingScreen, RouteMapScreen } from "../modules/navigation";
 import { EmergencyContactsScreen, FloatingSOSButton, SOSHistoryScreen, SOSScreen, useSOSOfflineQueue } from "../modules/sos";
-import KycStatusScreen from "../screens/main/KycStatusScreen";
 import {
   LeaveManagementScreen,
   PerformanceDashboardScreen,
@@ -40,7 +42,7 @@ import {
 
 import { COLORS } from "../constants/colors";
 import { getHealth } from "../services/partnerService";
-import { clearSession, extractJwtToken, getToken, saveAdminProfile, saveRefreshToken, saveToken } from "../utils/storage";
+import { clearSession, extractJwtToken, getToken, saveAdminProfile, savePartnerProviderId, saveRefreshToken, saveToken } from "../utils/storage";
 import { initializePushNotifications, markNotificationRead, setupPushNotificationListeners, unregisterDeviceToken } from "../services/notificationsService";
 import { setUnauthorizedHandler } from "../services/api";
 import { stopTrackingAndCleanup } from "../features/shift/locationTrackingManager";
@@ -62,9 +64,7 @@ export type RootStackParamList = {
   OTP: { mobile: string; resendAfter?: number };
   Main: undefined;
   ActiveJob: { orderId: number };
-  DocumentUpload: undefined;
   Support: undefined;
-  OnboardingSubmit: undefined;
   Shift: undefined;
   Orders: undefined;
   History: undefined;
@@ -74,7 +74,6 @@ export type RootStackParamList = {
   BankAccount: undefined;
   Withdrawals: undefined;
   OrderDetails: { orderId: number; requestId?: number };
-  KycStatus: undefined;
   Performance: undefined;
   Ratings: undefined;
   LeaveManagement: undefined;
@@ -92,10 +91,29 @@ export type RootStackParamList = {
   SOS: { autoActivate?: boolean } | undefined;
   EmergencyContacts: undefined;
   SOSHistory: undefined;
+  AppSettings: undefined;
+  LanguageSelection: undefined;
+  ScreeningCentre: undefined;
+  PartnerOnboarding: undefined;
+  LegalDocument: { slug: "terms-and-conditions" | "privacy-policy" | "about-us"; title: string };
+  PartnerLegal: undefined;
+  PartnerLegalDetail: { type: any; title: string };
+  PartnerLegalAcceptance: { type: any; title: string; version: string };
+  PartnerFaq: undefined;
+  PartnerSupportContact: undefined;
+  PartnerDeleteAccount: undefined;
+  PartnerDeleteConfirm: undefined;
+  PartnerDeleteStatus: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tabs = createBottomTabNavigator();
+const APP_NAV_COPY = {
+  home: "Home",
+  alerts: "Alerts",
+  chats: "Chats",
+  support: "Support",
+} as const;
 
 function readPushData(payload: any) {
   const data = payload?.data ?? {};
@@ -127,20 +145,20 @@ function MainTabs({ onLogout }: { onLogout: () => Promise<void> }) {
         tabBarIcon: ({ color, size }) => {
           const nameMap: Record<string, string> = {
             HomeTab: "view-dashboard-outline",
+            OnboardingTab: "clipboard-edit-outline",
             NotificationsTab: "bell-outline",
             ChatTab: "message-text-outline",
             SupportTab: "menu",
-            ProfileTab: "account-outline",
           };
           return <MaterialCommunityIcons name={nameMap[route.name] ?? "circle"} color={color} size={size} />;
         },
       })}
     >
-      <Tabs.Screen name="HomeTab" component={HomeScreen} options={{ title: "Home" }} />
-      <Tabs.Screen name="ProfileTab" component={ProfileScreen} options={{ title: "Profile" }} />
-      <Tabs.Screen name="NotificationsTab" component={NotificationsScreen} options={{ title: "Alerts" }} />
-      <Tabs.Screen name="ChatTab" component={ChatListScreen} options={{ title: "Chats", tabBarBadge: chatUnread || undefined }} />
-      <Tabs.Screen name="SupportTab" options={{ title: "Support" }}>{(props) => <SupportScreen {...props} onLogout={onLogout} />}</Tabs.Screen>
+      <Tabs.Screen name="HomeTab" component={HomeScreen} options={{ title: APP_NAV_COPY.home }} />
+      <Tabs.Screen name="OnboardingTab" options={{ title: "Onboarding" }}>{(props) => <PartnerOnboardingScreen {...props} onLogout={onLogout} />}</Tabs.Screen>
+      <Tabs.Screen name="NotificationsTab" component={NotificationsScreen} options={{ title: APP_NAV_COPY.alerts }} />
+      <Tabs.Screen name="ChatTab" component={ChatListScreen} options={{ title: APP_NAV_COPY.chats, tabBarBadge: chatUnread || undefined }} />
+      <Tabs.Screen name="SupportTab" options={{ title: APP_NAV_COPY.support }}>{(props) => <SupportScreen {...props} onLogout={onLogout} />}</Tabs.Screen>
     </Tabs.Navigator>
   );
 }
@@ -163,9 +181,11 @@ export default function AppNavigator() {
     if (!jwt) throw new Error("Token missing in verify-otp response.");
 
     const refreshToken = payload?.refreshToken ?? payload?.data?.refreshToken ?? null;
+    const partnerId = payload?.partnerId ?? payload?.providerId ?? payload?.data?.partnerId ?? payload?.data?.providerId ?? payload?.user?.partnerId ?? payload?.user?.providerId ?? payload?.user?.id ?? null;
     await saveToken(jwt);
     if (refreshToken) await saveRefreshToken(refreshToken);
-    await saveAdminProfile({ email: `${mobile}@partner.local` });
+    await savePartnerProviderId(partnerId);
+    await saveAdminProfile({ email: `${mobile}@partner.local`, mobile });
     await initializePushNotifications();
     await identifyPartnerAnalytics(payload?.partnerId ?? payload?.data?.partnerId ?? payload?.user?.id ?? null);
     await trackAuthenticationEvent(true, { mobile });
@@ -219,6 +239,13 @@ export default function AppNavigator() {
       return navigation.navigate("Orders");
     }
     if (parsed.redirectType === "EARNINGS" || parsed.redirectType === "PAYOUT") return navigation.navigate("Payouts");
+    if (
+      parsed.redirectType === "ONBOARDING" ||
+      parsed.redirectType === "PARTNER_ONBOARDING" ||
+      parsed.redirectType === "ONBOARDING_STATUS"
+    ) {
+      return navigation.navigate("Main", { screen: "OnboardingTab" });
+    }
     if (parsed.isWarning) {
       if (parsed.notificationId && !parsed.notificationId.startsWith("warning:")) {
         void markNotificationRead(parsed.notificationId).catch(() => null);
@@ -247,12 +274,18 @@ export default function AppNavigator() {
   useEffect(() => {
     let active = true;
     (async () => {
+      const token = await getToken();
+      if (active) setIsAuthenticated(Boolean(token));
+
       try {
         await getHealth();
-        const token = await getToken();
-        if (active) setIsAuthenticated(Boolean(token));
         if (token) {
-          await identifyPartnerAnalytics(null);
+        await identifyPartnerAnalytics(null);
+          // Re-register/refresh the FCM token for sessions restored from
+          // storage. Previously this ran only immediately after OTP login,
+          // so an existing session could miss push notifications after a
+          // token rotation or app reinstall.
+          void initializePushNotifications().catch(() => null);
           const pendingCall = await consumePendingIncomingCall();
           if (active && pendingCall?.type === "INCOMING_CALL") {
             dispatch(callActions.setCall({ callId: pendingCall.callId, bookingId: pendingCall.orderId, direction: "incoming", participant: { id: pendingCall.customerId ?? "", name: pendingCall.customerName, role: "CUSTOMER" }, status: "ringing", startedAt: Date.now() }));
@@ -269,7 +302,6 @@ export default function AppNavigator() {
         }
       } catch {
         void recordCrash(new Error("partner_app_bootstrap_failed"));
-        if (active) setIsAuthenticated(false);
       } finally {
         if (active) setBootstrapping(false);
       }
@@ -355,9 +387,19 @@ export default function AppNavigator() {
             }}
           </Stack.Screen>
           <Stack.Screen name="ActiveJob" component={ActiveJobScreen} />
-          <Stack.Screen name="DocumentUpload" component={DocumentUploadScreen} />
-          <Stack.Screen name="Support">{(props) => <SupportScreen {...props} onLogout={handleLogout} />}</Stack.Screen>
-          <Stack.Screen name="OnboardingSubmit" component={OnboardingSubmitScreen} />
+              <Stack.Screen name="Support">{(props) => <SupportScreen {...props} onLogout={handleLogout} />}</Stack.Screen>
+              <Stack.Screen name="AppSettings" component={AppSettingsScreen} />
+              <Stack.Screen name="LanguageSelection" component={LanguageSelectionScreen} />
+              <Stack.Screen name="ScreeningCentre" component={ScreeningCentreScreen} />
+              <Stack.Screen name="LegalDocument" component={LegalDocumentScreen} />
+              <Stack.Screen name="PartnerLegal" component={PartnerLegalScreen} />
+              <Stack.Screen name="PartnerLegalDetail" component={PartnerLegalDetailScreen} />
+              <Stack.Screen name="PartnerLegalAcceptance" component={PartnerLegalAcceptanceScreen} />
+              <Stack.Screen name="PartnerFaq" component={PartnerFaqScreen} />
+              <Stack.Screen name="PartnerSupportContact" component={PartnerSupportContactScreen} />
+              <Stack.Screen name="PartnerDeleteAccount" component={PartnerDeleteAccountScreen} />
+              <Stack.Screen name="PartnerDeleteConfirm" component={PartnerDeleteConfirmScreen} options={{ presentation: "transparentModal", headerShown: false }} />
+              <Stack.Screen name="PartnerDeleteStatus" component={PartnerDeleteStatusScreen} />
           <Stack.Screen name="Shift" component={ShiftScreen} />
           <Stack.Screen name="Orders" component={NewOrdersScreen} />
           <Stack.Screen name="History" component={OrderHistoryScreen} />
@@ -367,7 +409,6 @@ export default function AppNavigator() {
           <Stack.Screen name="BankAccount" component={BankAccountScreen} />
           <Stack.Screen name="Withdrawals" component={WithdrawalsScreen} />
           <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
-          <Stack.Screen name="KycStatus" component={KycStatusScreen} />
           <Stack.Screen name="Performance" component={PerformanceDashboardScreen} />
           <Stack.Screen name="Ratings" component={RatingsScreen} />
           <Stack.Screen name="LeaveManagement" component={LeaveManagementScreen} />

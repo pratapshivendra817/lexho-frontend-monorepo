@@ -19,4 +19,3 @@ const styles = StyleSheet.create({
   title: { color: COLORS.textPrimary, fontSize: 24, fontWeight: "800", marginBottom: 12, textAlign: "center" },
   body: { color: COLORS.textSecondary, textAlign: "center", lineHeight: 22 },
 });
-

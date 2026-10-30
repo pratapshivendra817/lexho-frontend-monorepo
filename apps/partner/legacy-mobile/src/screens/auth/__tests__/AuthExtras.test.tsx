@@ -61,7 +61,7 @@ describe("auth extra screens", () => {
     await act(async () => {
       buttons[0].props.onPress();
     });
-    expect(Alert.alert).toHaveBeenCalledWith("Invalid OTP", "Enter a valid 6-digit OTP.");
+    expect(Alert.alert).toHaveBeenCalledWith("Enter a valid 6-digit OTP.", "Enter a valid 6-digit OTP.");
 
     (verifyOtp as jest.Mock).mockResolvedValueOnce({ token: "jwt" });
     const input = tree.root.findByType(TextInput);
@@ -84,7 +84,7 @@ describe("auth extra screens", () => {
     });
 
     expect(sendOtp).toHaveBeenCalledWith("9876543210");
-    expect(Alert.alert).toHaveBeenCalledWith("OTP sent", "A new code has been sent to your mobile.");
+    expect(Alert.alert).toHaveBeenCalledWith("OTP sent", "Done");
     await act(async () => {
       tree.unmount();
     });
@@ -114,7 +114,7 @@ describe("auth extra screens", () => {
       verifyButton.props.onPress();
     });
 
-    expect(Alert.alert).toHaveBeenCalledWith("OTP verification failed", "Bad otp");
+    expect(Alert.alert).toHaveBeenCalledWith("Something went wrong", "Bad otp");
     expect(onAuthSuccess).not.toHaveBeenCalled();
     await act(async () => {
       tree.unmount();

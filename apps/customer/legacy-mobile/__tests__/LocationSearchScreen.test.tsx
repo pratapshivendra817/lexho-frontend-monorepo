@@ -119,12 +119,18 @@ describe("LocationSearchScreen", () => {
         payload: true,
       }),
     );
-    expect(mockDispatch).toHaveBeenCalledWith(
+    expect(mockDispatch).not.toHaveBeenCalledWith(
       expect.objectContaining({
         type: "location/current",
         payload: expect.objectContaining({ pincode: "452010" }),
       }),
     );
+  });
+
+  it("does not infer coverage from a generic available-areas message", async () => {
+    mockCheckServiceability.mockResolvedValue({ message: "Available service areas fetched successfully" });
+    await render(<LocationSearchScreen navigation={{ navigate: mockNavigate }} />);
+    await waitFor(() => expect(mockDispatch).toHaveBeenCalledWith({ type: "location/service", payload: false }));
   });
 
   it("searches, renders serviceability, selects a result, and navigates Main", async () => {

@@ -1,5 +1,5 @@
-import { api, parseApiError, toApiError } from "./client";
-import type { BookingSummaryDto, LiveLocationResponse, RescheduleBookingRequest } from "../types/contracts";
+import { api, toApiError } from "./client";
+import type { BookingSummaryDto, LiveLocationResponse } from "../types/contracts";
 import { cacheManager } from "../services/cacheManager";
 import { networkService, isNetworkError } from "../services/networkService";
 import { offlineQueue } from "../services/offlineQueue";
@@ -9,6 +9,11 @@ function boolValue(...values: unknown[]) {
     if (typeof value === "boolean") return value;
   }
   return undefined;
+}
+
+function normalizeLifecycleStatus(value: unknown) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return normalized === "STARTED" ? "IN_PROGRESS" : normalized;
 }
 
 function numberValue(...values: unknown[]) {
@@ -38,10 +43,26 @@ function mapStatusHistory(row: any) {
     .filter((item: any) => item.label);
 }
 
+// API responses are wrapped by ApiResponse and some gateway versions add an
+// additional `payload`/`result` envelope. Unwrap those envelopes before
+// mapping so the confirmation screen never receives an object with only
+// `success` and `message` fields.
+function unwrapBookingPayload(value: any) {
+  let current = value;
+  for (let index = 0; index < 4; index += 1) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) break;
+    const nested = current.data ?? current.payload ?? current.result;
+    if (!nested || typeof nested !== "object" || Array.isArray(nested) || nested === current) break;
+    current = nested;
+  }
+  return current;
+}
+
 function toBookingSummary(row: any): BookingSummaryDto {
+  row = unwrapBookingPayload(row);
   const meta = row?.meta && typeof row.meta === "object" ? row.meta : {};
-  const status = String(row?.status ?? row?.bookingStatus ?? "").toUpperCase() || undefined;
-  const assignment = String(row?.assignmentStatus ?? row?.dispatchStatus ?? status ?? "").toUpperCase() || undefined;
+  const status = normalizeLifecycleStatus(row?.status ?? row?.bookingStatus ?? row?.orderStatus) || undefined;
+  const assignment = normalizeLifecycleStatus(row?.assignmentStatus ?? row?.dispatchStatus ?? status) || undefined;
   const rawDate =
     row?.scheduledDate ??
     row?.date ??
@@ -62,20 +83,23 @@ function toBookingSummary(row: any): BookingSummaryDto {
     bookingId: String(row?.bookingId ?? row?.id ?? "").trim() || undefined,
     serviceId: String(row?.serviceId ?? row?.service?.id ?? row?.serviceID ?? "").trim() || undefined,
     status,
-    serviceName: row?.serviceName ?? row?.service?.name ?? row?.categoryName,
+    serviceName: row?.serviceName ?? row?.service?.name ?? row?.serviceType ?? row?.categoryName ?? row?.category ?? row?.itemName,
     createdAt:
       row?.createdAt ??
       row?.createdOn ??
       row?.createdDate ??
       row?.bookingTime ??
-      row?.bookedAt,
+      row?.bookedAt ??
+      row?.requestedAt ??
+      row?.orderCreatedAt,
     scheduledAt:
       row?.scheduledAt ??
       row?.scheduledTime ??
       row?.startTime ??
       composedScheduledAt ??
       row?.slot ??
-      row?.bookingTime,
+      row?.bookingTime ??
+      row?.requestedAt,
     completedAt:
       row?.completedAt ??
       row?.finishedAt ??
@@ -85,6 +109,7 @@ function toBookingSummary(row: any): BookingSummaryDto {
       row?.amount != null ? Number(row.amount) :
       row?.serviceAmount != null ? Number(row.serviceAmount) :
       row?.payableAmount != null ? Number(row.payableAmount) :
+      row?.grandTotal != null ? Number(row.grandTotal) :
       undefined,
     totalAmount:
       row?.totalAmount != null ? Number(row.totalAmount) :
@@ -102,7 +127,8 @@ function toBookingSummary(row: any): BookingSummaryDto {
       row?.customerAddress ??
       row?.addressLine ??
       row?.location?.address ??
-      row?.location?.fullAddress,
+      row?.location?.fullAddress ??
+      (typeof row?.address === "object" ? row.address?.fullAddress ?? row.address?.addressLine : undefined),
     fullAddress:
       row?.fullAddress ??
       row?.address ??
@@ -110,7 +136,8 @@ function toBookingSummary(row: any): BookingSummaryDto {
       row?.customerAddress ??
       row?.addressLine ??
       row?.location?.address ??
-      row?.location?.fullAddress,
+      row?.location?.fullAddress ??
+      (typeof row?.address === "object" ? row.address?.fullAddress ?? row.address?.addressLine : undefined),
     bookingType: String(row?.bookingType ?? "").toUpperCase() as any,
     assignmentStatus: assignment as any,
     promisedStartTime: row?.promisedStartTime ?? row?.slaStartTime,
@@ -160,6 +187,10 @@ function toBookingSummary(row: any): BookingSummaryDto {
     serviceStartedAt: row?.serviceStartedAt ?? row?.startedAt ?? row?.startTime,
     estimatedCompletionTime: row?.estimatedCompletionTime ?? row?.expectedCompletionTime ?? row?.estimatedEndTime,
     progressStatus: row?.progressStatus ?? row?.workStatus ?? row?.trackingStatus,
+    serviceStartPin: row?.serviceStartPin != null ? String(row.serviceStartPin) : row?.startServicePin != null ? String(row.startServicePin) : meta?.serviceStartPin != null ? String(meta.serviceStartPin) : undefined,
+    serviceStartPinExpiresAt: row?.serviceStartPinExpiresAt ?? row?.startServicePinExpiresAt ?? meta?.serviceStartPinExpiresAt ?? undefined,
+    serviceCompletePin: row?.serviceCompletePin != null ? String(row.serviceCompletePin) : row?.endServicePin != null ? String(row.endServicePin) : row?.completePin != null ? String(row.completePin) : meta?.serviceCompletePin != null ? String(meta.serviceCompletePin) : undefined,
+    serviceCompletePinExpiresAt: row?.serviceCompletePinExpiresAt ?? row?.endServicePinExpiresAt ?? row?.completePinExpiresAt ?? meta?.serviceCompletePinExpiresAt ?? undefined,
     retryPaymentAllowed: boolValue(meta?.retryPaymentAllowed, row?.retryPaymentAllowed),
     arrivalTime: meta?.arrivalTime ?? row?.arrivalTime ?? row?.arrivedAt ?? row?.partnerArrivedAt,
     meta: {
@@ -186,8 +217,7 @@ function toBookingSummary(row: any): BookingSummaryDto {
 export async function getBookingDetails(id: string): Promise<BookingSummaryDto> {
   try {
     const { data } = await api.get(`/api/bookings/details/${id}`);
-    const root = data?.data && typeof data?.data === "object" ? data.data : data;
-    const mapped = toBookingSummary(root);
+    const mapped = toBookingSummary(data);
     await cacheManager.set(`booking-detail-${id}`, mapped);
     return mapped;
   } catch (e) {
@@ -210,8 +240,7 @@ export async function cancelBooking(id: string): Promise<BookingSummaryDto> {
       throw new Error("You are offline. Cancel request has been queued.");
     }
     const { data } = await api.put(`/api/bookings/cancel/${id}`);
-    const root = data?.data && typeof data?.data === "object" ? data.data : data;
-    return toBookingSummary(root);
+    return toBookingSummary(data);
   } catch (e) {
     if (isNetworkError(e)) {
       await offlineQueue.enqueue({
@@ -225,26 +254,25 @@ export async function cancelBooking(id: string): Promise<BookingSummaryDto> {
     throw toApiError(e, "Cancel booking failed");
   }
 }
-export async function rescheduleBooking(id: string, payload: RescheduleBookingRequest): Promise<BookingSummaryDto> {
+export async function rescheduleBooking(id: string, payload: { date: string; slot: string }): Promise<BookingSummaryDto> {
   try {
     if (!(await networkService.getCurrentState())) {
       await offlineQueue.enqueue({
         type: "booking:reschedule",
-        endpoint: `/api/bookings/reschedule/${id}`,
-        method: "put",
+        endpoint: `/api/bookings/${id}/reschedule`,
+        method: "post",
         payload: payload as Record<string, unknown>,
       });
       throw new Error("You are offline. Reschedule request has been queued.");
     }
-    const { data } = await api.put(`/api/bookings/reschedule/${id}`, payload);
-    const root = data?.data && typeof data?.data === "object" ? data.data : data;
-    return toBookingSummary(root);
+    const { data } = await api.post(`/api/bookings/${id}/reschedule`, payload);
+    return toBookingSummary(data);
   } catch (e) {
     if (isNetworkError(e)) {
       await offlineQueue.enqueue({
         type: "booking:reschedule",
-        endpoint: `/api/bookings/reschedule/${id}`,
-        method: "put",
+        endpoint: `/api/bookings/${id}/reschedule`,
+        method: "post",
         payload: payload as Record<string, unknown>,
       });
       throw new Error("Network unavailable. Reschedule request has been queued.");

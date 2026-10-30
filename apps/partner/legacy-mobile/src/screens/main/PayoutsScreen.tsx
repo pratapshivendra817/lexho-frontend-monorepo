@@ -8,7 +8,38 @@ import type { PartnerPayout } from "../../types/payment";
 import { useAppFeedback } from "../../context/AppFeedbackContext";
 import PaymentHeader from "../../components/payments/PaymentHeader";
 
-const money = (value: number) => `INR ${value.toFixed(2)}`;
+const money = (value: number, currencyLabel: string) => `${currencyLabel} ${value.toFixed(2)}`;
+const PAYOUTS_COPY = {
+  currencyLabel: "INR",
+  title: "Payout",
+  titlePlural: "Payouts",
+  historyTitle: "Payout History",
+  settlement: "Settlement",
+  status: "Status",
+  subtitle: "Settlement ledger created after payment and service completion",
+  empty: "No payouts available.",
+  loadError: "Unable to load payouts",
+} as const;
+
+type TranslationResolver = (key: string, fallback: string) => string;
+
+export function getPayoutListStatusLabel(status: string | undefined, tr: TranslationResolver): string {
+  const normalizedStatus = String(status ?? "").trim();
+  return tr(`payouts.status_${normalizedStatus.toLowerCase()}`, normalizedStatus || "-");
+}
+
+export function getPayoutListRowCopy(
+  payout: PartnerPayout,
+  t: (key: string) => string,
+  tr: TranslationResolver,
+): { title: string; dateLabel: string; statusLabel: string; amountLabel: string } {
+  return {
+    title: `${PAYOUTS_COPY.title} #${payout.id}`,
+    dateLabel: payout.createdAt ? new Date(payout.createdAt).toLocaleDateString() : PAYOUTS_COPY.settlement,
+    statusLabel: `${PAYOUTS_COPY.status}: ${getPayoutListStatusLabel(payout.status, tr)}`,
+    amountLabel: money(payout.settlementAmount, PAYOUTS_COPY.currencyLabel),
+  };
+}
 
 export default function PayoutsScreen({ navigation }: any) {
   const { toast } = useAppFeedback();
@@ -20,7 +51,7 @@ export default function PayoutsScreen({ navigation }: any) {
     try {
       setRows(await getPartnerPayouts({ page: 0, size: 20 }));
     } catch (error: any) {
-      toast(error?.message ?? "Unable to load payouts");
+      toast(error?.message ?? PAYOUTS_COPY.loadError);
     } finally {
       setLoading(false);
     }
@@ -32,28 +63,31 @@ export default function PayoutsScreen({ navigation }: any) {
 
   return (
     <View style={styles.root}>
-      <PaymentHeader title="Payout History" onBack={() => navigation.goBack()} />
-      <Text style={styles.subtitle}>Settlement ledger created after payment and service completion</Text>
+      <PaymentHeader title={PAYOUTS_COPY.historyTitle} onBack={() => navigation.goBack()} />
+      <Text style={styles.subtitle}>{PAYOUTS_COPY.subtitle}</Text>
       <FlatList
         testID="payouts-list"
         data={rows}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load()} />}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={!loading ? <Text style={styles.empty}>No payouts available.</Text> : null}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.row} onPress={() => navigation.navigate("PayoutDetail", { payoutId: item.id })}>
-            <View style={styles.rowCopy}>
-              <Text style={styles.rowTitle}>Payout #{item.id}</Text>
-              <Text style={styles.meta}>{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "Settlement"}</Text>
-              <Text style={styles.meta}>Status: {item.status}</Text>
-            </View>
-            <View style={styles.amountWrap}>
-              <Text style={styles.amount}>{money(item.netAmount)}</Text>
-              <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textSecondary} />
-            </View>
-          </TouchableOpacity>
-        )}
+        ListEmptyComponent={!loading ? <Text style={styles.empty}>{PAYOUTS_COPY.empty}</Text> : null}
+        renderItem={({ item }) => {
+          const copy = getPayoutListRowCopy(item, () => "", (_key, fallback) => fallback);
+          return (
+            <TouchableOpacity style={styles.row} onPress={() => navigation.navigate("PayoutDetail", { payoutId: item.id })}>
+              <View style={styles.rowCopy}>
+                <Text style={styles.rowTitle}>{copy.title}</Text>
+                <Text style={styles.meta}>{copy.dateLabel}</Text>
+                <Text style={styles.meta}>{copy.statusLabel}</Text>
+              </View>
+              <View style={styles.amountWrap}>
+                <Text style={styles.amount}>{copy.amountLabel}</Text>
+                <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textSecondary} />
+              </View>
+            </TouchableOpacity>
+          );
+        }}
       />
     </View>
   );

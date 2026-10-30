@@ -1,17 +1,44 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Platform, SafeAreaView, ScrollView, StyleSheet, Text, ToastAndroid, View } from "react-native";
+import { Alert, Platform, ScrollView, StyleSheet, Text, ToastAndroid, View } from "react-native";
 import { Button, TextInput } from "react-native-paper";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "../../../constants/colors";
 import PaymentHeader from "../../../components/payments/PaymentHeader";
 import { captureSOSLocation, resolveSOSAddress } from "../services/SOSLocationService";
 import { triggerSOS } from "../services/SOSApiService";
 import type { SOSLocation } from "../types";
 
+const SOS_COPY = {
+  title: "Emergency SOS",
+  captureFeedback: "Share your current location and send an SOS alert.",
+  capturingLocation: "Capturing your current location...",
+  queuedFeedback: "You are offline. Your SOS has been queued and will be sent automatically when the internet is back.",
+  sentFeedback: "Your SOS alert has been sent successfully.\nYour current location has also been shared.",
+  sentToast: "SOS sent successfully.",
+  sentTitle: "SOS sent",
+  sentAlertBody: "Your SOS alert has been sent successfully.",
+  sendError: "Unable to send SOS",
+  emergencyHelp: "Emergency help",
+  sosSent: "SOS SENT",
+  queued: "QUEUED",
+  tryAgain: "TRY AGAIN",
+  gettingLocation: "GETTING LOCATION",
+  ready: "READY",
+  locationCaptured: "Location captured",
+  accuracy: "Accuracy",
+  na: "N/A",
+  optionalMessage: "Add a message (optional)",
+  sendSosAgain: "Send SOS Again",
+  sendNow: "Send SOS",
+  viewHistory: "SOS History",
+  manageContacts: "Emergency Contacts",
+} as const;
+
 export function SOSScreen({ route, navigation }: any) {
   const [status, setStatus] = useState<"ready" | "locating" | "sent" | "queued" | "failed">("ready");
   const [location, setLocation] = useState<SOSLocation | null>(null);
   const [message, setMessage] = useState("");
-  const [feedback, setFeedback] = useState("Capture your current location and alert the admin team.");
+  const [feedback, setFeedback] = useState<string>(SOS_COPY.captureFeedback);
   const activating = useRef(false);
   const autoStarted = useRef(false);
 
@@ -19,7 +46,7 @@ export function SOSScreen({ route, navigation }: any) {
     if (activating.current) return;
     activating.current = true;
     setStatus("locating");
-    setFeedback("Capturing high-accuracy GPS location...");
+    setFeedback(SOS_COPY.capturingLocation);
     try {
       const current = await captureSOSLocation();
       setLocation(current);
@@ -33,16 +60,16 @@ export function SOSScreen({ route, navigation }: any) {
       });
       if (result.queued) {
         setStatus("queued");
-        setFeedback("You are offline. SOS is queued and will alert the admin team automatically when connectivity returns.");
+        setFeedback(SOS_COPY.queuedFeedback);
       } else {
         setStatus("sent");
-        setFeedback("SOS alert sent to admin team.\nYour live location has been shared.\nOur admin team will review and take necessary action.");
-        if (Platform.OS === "android") ToastAndroid.show("SOS sent. Admin team has been alerted.", ToastAndroid.LONG);
-        else Alert.alert("SOS sent", "Admin team has been alerted.");
+        setFeedback(SOS_COPY.sentFeedback);
+        if (Platform.OS === "android") ToastAndroid.show(SOS_COPY.sentToast, ToastAndroid.LONG);
+        else Alert.alert(SOS_COPY.sentTitle, SOS_COPY.sentAlertBody);
       }
     } catch (error) {
       setStatus("failed");
-      setFeedback(error instanceof Error ? error.message : "Unable to send SOS");
+      setFeedback(error instanceof Error ? error.message : SOS_COPY.sendError);
     } finally {
       activating.current = false;
     }
@@ -58,28 +85,28 @@ export function SOSScreen({ route, navigation }: any) {
   return (
     <SafeAreaView style={styles.root}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <PaymentHeader title="Emergency Assistance" onBack={() => navigation.goBack()} />
+        <PaymentHeader title={SOS_COPY.title} onBack={() => navigation.goBack()} />
         <View style={styles.badge}><Text style={styles.badgeText}>SOS</Text></View>
-        <Text style={styles.adminOnly}>Admin escalation only</Text>
+        <Text style={styles.adminOnly}>{SOS_COPY.emergencyHelp}</Text>
         <View style={[styles.feedbackPill, status === "sent" && styles.feedbackPillSuccess, status === "queued" && styles.feedbackPillQueued, status === "failed" && styles.feedbackPillFailed]}>
           <Text style={[styles.feedbackPillText, status === "sent" && styles.feedbackPillSuccessText, status === "queued" && styles.feedbackPillQueuedText, status === "failed" && styles.feedbackPillFailedText]}>
-            {status === "sent" ? "ADMIN ALERTED" : status === "queued" ? "QUEUED" : status === "failed" ? "RETRY NEEDED" : status === "locating" ? "CAPTURING LOCATION" : "READY"}
+            {status === "sent" ? SOS_COPY.sosSent : status === "queued" ? SOS_COPY.queued : status === "failed" ? SOS_COPY.tryAgain : status === "locating" ? SOS_COPY.gettingLocation : SOS_COPY.ready}
           </Text>
         </View>
         <Text style={styles.status}>{feedback}</Text>
         {location ? (
           <View style={[styles.fullBleed, styles.location]}>
-            <Text style={styles.locationTitle}>Location captured successfully</Text>
+            <Text style={styles.locationTitle}>{SOS_COPY.locationCaptured}</Text>
             <Text style={styles.locationValue}>{location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}</Text>
-            <Text style={styles.locationMeta}>Accuracy: {location.accuracy == null ? "N/A" : `${Math.round(location.accuracy)} m`}</Text>
+            <Text style={styles.locationMeta}>{`${SOS_COPY.accuracy}: ${location.accuracy == null ? SOS_COPY.na : `${Math.round(location.accuracy)} m`}`}</Text>
           </View>
         ) : null}
-        <TextInput label="Optional message" value={message} onChangeText={setMessage} mode="outlined" multiline maxLength={500} style={[styles.fullBleed, styles.input]} textColor={COLORS.textPrimary} outlineColor={COLORS.accent} activeOutlineColor={COLORS.accent} theme={{ colors: { onSurfaceVariant: COLORS.accent, primary: COLORS.accent, background: COLORS.surface } }} />
-        <Button mode="contained" buttonColor={status === "sent" ? COLORS.surfaceElevated : "#C62828"} loading={status === "locating"} disabled={status === "locating" || status === "sent"} onPress={() => void activate()} style={[styles.fullBleed, styles.button, status === "locating" && styles.buttonDisabled, status === "sent" && styles.buttonSent]} contentStyle={styles.buttonContent} labelStyle={[styles.primaryButtonLabel, status === "sent" && styles.sentButtonLabel]}>
-          {status === "sent" ? "SOS Sent" : "Send SOS Now"}
+        <TextInput label={SOS_COPY.optionalMessage} value={message} onChangeText={setMessage} mode="outlined" multiline maxLength={500} style={[styles.fullBleed, styles.input]} textColor={COLORS.textPrimary} outlineColor={COLORS.accent} activeOutlineColor={COLORS.accent} theme={{ colors: { onSurfaceVariant: COLORS.accent, primary: COLORS.accent, background: COLORS.surface } }} />
+        <Button mode="contained" buttonColor={status === "sent" ? COLORS.surfaceElevated : "#C62828"} loading={status === "locating"} disabled={status === "locating"} onPress={() => void activate()} style={[styles.fullBleed, styles.button, status === "locating" && styles.buttonDisabled, status === "sent" && styles.buttonSent]} contentStyle={styles.buttonContent} labelStyle={[styles.primaryButtonLabel, status === "sent" && styles.sentButtonLabel]}>
+          {status === "sent" ? SOS_COPY.sendSosAgain : SOS_COPY.sendNow}
         </Button>
-        <Button mode="outlined" textColor={COLORS.accent} onPress={() => navigation.navigate("SOSHistory")} style={[styles.fullBleed, styles.outlineButton]} contentStyle={styles.buttonContent} labelStyle={styles.outlineButtonLabel}>View SOS History</Button>
-        <Button mode="outlined" textColor={COLORS.accent} onPress={() => navigation.navigate("EmergencyContacts")} style={[styles.fullBleed, styles.outlineButton]} contentStyle={styles.buttonContent} labelStyle={styles.outlineButtonLabel}>Manage Emergency Contacts</Button>
+        <Button mode="outlined" textColor={COLORS.accent} onPress={() => navigation.navigate("SOSHistory")} style={[styles.fullBleed, styles.outlineButton]} contentStyle={styles.buttonContent} labelStyle={styles.outlineButtonLabel}>{SOS_COPY.viewHistory}</Button>
+        <Button mode="outlined" textColor={COLORS.accent} onPress={() => navigation.navigate("EmergencyContacts")} style={[styles.fullBleed, styles.outlineButton]} contentStyle={styles.buttonContent} labelStyle={styles.outlineButtonLabel}>{SOS_COPY.manageContacts}</Button>
       </ScrollView>
     </SafeAreaView>
   );

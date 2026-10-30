@@ -1,14 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const TOKEN_KEY = "admin_jwt_token";
+const TOKEN_KEY = "partner_jwt_token";
+const LEGACY_TOKEN_KEY = "admin_jwt_token";
 const REFRESH_TOKEN_KEY = "partner_refresh_token";
 const PROFILE_KEY = "admin_profile";
 const DEVICE_ID_KEY = "partner_device_id";
 const PROVIDER_ID_KEY = "partner_provider_id";
+const LANGUAGE_PREFERENCE_KEY = "partner_app_language";
 let fallbackDeviceIdSequence = 0;
 
 export type StoredAdminProfile = {
   email: string;
+  mobile?: string;
 };
 
 const normalizeStorageString = (value: unknown): string | null => {
@@ -46,10 +49,12 @@ export const saveToken = async (token: unknown): Promise<void> => {
   const normalizedToken = normalizeStorageString(token);
   if (!normalizedToken) {
     await safeRemoveItem(TOKEN_KEY);
+    await safeRemoveItem(LEGACY_TOKEN_KEY);
     return;
   }
 
   await safeSetItem(TOKEN_KEY, normalizedToken);
+  await safeRemoveItem(LEGACY_TOKEN_KEY);
 };
 
 export const saveRefreshToken = async (token: unknown): Promise<void> => {
@@ -65,7 +70,19 @@ export const getToken = async (): Promise<string | null> => {
   if (!isValidStorageKey(TOKEN_KEY)) {
     return null;
   }
-  return AsyncStorage.getItem(TOKEN_KEY);
+  const currentToken = await AsyncStorage.getItem(TOKEN_KEY);
+  if (currentToken && currentToken.trim().length > 0) {
+    return currentToken;
+  }
+
+  const legacyToken = await AsyncStorage.getItem(LEGACY_TOKEN_KEY);
+  if (legacyToken && legacyToken.trim().length > 0) {
+    await safeSetItem(TOKEN_KEY, legacyToken);
+    await safeRemoveItem(LEGACY_TOKEN_KEY);
+    return legacyToken;
+  }
+
+  return null;
 };
 
 export const getRefreshToken = async (): Promise<string | null> => {
@@ -80,7 +97,7 @@ export const getOrCreateDeviceId = async (): Promise<string> => {
   if (existing && existing.trim().length > 0) {
     return existing;
   }
-  const cryptoApi = globalThis.crypto as
+  const cryptoApi = (globalThis as typeof globalThis & { crypto?: unknown }).crypto as
     | { randomUUID?: () => string; getRandomValues?: (values: Uint8Array) => Uint8Array }
     | undefined;
   let suffix: string;
@@ -125,7 +142,7 @@ export const getAdminProfile = async (): Promise<StoredAdminProfile | null> => {
 };
 
 export const clearSession = async (): Promise<void> => {
-  await safeMultiRemove([TOKEN_KEY, REFRESH_TOKEN_KEY, PROFILE_KEY, PROVIDER_ID_KEY]);
+  await safeMultiRemove([TOKEN_KEY, LEGACY_TOKEN_KEY, REFRESH_TOKEN_KEY, PROFILE_KEY, PROVIDER_ID_KEY]);
 };
 
 export const savePartnerProviderId = async (providerId: string | number | null | undefined): Promise<void> => {
@@ -142,6 +159,15 @@ export const getPartnerProviderId = async (): Promise<string | null> => {
     return null;
   }
   return AsyncStorage.getItem(PROVIDER_ID_KEY);
+};
+
+export const getPartnerLanguage = async (): Promise<string | null> => {
+  const language = await AsyncStorage.getItem(LANGUAGE_PREFERENCE_KEY);
+  return language?.trim() || null;
+};
+
+export const savePartnerLanguage = async (language: string): Promise<void> => {
+  await AsyncStorage.setItem(LANGUAGE_PREFERENCE_KEY, language.trim());
 };
 
 export const extractJwtToken = (payload: Record<string, any> = {}): string | null => {

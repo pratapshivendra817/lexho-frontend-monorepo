@@ -6,6 +6,29 @@ import { COLORS } from "../../constants/colors";
 import { fetchPartnerRequestById, getCanonicalPartnerOrderId, getPartnerOrderById } from "../../services/partnerService";
 import type { PartnerOrder } from "../../types/order";
 import { OrderLifecycleTimeline } from "../../components/common/OrderLifecycleTimeline";
+import { getOrderStatusLabel } from "../../utils/statusLabels";
+
+const ORDER_DETAILS_COPY = {
+  details: "Order Details",
+  title: "Order",
+  customer: "Customer",
+  phone: "Phone",
+  address: "Address",
+  service: "Service",
+  amount: "Payable Amount",
+  status: "Status",
+  currency: "INR",
+  createdAt: "Created At",
+  loadError: "Unable to load order",
+  notFound: "Order not found",
+  retry: "Retry",
+  shareAccessibility: "Share order",
+  chatWithCustomer: "Chat with Customer",
+  callCustomer: "Call Customer",
+  openActiveJob: "Open Active Job",
+  activeJobAcceptanceHint: "Active job opens after acceptance",
+  openRouteMap: "Open Route Map",
+} as const;
 
 export default function OrderDetailsScreen({ route, navigation }: any) {
   const orderId: number = route?.params?.orderId;
@@ -31,7 +54,7 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
       setOrder(data);
       setError("");
     } catch (nextError: any) {
-      setError(nextError?.message ?? "Unable to load order");
+      setError(nextError?.message ?? ORDER_DETAILS_COPY.loadError);
     } finally {
       setLoading(false);
     }
@@ -44,15 +67,15 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
   const onShareDetails = async () => {
     if (!order) return;
     const message = [
-      `Order Details #${order.id}`,
-      `Customer: ${order.customerName ?? "-"}`,
-      `Phone: ${order.customerPhone ?? "-"}`,
-      `Address: ${order.address ?? "-"}`,
-      `Service: ${order.serviceType ?? "-"}`,
-      `Amount: INR ${order.amount ?? 0}`,
-      `Status: ${order.status}`,
+      `${ORDER_DETAILS_COPY.details} #${order.id}`,
+      `${ORDER_DETAILS_COPY.customer}: ${order.customerName ?? "-"}`,
+      `${ORDER_DETAILS_COPY.phone}: ${order.customerPhone ?? "-"}`,
+      `${ORDER_DETAILS_COPY.address}: ${order.address ?? "-"}`,
+      `${ORDER_DETAILS_COPY.service}: ${order.serviceType ?? "-"}`,
+      `${ORDER_DETAILS_COPY.amount}: ${ORDER_DETAILS_COPY.currency} ${order.amount ?? 0}`,
+      `${ORDER_DETAILS_COPY.status}: ${String(order.status ?? "-").toUpperCase() || "-"}`,
     ].join("\n");
-    await Share.share({ title: `Order #${order.id}`, message });
+    await Share.share({ title: `${ORDER_DETAILS_COPY.title} #${order.id}`, message });
   };
 
   if (loading && !order) {
@@ -66,15 +89,16 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
   if (!order) {
     return (
       <View style={styles.loaderWrap}>
-        <Text style={styles.emptyText}>{error || "Order not found"}</Text>
+        <Text style={styles.emptyText}>{error || ORDER_DETAILS_COPY.notFound}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={() => load().catch(() => null)}>
-          <Text style={styles.shareText}>Retry</Text>
+          <Text style={styles.shareText}>{ORDER_DETAILS_COPY.retry}</Text>
         </TouchableOpacity>
       </View>
     );
   }
   const resolvedOrderId = getCanonicalPartnerOrderId(order) || orderId;
-  const canOpenActiveJob = ["ACCEPTED", "STARTED"].includes(String(order.status).toUpperCase());
+  const status = String(order.status).toUpperCase();
+  const canOpenActiveJob = ["ACCEPTED", "ARRIVED", "STARTED", "IN_PROGRESS"].includes(status);
   const hasCustomerCoordinates = Number.isFinite(order.latitude) && Number.isFinite(order.longitude);
 
   return (
@@ -85,18 +109,18 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
       refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load()} />}
     >
       <View style={styles.titleRow}>
-        <Text style={styles.title}>Order #{order.id}</Text>
-        <TouchableOpacity style={styles.shareIconBtn} onPress={onShareDetails} accessibilityLabel="Share order">
+        <Text style={styles.title}>{`${ORDER_DETAILS_COPY.title} #${order.id}`}</Text>
+        <TouchableOpacity style={styles.shareIconBtn} onPress={onShareDetails} accessibilityLabel={ORDER_DETAILS_COPY.shareAccessibility}>
           <MaterialCommunityIcons name="share-variant" size={18} color={COLORS.secondary} />
         </TouchableOpacity>
       </View>
-      <Card label="Customer" value={order.customerName ?? "-"} />
-      <Card label="Phone" value={order.customerPhone ?? "-"} />
-      <Card label="Address" value={order.address ?? "-"} />
-      <Card label="Service" value={order.serviceType ?? "-"} />
-      <Card label="Amount" value={`INR ${order.amount ?? 0}`} />
-      <Card label="Status" value={order.status} />
-      <Card label="Created At" value={order.createdAt ?? "-"} />
+      <Card label={ORDER_DETAILS_COPY.customer} value={order.customerName ?? "-"} />
+      <Card label={ORDER_DETAILS_COPY.phone} value={order.customerPhone ?? "-"} />
+      <Card label={ORDER_DETAILS_COPY.address} value={order.address ?? "-"} />
+      <Card label={ORDER_DETAILS_COPY.service} value={order.serviceType ?? "-"} />
+      <Card label={ORDER_DETAILS_COPY.amount} value={`${ORDER_DETAILS_COPY.currency} ${order.amount ?? 0}`} />
+      <Card label={ORDER_DETAILS_COPY.status} value={getOrderStatusLabel(order.status, (_key, fallback) => fallback)} />
+      <Card label={ORDER_DETAILS_COPY.createdAt} value={order.createdAt ?? "-"} />
       <View style={styles.fullBleed}>
         <OrderLifecycleTimeline order={order} />
       </View>
@@ -105,14 +129,14 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
         style={[styles.chatBtn, styles.fullBleed]}
         onPress={() => navigation.navigate("Chat", { orderId: resolvedOrderId, customerName: order.customerName })}
       >
-        <Text style={styles.chatBtnText}>Chat with Customer</Text>
+        <Text style={styles.chatBtnText}>{ORDER_DETAILS_COPY.chatWithCustomer}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
         style={[styles.callBtn, styles.fullBleed]}
         onPress={() => navigation.navigate("OutgoingCall", { orderId: resolvedOrderId, customerName: order.customerName })}
       >
-        <Text style={styles.callBtnText}>Call Customer</Text>
+        <Text style={styles.callBtnText}>{ORDER_DETAILS_COPY.callCustomer}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -126,7 +150,7 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
           })
         }
       >
-        <Text style={styles.primaryBtnText}>{canOpenActiveJob ? "Open Active Job" : "Active job opens after acceptance"}</Text>
+        <Text style={styles.primaryBtnText}>{canOpenActiveJob ? ORDER_DETAILS_COPY.openActiveJob : ORDER_DETAILS_COPY.activeJobAcceptanceHint}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -140,7 +164,7 @@ export default function OrderDetailsScreen({ route, navigation }: any) {
           })
         }
       >
-        <Text style={styles.chatBtnText}>Open Route Map</Text>
+        <Text style={styles.chatBtnText}>{ORDER_DETAILS_COPY.openRouteMap}</Text>
       </TouchableOpacity>
     </ScrollView>
   );

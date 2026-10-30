@@ -2,6 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const storage = AsyncStorage;
 const {
+  clearPendingReferralCode,
+  getPendingReferralCode,
+  savePendingReferralCode,
   clearPendingPaymentBookingId,
   clearSession,
   getOrCreateDeviceId,
@@ -52,6 +55,25 @@ describe("utils/storage.js", () => {
       user: null,
     });
   });
+
+  it("saves, reads, and clears the pending signup referral", async () => {
+    await expect(getPendingReferralCode()).resolves.toBeNull();
+    await savePendingReferralCode(" lex-ho_42! ");
+    expect(storage.setItem).toHaveBeenCalledWith(
+      "@lexho/customer/pending-referral-code", "LEX-HO_42",
+    );
+    await expect(getPendingReferralCode()).resolves.toBe("LEX-HO_42");
+    await clearPendingReferralCode();
+    await expect(getPendingReferralCode()).resolves.toBeNull();
+  });
+
+  it.each([null, undefined, "", "   ", "!@#"])(
+    "ignores empty or invalid referral code %s",
+    async (value) => {
+      await savePendingReferralCode(value);
+      expect(storage.setItem).not.toHaveBeenCalled();
+    },
+  );
 
   it("ignores empty tokens and unserializable users", async () => {
     await saveSession("   ", "refresh", { id: "ignored" });

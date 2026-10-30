@@ -43,6 +43,11 @@ export function UsersTable({
           render: (user) => user.phone || "N/A",
         },
         {
+          key: "gender",
+          header: "Gender",
+          render: (user) => user.gender || "N/A",
+        },
+        {
           key: "city",
           header: "City",
           render: (user) => user.city || "N/A",

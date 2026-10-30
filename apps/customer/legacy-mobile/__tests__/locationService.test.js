@@ -70,6 +70,15 @@ describe("locationService", () => {
     await expect(service[method](...args)).rejects.toThrow(message);
   });
 
+  it("refreshes service availability after admin changes even when a cached result exists", async () => {
+    mockApi.post.mockResolvedValueOnce({ data: { serviceable: false } })
+      .mockResolvedValueOnce({ data: { serviceable: true } });
+    const coords = { latitude: 22.7, longitude: 75.8 };
+    await service.checkServiceability(coords);
+    await expect(service.checkServiceability(coords, { forceRefresh: true })).resolves.toEqual({ serviceable: true });
+    expect(mockApi.post).toHaveBeenCalledTimes(2);
+  });
+
   it("caches reverse geocode and serviceability responses", async () => {
     jest.spyOn(Date, "now").mockReturnValue(1000);
     mockApi.post

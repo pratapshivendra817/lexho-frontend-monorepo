@@ -1,4 +1,4 @@
-import { api, extractList, parseApiError } from "./client";
+import { api, extractList, parseApiError, unwrapPayload } from "./client";
 import { API_BASE_URL, DEV_IMAGE_HOST } from "../constants/env";
 import { Platform } from "react-native";
 import { getToken } from "../utils/storage";
@@ -10,7 +10,14 @@ import { cacheManager } from "../services/cacheManager";
 
 const HOME_REQUEST_TIMEOUT_MS = 6000;
 
-export async function getDashboard(): Promise<HomeDashboardResponse> { try { const { data } = await api.get("/api/home/dashboard"); return data as HomeDashboardResponse; } catch (error) { throw new Error(parseApiError(error, "Dashboard failed")); } }
+export async function getDashboard(): Promise<HomeDashboardResponse> {
+  try {
+    const { data } = await api.get("/api/home/dashboard");
+    return unwrapPayload<HomeDashboardResponse>(data, {} as HomeDashboardResponse);
+  } catch (error) {
+    throw new Error(parseApiError(error, "Dashboard failed"));
+  }
+}
 
 function toAbsoluteUrl(url?: string) {
   if (!url) return undefined;
@@ -124,9 +131,10 @@ export async function getBanners(): Promise<BannerDto[]> {
     const headers = await authHeaders();
     let data: any = null;
     const attempts = [
+      // Home campaigns are separate from the single category/service banner feed.
+      "/api/customer/home/banners",
       "/api/banners",
       "/api/customer/banners",
-      "/api/customer/home/banners",
       "/api/home/banners",
     ];
 
@@ -263,7 +271,7 @@ export async function getRecommendedServices(): Promise<ServiceDto[]> {
   const cacheKey = "recommended-services";
   try {
     const { data } = await api.get("/api/services/recommended", { params: getGeoParams() });
-    const mapped = mapServiceImages(extractList<ServiceDto>(data));
+    const mapped = mapServiceImages(extractCollection<ServiceDto>(data, ["services", "items", "rows", "records", "content"]));
     await cacheManager.set(cacheKey, mapped);
     return mapped;
   } catch (error) {
@@ -279,7 +287,7 @@ export async function getQuickServices(): Promise<ServiceDto[]> {
   const cacheKey = "quick-services";
   try {
     const { data } = await api.get("/api/services/quick", { params: getGeoParams() });
-    const mapped = mapServiceImages(extractList<ServiceDto>(data));
+    const mapped = mapServiceImages(extractCollection<ServiceDto>(data, ["services", "items", "rows", "records", "content"]));
     await cacheManager.set(cacheKey, mapped);
     return mapped;
   } catch (error) {
@@ -294,7 +302,7 @@ export async function getQuickServices(): Promise<ServiceDto[]> {
 export async function searchServices(keyword: string): Promise<ServiceDto[]> {
   try {
     const { data } = await api.get("/api/search/services", { params: { keyword, ...getGeoParams() } });
-    return mapServiceImages(extractList<ServiceDto>(data));
+    return mapServiceImages(extractCollection<ServiceDto>(data, ["services", "items", "rows", "records", "content"]));
   } catch (error) {
     throw new Error(parseApiError(error, "Search failed"));
   }

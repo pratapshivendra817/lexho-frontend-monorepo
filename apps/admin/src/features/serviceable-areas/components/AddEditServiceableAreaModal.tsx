@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
@@ -6,6 +7,13 @@ import { z } from "zod";
 import { MapboxPolygonEditor, ModalFormLayout, PolygonPreview } from "@/components/admin";
 
 import type { CreateServiceableAreaPayload, ServiceableAreaItem } from "../types";
+import { getGeoCities, getGeoZones } from "../api/geoApi";
+
+function geoRows(payload: unknown): Record<string, unknown>[] {
+  const root = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const rows = Array.isArray(payload) ? payload : Array.isArray(root.data) ? root.data : Array.isArray(root.items) ? root.items : [];
+  return rows.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object");
+}
 
 const schema = z.object({
   name: z.string().min(2, "Name is required"),
@@ -69,9 +77,28 @@ export function AddEditServiceableAreaModal({
       polygonJson: editingItem.polygonJson ?? "",
       active: editingItem.active,
     });
-  }, [editingItem, form]);
+  }, [editingItem, form, open]);
 
   const polygonJsonValue = useWatch({ control: form.control, name: "polygonJson" });
+  const cityIdValue = useWatch({ control: form.control, name: "cityId" });
+  const zoneIdValue = useWatch({ control: form.control, name: "zoneId" });
+  const citiesQuery = useQuery({ queryKey: ["geo-cities"], queryFn: getGeoCities, enabled: open, retry: false });
+  const zonesQuery = useQuery({
+    queryKey: ["geo-zones", Number(cityIdValue)],
+    queryFn: () => getGeoZones(Number(cityIdValue)),
+    enabled: open && Number(cityIdValue) > 0,
+    retry: false,
+  });
+  const cities = geoRows(citiesQuery.data).map((row) => ({
+    id: String(row.id ?? row.cityId ?? ""), name: String(row.name ?? ""),
+    state: String(row.state ?? ""), country: String(row.country ?? "India"),
+  })).filter((city) => Number(city.id) > 0);
+  const zones = geoRows(zonesQuery.data).map((row) => ({
+    id: String(row.id ?? row.zoneId ?? ""), name: String(row.name ?? ""),
+    polygonJson: typeof row.polygonJson === "string" ? row.polygonJson : "",
+  })).filter((zone) => Number(zone.id) > 0);
+  const selectedCity = cities.find((city) => city.id === cityIdValue);
+  const fieldOptions = { shouldDirty: true, shouldValidate: true };
 
   const submit = (values: ServiceableAreaFormValues) => {
     if (duplicateCheck(values, editingItem?.id)) {
@@ -108,7 +135,7 @@ export function AddEditServiceableAreaModal({
       formId="serviceable-area-form"
       submitLabel={editingItem ? "Update" : "Create"}
       isSubmitting={isSubmitting}
-      maxWidthClassName="max-w-2xl"
+      maxWidthClassName="max-w-4xl"
     >
       <form
         id="serviceable-area-form"
@@ -126,21 +153,46 @@ export function AddEditServiceableAreaModal({
             <input {...form.register("pincode")} maxLength={6} className={inputClass} />
           </Field>
           <Field label="City" error={form.formState.errors.city?.message}>
-            <input {...form.register("city")} className={inputClass} />
+            <input {...form.register("city")} readOnly={Boolean(cityIdValue)} className={inputClass} />
           </Field>
           <Field label="State" error={form.formState.errors.state?.message}>
-            <input {...form.register("state")} className={inputClass} />
+            <input {...form.register("state")} readOnly={Boolean(cityIdValue)} className={inputClass} />
           </Field>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="City ID" error={form.formState.errors.cityId?.message}>
-            <input {...form.register("cityId")} inputMode="numeric" placeholder="Optional" className={inputClass} />
+          <Field label="Saved City" error={form.formState.errors.cityId?.message}>
+            <select aria-label="Saved City" value={cityIdValue} disabled={citiesQuery.isLoading} className={inputClass}
+              onChange={(event) => {
+                const city = cities.find((item) => item.id === event.target.value);
+                form.setValue("cityId", event.target.value, fieldOptions);
+                form.setValue("zoneId", "", fieldOptions);
+                form.setValue("polygonJson", "", fieldOptions);
+                form.setValue("city", city?.name ?? "", fieldOptions);
+                form.setValue("state", city?.state ?? "", fieldOptions);
+              }}>
+              <option value="">{citiesQuery.isLoading ? "Loading cities..." : "Select city (or enter manually)"}</option>
+              {cityIdValue && !selectedCity ? <option value={cityIdValue}>{form.getValues("city")} (saved city)</option> : null}
+              {cities.map((city) => <option key={city.id} value={city.id}>{city.name} — {city.state}</option>)}
+            </select>
           </Field>
-          <Field label="Zone ID" error={form.formState.errors.zoneId?.message}>
-            <input {...form.register("zoneId")} inputMode="numeric" placeholder="Optional" className={inputClass} />
+          <Field label="Saved Zone" error={form.formState.errors.zoneId?.message}>
+            <select aria-label="Saved Zone" value={zoneIdValue} disabled={!cityIdValue || zonesQuery.isFetching} className={inputClass}
+              onChange={(event) => {
+                const zone = zones.find((item) => item.id === event.target.value);
+                form.setValue("zoneId", event.target.value, fieldOptions);
+                form.setValue("polygonJson", zone?.polygonJson ?? "", fieldOptions);
+                if (zone && !form.getValues("name").trim()) form.setValue("name", zone.name, fieldOptions);
+              }}>
+              <option value="">{zonesQuery.isFetching ? "Loading zones..." : "Select zone (or draw a custom area)"}</option>
+              {zoneIdValue && !zones.some((zone) => zone.id === zoneIdValue) ? <option value={zoneIdValue}>Saved zone #{zoneIdValue}</option> : null}
+              {zones.map((zone) => <option key={zone.id} value={zone.id} disabled={!zone.polygonJson}>{zone.name}{!zone.polygonJson ? " (boundary missing)" : ""}</option>)}
+            </select>
           </Field>
         </div>
+        {citiesQuery.isError || zonesQuery.isError ? <p role="alert" className="text-sm text-red-400">Could not load cities or zones. <button type="button" onClick={() => { void citiesQuery.refetch(); if (cityIdValue) void zonesQuery.refetch(); }}>Retry</button></p> : null}
+        {cityIdValue && zonesQuery.isSuccess && zones.length === 0 ? <p className="text-sm">No zones found. Create a zone in Geo Cities & Zones, or draw a custom area below.</p> : null}
+        <p className="text-sm text-[var(--color-muted)]">Selecting a saved zone copies its boundary here. No need to draw it again. Fill the pincode and save the serviceable area. Later zone changes do not automatically update this copy.</p>
 
         <Field label="Serviceable Area Polygon" error={form.formState.errors.polygonJson?.message}>
           <Controller
@@ -148,16 +200,18 @@ export function AddEditServiceableAreaModal({
             name="polygonJson"
             render={({ field }) => (
               <MapboxPolygonEditor
+                key={`${cityIdValue}:${zoneIdValue}`}
+                cityQuery={selectedCity ? [selectedCity.name, selectedCity.state, selectedCity.country].join(", ") : undefined}
                 value={field.value}
                 onChange={field.onChange}
                 onSave={(nextPolygonJson) => {
                   form.setValue("polygonJson", nextPolygonJson, { shouldDirty: true, shouldValidate: true });
-                  submit({ ...form.getValues(), polygonJson: nextPolygonJson });
+                  void form.handleSubmit(submit)();
                 }}
                 autoSaveOnChange={Boolean(editingItem?.id)}
                 isSaving={isSubmitting}
                 saveLabel={editingItem ? "Update Area Polygon" : "Create Area Polygon"}
-                height={260}
+                height={450}
               />
             )}
           />

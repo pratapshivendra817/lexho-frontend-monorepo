@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 
@@ -35,19 +35,39 @@ function resolveVendorChunk(id: string) {
   return 'vendor-misc'
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, fileURLToPath(new URL('.', import.meta.url)), '')
+  const apiProxyTarget = env.VITE_DEV_API_PROXY_TARGET?.trim() || 'http://192.168.31.38:8082'
+
+  return {
   plugins: [react()],
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8082',
+        target: apiProxyTarget,
         changeOrigin: true,
+        headers: {
+          origin: 'http://localhost:5173',
+        },
         configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            // Spring's development CORS allow-list permits the website origin, not Vite's
+            // dynamically selected Admin port. The browser still talks same-origin to Vite.
+            proxyReq.setHeader('origin', 'http://localhost:5173')
+          })
           proxy.on('proxyRes', (proxyRes) => {
             delete proxyRes.headers['x-frame-options']
             delete proxyRes.headers['content-security-policy']
           })
         }
+      },
+      '/images': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
+      '/uploads': {
+        target: apiProxyTarget,
+        changeOrigin: true,
       }
     }
   },
@@ -70,5 +90,6 @@ export default defineConfig({
         }
       }
     }
+  }
   }
 })

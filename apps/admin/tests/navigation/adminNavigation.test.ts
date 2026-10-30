@@ -8,6 +8,10 @@ vi.mock("@/features/api-readiness", () => ({
   apiReadinessNavItems: [{ path: "/api-readiness", label: "API Readiness" }],
   apiReadinessRouteMeta: [{ pathPrefix: "/api-readiness", title: "API Readiness", breadcrumb: "API Readiness" }],
 }));
+vi.mock("@/features/coupons", () => ({
+  couponsNavItems: [{ path: "/coupons", label: "Coupons" }],
+  couponsRouteMeta: [{ pathPrefix: "/coupons", title: "Coupons", breadcrumb: "Campaigns / Coupons" }],
+}));
 vi.mock("@/features/banners", () => ({
   bannersNavItems: [],
   bannersRouteMeta: [{ pathPrefix: "/banners", title: "Banners", breadcrumb: "Banners" }],
@@ -60,10 +64,6 @@ vi.mock("@/features/payouts", () => ({
   payoutsNavItems: [{ path: "/payouts", label: "Payouts" }],
   payoutsRouteMeta: [{ pathPrefix: "/payouts", title: "Payouts", breadcrumb: "Payouts" }],
 }));
-vi.mock("@/features/providers", () => ({
-  partnersNavItems: [{ path: "/providers", label: "Providers" }],
-  partnersRouteMeta: [{ pathPrefix: "/providers", title: "Providers", breadcrumb: "Providers" }],
-}));
 vi.mock("@/features/recommended-addons", () => ({
   recommendedAddonsNavItems: [{ path: "/recommended-addons", label: "Recommended Addons" }],
   recommendedAddonsRouteMeta: [{ pathPrefix: "/recommended-addons", title: "Recommended Addons", breadcrumb: "Recommended Addons" }],
@@ -107,6 +107,32 @@ vi.mock("@/features/live-dispatch", () => ({
   liveDispatchNavItems: [{ path: "/live-dispatch", label: "Live Dispatch" }],
   liveDispatchRouteMeta: [{ pathPrefix: "/live-dispatch", title: "Live Dispatch", breadcrumb: "Live Dispatch" }],
 }));
+vi.mock("@/features/legal-content", () => ({
+  legalContentNavItems: [{ path: "/legal-content", label: "Legal Content" }],
+  legalContentRouteMeta: [{ pathPrefix: "/legal-content", title: "Legal Content", breadcrumb: "Legal Content" }],
+}));
+vi.mock("@/features/account-deletion", () => ({
+  accountDeletionNavItems: [],
+  accountDeletionRouteMeta: [{ pathPrefix: "/account-deletion", title: "Account Deletion", breadcrumb: "Account Deletion" }],
+}));
+vi.mock("@/features/social-media", () => ({
+  socialMediaNavItems: [],
+  socialMediaRouteMeta: [{ pathPrefix: "/social-media", title: "Social Media", breadcrumb: "Social Media" }],
+}));
+vi.mock("@/features/screening-centre", () => ({
+  screeningCentreNavItems: [{ path: "/screening-centre", label: "Screening Centre" }],
+  screeningCentreRouteMeta: [{ pathPrefix: "/screening-centre", title: "Screening Centre", breadcrumb: "Screening Centre" }],
+}));
+vi.mock("@/features/website-cities", () => ({
+  websiteCitiesNavItems: [{ path: "/website/header-navigation/cities", label: "Website Cities" }],
+  websiteCitiesRouteMeta: [
+    {
+      pathPrefix: "/website/header-navigation/cities",
+      title: "Website Cities",
+      breadcrumb: "Website / Header Navigation / Cities",
+    },
+  ],
+}));
 vi.mock("@/modules/banner", () => ({
   bannerManagementNavItems: [],
   bannerManagementRouteMeta: [{ pathPrefix: "/banner-management", title: "Banner Management", breadcrumb: "Banner Management" }],
@@ -118,6 +144,7 @@ describe("adminNavigation", () => {
   it("aggregates nav items in the declared order while keeping hidden sections empty", () => {
     expect(adminNavItems).toEqual([
       { path: "/", label: "Dashboard" },
+      { path: "/coupons", label: "Coupons" },
       { path: "/emergency-sos", label: "Emergency SOS" },
       { path: "/profile-control", label: "Profile Control" },
       { path: "/categories", label: "Categories" },
@@ -130,6 +157,9 @@ describe("adminNavigation", () => {
       { path: "/reviews", label: "Reviews" },
       { path: "/serviceable-areas", label: "Serviceable Areas" },
       { path: "/live-dispatch", label: "Live Dispatch" },
+      { path: "/legal-content", label: "Legal Content" },
+      { path: "/website/header-navigation/cities", label: "Website Cities" },
+      { path: "/screening-centre", label: "Screening Centre" },
       { path: "/recommended-addons", label: "Recommended Addons" },
       { path: "/payments", label: "Payments" },
       { path: "/subscriptions", label: "Subscriptions" },
@@ -159,6 +189,12 @@ describe("adminNavigation", () => {
       pathPrefix: "/live-dispatch",
       title: "Live Dispatch",
       breadcrumb: "Live Dispatch",
+    });
+
+    expect(getAdminRouteMeta("/website/header-navigation/cities")).toEqual({
+      pathPrefix: "/website/header-navigation/cities",
+      title: "Website Cities",
+      breadcrumb: "Website / Header Navigation / Cities",
     });
   });
 

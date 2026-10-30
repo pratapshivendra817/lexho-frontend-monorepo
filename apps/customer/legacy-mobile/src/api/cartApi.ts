@@ -1,11 +1,12 @@
 import { api, parseApiError } from "./client";
+import { formatAddressLine } from "../utils/addressFormatter";
 import { API_BASE_URL, DEV_IMAGE_HOST } from "../constants/env";
 import { DEFAULT_CART_POLICY, normalizeCartPolicy, type CartPolicy } from "../constants/cartPolicy";
 import type { AddCartRequest, CartItemDto, UpdateCartRequest } from "../types/contracts";
 import type { SlotOption } from "../types/contracts";
 
 type CartAddress = {
-  id: number;
+  id: number | string;
   fullAddress?: string;
   city?: string;
   pincode?: string;
@@ -140,6 +141,8 @@ function toCartShape(payload: any): CustomerCartResponse {
     );
     const categoryName = pickFirstNonEmptyString(
       row?.categoryName,
+      row?.category,
+      row?.category_name,
       row?.serviceCategory,
       row?.serviceCategoryName,
       category?.name,
@@ -182,7 +185,7 @@ function toCartShape(payload: any): CustomerCartResponse {
     cartId: root?.cartId != null ? Number(root.cartId) : null,
     address: address
       ? {
-          id: Number(address.id ?? 0),
+          id: address.id ?? address.addressId ?? 0,
           fullAddress: address.fullAddress ? String(address.fullAddress) : undefined,
           city: address.city ? String(address.city) : undefined,
           pincode: address.pincode ? String(address.pincode) : undefined,
@@ -230,7 +233,19 @@ export async function getCartPolicy(): Promise<CartPolicy> {
 
 export async function getCustomerCart(): Promise<CustomerCartResponse> {
   try {
-    const { data } = await api.get("/api/customer/cart");
+    let data: any;
+    try {
+      const response = await api.get("/api/customer/cart");
+      data = response.data;
+    } catch (primaryError: any) {
+      const status = Number(primaryError?.response?.status ?? 0);
+      // Some backend deployments expose the legacy cart route but reject the
+      // newer customer-scoped route with 403. Try the compatible legacy route
+      // before surfacing the add-to-cart error to the customer.
+      if (![403, 404, 405].includes(status)) throw primaryError;
+      const response = await api.get("/api/cart");
+      data = response.data;
+    }
     return toCartShape(data);
   } catch (e) {
     throw new Error(parseApiError(e, "Get customer cart failed"));
@@ -267,27 +282,118 @@ export async function addCustomerCartItem(payload: {
       data = response.data;
     } catch (primaryError: any) {
       const status = Number(primaryError?.response?.status ?? 0);
-      if (![404, 405].includes(status)) throw primaryError;
-      const response = await api.post("/api/customer/cart/add", addPayload);
+      if (![403, 404, 405].includes(status)) throw primaryError;
+      const response = await api.post("/api/cart/add", addPayload);
       data = response.data;
     }
     const root = data?.data && typeof data.data === "object" ? data.data : data;
-    const cart = await getCustomerCart();
+    const itemFromAddResponse = (() => {
+      if (!root || typeof root !== "object") return null;
+      const hasSingleItemShape = "serviceId" in root || "itemId" in root || "name" in root;
+      if (!hasSingleItemShape || Array.isArray(root.items)) return null;
+      const serviceId = Number(root?.serviceId ?? root?.id ?? 0);
+      if (!serviceId) return null;
+      return {
+        itemId: Number(root?.itemId ?? root?.id ?? 0),
+        serviceId,
+        name: pickFirstNonEmptyString(root?.name, root?.serviceName, root?.title, `Service #${serviceId}`),
+        imageUrl: root?.imageUrl ? String(root.imageUrl) : undefined,
+        price: Number(root?.price ?? 0),
+        quantity: Number(root?.quantity ?? 1),
+        totalPrice: Number(root?.totalPrice ?? (Number(root?.price ?? 0) * Number(root?.quantity ?? 1))),
+        familySizeId: root?.familySizeId != null ? Number(root.familySizeId) : undefined,
+        familySize: pickFirstNonEmptyString(root?.familySize, root?.cookFamilySize),
+        familySizeLabel: pickFirstNonEmptyString(root?.familySizeLabel, root?.cookFamilySizeLabel),
+        addons: Array.isArray(root?.addons) ? root.addons.map((addon: any) => ({
+          addonId: Number(addon?.addonId ?? addon?.id ?? 0),
+          quantity: Number(addon?.quantity ?? 1),
+        })).filter((addon: { addonId: number; quantity: number }) => addon.addonId > 0) : [],
+      };
+    })();
+
+    let cart: CustomerCartResponse = toCartShape({
+      items: Array.isArray(root?.items) ? root.items : itemFromAddResponse ? [itemFromAddResponse] : [],
+      grandTotal: root?.grandTotal ?? (itemFromAddResponse ? Number(itemFromAddResponse.totalPrice ?? 0) : 0),
+      itemTotal: root?.itemTotal ?? root?.subtotal ?? (itemFromAddResponse ? Number(itemFromAddResponse.totalPrice ?? 0) : 0),
+      gstAmount: root?.gstAmount ?? 0,
+      serviceFee: root?.serviceFee ?? 0,
+      taxAmount: root?.taxAmount ?? 0,
+      toPay: root?.toPay ?? root?.grandTotal ?? (itemFromAddResponse ? Number(itemFromAddResponse.totalPrice ?? 0) : 0),
+      totalSaved: root?.totalSaved ?? 0,
+      currency: root?.currency ?? "INR",
+      contactName: root?.contactName,
+      contactPhone: root?.contactPhone,
+      requestStatus: root?.requestStatus ?? "PENDING",
+      matchedPartners: root?.matchedPartners ?? 0,
+      assignmentMode: root?.assignmentMode,
+    });
+
+    try {
+      const refreshedCart = await getCustomerCart();
+      // A newly committed item can be briefly missing from a replica-backed read.
+      // Do not replace a successful add with that transient empty response.
+      if (refreshedCart.items.length > 0 || cart.items.length === 0) {
+        cart = refreshedCart;
+      }
+    } catch {
+      // The create call often succeeds even when the subsequent cart fetch is temporarily flaky.
+      // Preserve the optimistic add result instead of surfacing a generic error to the UI.
+    }
+
     return {
       ...cart,
       requestStatus: "PENDING",
-      matchedPartners: Number(root?.matchedPartners ?? 0),
-      assignmentMode: root?.assignmentMode ? String(root.assignmentMode) : undefined,
+      matchedPartners: Number(root?.matchedPartners ?? cart.matchedPartners ?? 0),
+      assignmentMode: root?.assignmentMode ? String(root.assignmentMode) : cart.assignmentMode,
     };
   } catch (e) {
     throw new Error(parseApiError(e, "Add to customer cart failed"));
   }
 }
 
+function emptyCartFallback(): CustomerCartResponse {
+  return {
+    cartId: null,
+    address: null,
+    scheduledTime: null,
+    items: [],
+    grandTotal: 0,
+    itemTotal: 0,
+    gstAmount: 0,
+    serviceFee: 0,
+    taxAmount: 0,
+    toPay: 0,
+    totalSaved: 0,
+    currency: "INR",
+    contactName: undefined,
+    contactPhone: undefined,
+    requestStatus: "IDLE",
+    matchedPartners: 0,
+    assignmentMode: undefined,
+  };
+}
+
 export async function updateCustomerCartItem(payload: { itemId: number; quantity?: number; familySizeId?: number; familySize?: string; familySizeLabel?: string }) {
   try {
-    await api.put("/api/customer/cart/item", payload);
-    return await getCustomerCart();
+    let mutationResponse: any = null;
+    try {
+      const response = await api.put("/api/customer/cart/item", payload);
+      mutationResponse = response?.data;
+    } catch (primaryError: any) {
+      const status = Number(primaryError?.response?.status ?? 0);
+      if (![403, 404, 405].includes(status)) throw primaryError;
+      const response = await api.put("/api/cart/item", payload);
+      mutationResponse = response?.data;
+    }
+    try {
+      return await getCustomerCart();
+    } catch {
+      const optimistic = toCartShape(mutationResponse ?? {});
+      if (optimistic.items.length > 0 || optimistic.grandTotal > 0 || optimistic.cartId != null) {
+        return optimistic;
+      }
+      return emptyCartFallback();
+    }
   } catch (e) {
     throw new Error(parseApiError(e, "Update cart item failed"));
   }
@@ -295,8 +401,40 @@ export async function updateCustomerCartItem(payload: { itemId: number; quantity
 
 export async function removeCustomerCartItem(itemId: number) {
   try {
-    await api.delete(`/api/customer/cart/item/${itemId}`);
-    return await getCustomerCart();
+    const resolvedItemId = await (async () => {
+      const candidateId = Number(itemId ?? 0);
+      if (!Number.isFinite(candidateId) || candidateId <= 0) return 0;
+      try {
+        const cart = await getCustomerCart();
+        const matched = cart.items.find((row) =>
+          Number(row.itemId) === candidateId || Number(row.serviceId) === candidateId,
+        );
+        const resolved = Number(matched?.itemId ?? candidateId);
+        return Number.isFinite(resolved) && resolved > 0 ? resolved : candidateId;
+      } catch {
+        return candidateId;
+      }
+    })();
+
+    let mutationResponse: any = null;
+    try {
+      const response = await api.delete(`/api/customer/cart/item/${resolvedItemId}`);
+      mutationResponse = response?.data;
+    } catch (primaryError: any) {
+      const status = Number(primaryError?.response?.status ?? 0);
+      if (![403, 404, 405].includes(status)) throw primaryError;
+      const response = await api.delete(`/api/cart/item/${resolvedItemId}`);
+      mutationResponse = response?.data;
+    }
+    try {
+      return await getCustomerCart();
+    } catch {
+      const optimistic = toCartShape(mutationResponse ?? {});
+      if (optimistic.items.length > 0 || optimistic.grandTotal > 0 || optimistic.cartId != null) {
+        return optimistic;
+      }
+      return emptyCartFallback();
+    }
   } catch (e) {
     throw new Error(parseApiError(e, "Remove cart item failed"));
   }
@@ -304,45 +442,53 @@ export async function removeCustomerCartItem(itemId: number) {
 
 export async function clearCustomerCart() {
   try {
-    const { data } = await api.delete("/api/customer/cart/clear");
-    return toCartShape(data);
+    try {
+      const { data } = await api.delete("/api/customer/cart/clear");
+      const cart = toCartShape(data);
+      if (cart.items.length > 0 || cart.grandTotal > 0 || cart.cartId != null) {
+        return cart;
+      }
+      try {
+        return await getCustomerCart();
+      } catch {
+        return cart;
+      }
+    } catch (primaryError: any) {
+      const status = Number(primaryError?.response?.status ?? 0);
+      if (![403, 404, 405].includes(status)) throw primaryError;
+      const { data } = await api.delete("/api/cart/clear");
+      const cart = toCartShape(data);
+      if (cart.items.length > 0 || cart.grandTotal > 0 || cart.cartId != null) {
+        return cart;
+      }
+      try {
+        return await getCustomerCart();
+      } catch {
+        return cart;
+      }
+    }
   } catch (e) {
     throw new Error(parseApiError(e, "Clear cart failed"));
   }
 }
 
-export async function patchCustomerCartMeta(payload: { addressId: number; scheduledTime: string }) {
+export async function patchCustomerCartMeta(payload: { addressId: number | string; scheduledTime: string }) {
   try {
-    const { data } = await api.patch("/api/customer/cart/meta", payload);
-    return toCartShape(data);
+    try {
+      const { data } = await api.patch("/api/customer/cart/meta", payload);
+      return toCartShape(data);
+    } catch (primaryError: any) {
+      const status = Number(primaryError?.response?.status ?? 0);
+      if (![403, 404, 405].includes(status)) throw primaryError;
+      const { data } = await api.patch("/api/cart/meta", payload);
+      return toCartShape(data);
+    }
   } catch (e) {
     throw new Error(parseApiError(e, "Update cart meta failed"));
   }
 }
 
 export async function getAvailableTimeSlots(date: string): Promise<SlotOption[]> {
-  const buildFullDayQuarterSlots = () => {
-    const all: SlotOption[] = [];
-    const intervalMinutes = DEFAULT_CART_POLICY.slotIntervalMinutes;
-    for (let hour = 6; hour <= 22; hour += 1) {
-      for (let minute = 0; minute < 60; minute += intervalMinutes) {
-        const start = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-        let endHour = hour;
-        let endMinute = minute + intervalMinutes;
-        if (endMinute >= 60) {
-          endMinute -= 60;
-          endHour += 1;
-        }
-        all.push({
-          slot: `${start}-${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`,
-          available: true,
-          instantEligible: false,
-          etaMinutes: 999,
-        });
-      }
-    }
-    return all;
-  };
   try {
     const { data } = await api.get("/api/customer/cart/slots", { params: { date } });
     const root = data?.data && typeof data.data === "object" ? data.data : data;
@@ -379,20 +525,29 @@ export async function getAvailableTimeSlots(date: string): Promise<SlotOption[]>
         rows = Array.isArray(grouped?.slots) ? grouped.slots : Array.isArray(grouped?.items) ? grouped.items : Array.isArray(grouped?.content) ? grouped.content : [];
       }
     }
-    return buildFullDayQuarterSlots();
-  } catch (error: any) {
-    return buildFullDayQuarterSlots();
+    return rows.map((row: any) => {
+      const slot = String(typeof row === "string" ? row : row?.slot ?? row?.label ??
+        (row?.startTime && row?.endTime ? `${row.startTime}-${row.endTime}` : "")).trim();
+      return {
+        slot,
+        available: typeof row === "string" ? true : row?.available === true,
+        instantEligible: row?.instantEligible === true,
+        etaMinutes: Number(row?.etaMinutes ?? 999),
+      };
+    }).filter((row: SlotOption) => /^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/.test(row.slot));
+  } catch (error) {
+    throw new Error(parseApiError(error, "Unable to load booking slots. Please retry."));
   }
 }
 
 export async function getCustomerAddresses() {
   try {
-    const { data } = await api.get("/api/customer/addresses");
+    const { data } = await api.get("/api/v1/customer/location/all", { params: { page: 0, size: 50 } });
     const root = data?.data && typeof data.data === "object" ? data.data : data;
     const rows = Array.isArray(root) ? root : Array.isArray(root?.items) ? root.items : Array.isArray(root?.content) ? root.content : [];
     return rows.map((row: any) => ({
-      id: Number(row?.id ?? 0),
-      fullAddress: String(row?.fullAddress ?? row?.line1 ?? ""),
+      id: row?.id ?? row?.addressUuid ?? row?.addressId ?? "",
+      fullAddress: formatAddressLine({ ...row, addressLine: row?.addressLine ?? row?.fullAddress ?? row?.line1 }),
       city: row?.city ? String(row.city) : "",
       pincode: row?.pincode ? String(row.pincode) : "",
       latitude: Number(row?.latitude ?? 0),

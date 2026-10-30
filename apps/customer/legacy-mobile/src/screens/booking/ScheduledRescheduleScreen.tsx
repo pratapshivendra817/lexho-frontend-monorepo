@@ -56,7 +56,15 @@ export function ScheduledRescheduleScreen({ route, navigation }: { route: Schedu
       if (toMinuteKey(scheduledTime) === toMinuteKey(initialScheduledTime)) {
         throw new Error("Please select a different slot from the current one.");
       }
-      return rescheduleBooking(bookingId, { date: scheduledTime });
+      const [date, time] = scheduledTime.split("T");
+      if (!date || !time) throw new Error("Please select a valid date and time slot.");
+      const availableSlots = await getAvailableTimeSlots(date);
+      const selectedSlot = availableSlots.find((row) => {
+        const startTime = String(row.slot ?? "").split("-")[0]?.trim();
+        return row.available !== false && startTime === time.slice(0, 5);
+      });
+      if (!selectedSlot) throw new Error("That slot is no longer available. Please choose another slot.");
+      return rescheduleBooking(bookingId, { date, slot: selectedSlot.slot });
     },
     onSuccess: (updated) => {
       void trackBookingRescheduled({ booking_id: bookingId, source: "scheduled_reschedule" });
@@ -67,7 +75,7 @@ export function ScheduledRescheduleScreen({ route, navigation }: { route: Schedu
       captureFrontendError(e, {
         screenName: "ScheduledReschedule",
         userAction: "reschedule_booking",
-        apiEndpoint: `/api/bookings/reschedule/${bookingId}`,
+        apiEndpoint: `/api/bookings/${bookingId}/reschedule`,
         errorCode: getApiErrorCode(e) || "RESCHEDULE_BOOKING_FAILED",
       });
       Alert.alert("Reschedule failed", String(e?.message ?? "Could not reschedule booking."));
@@ -128,7 +136,6 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: bookingTheme.colors.primaryBtnText, fontSize: 14, fontWeight: "900", letterSpacing: 0.2 },
   disabledBtn: { opacity: 0.7 },
 });
-
 
 
 

@@ -504,7 +504,7 @@ describe("HomeScreen", () => {
     expect(hero.props.source).toBeTruthy();
   });
 
-  it("adds a service, tracks analytics, and opens party services in scheduled mode", async () => {
+  it.each(["Party Services", "Cook At Home", "Cleaning Service", "Breakfast At Home"])("preserves %s category and clears repeat booking when adding from home", async categoryName => {
     mockState = buildHomeState({
       home: {
         popular: [
@@ -513,7 +513,7 @@ describe("HomeScreen", () => {
             serviceId: 707,
             name: "Birthday Decoration",
             serviceName: "Birthday Decoration",
-            categoryName: "Party Services",
+            categoryName,
             categoryId: 77,
           }),
         ],
@@ -521,20 +521,21 @@ describe("HomeScreen", () => {
     });
     const view = await renderHome();
 
-    await fireEvent.press(view.getByLabelText("add-Birthday Decoration"));
+    await fireEvent.press(view.getAllByLabelText("add-Birthday Decoration")[0]);
 
     await waitFor(() =>
-      expect(mockAddToCartThunk).toHaveBeenCalledWith({ serviceId: 707, quantity: 1 }),
+      expect(mockAddToCartThunk).toHaveBeenCalledWith({ serviceId: 707, quantity: 1, categoryName }),
     );
     expect(mockTrackServiceAdded).toHaveBeenCalledWith({
       service_id: 707,
-      category_name: "Party Services",
+      category_name: categoryName,
       quantity: 1,
       source: "home_popular_service",
     });
     expect(mockNavigate).toHaveBeenCalledWith("CartCrud", {
-      bookingMode: "SCHEDULED",
-      categoryName: "Party Services",
+      recurringBooking: null,
+      bookingMode: categoryName === "Party Services" ? "SCHEDULED" : undefined,
+      categoryName,
     });
   });
 

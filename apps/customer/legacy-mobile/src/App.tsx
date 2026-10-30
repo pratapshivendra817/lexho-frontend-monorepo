@@ -1,7 +1,7 @@
 import { Provider } from "react-redux";
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { StyleSheet, Text, View } from "react-native";
+import { Linking, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { MD3DarkTheme, MD3LightTheme, PaperProvider, Snackbar } from "react-native-paper";
 import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -16,6 +16,7 @@ import { setAnalyticsUser, trackAnalyticsEvent } from "./services/firebaseAnalyt
 import { initializeCrashlytics, logCrashlyticsMessage, recordNonFatalError, setCrashlyticsUser } from "./services/firebaseCrashlytics";
 import { trackAppOpen } from "./services/customerAnalyticsEvents";
 import { clearPendingPaymentBookingId, getPendingPaymentBookingId, saveSession } from "./utils/storage";
+import { savePendingReferralCode } from "./utils/storage";
 import { useCustomerNotificationSocket } from "./hooks/useCustomerNotificationSocket";
 import { useThemeMode } from "./hooks/useThemeMode";
 import { getTheme } from './theme/theme';
@@ -32,6 +33,14 @@ import { COLORS } from './theme/colors';
 
 const queryClient = new QueryClient();
 const navigationRef = createNavigationContainerRef<any>();
+
+function extractReferralCodeFromUrl(url?: string | null) {
+  const raw = String(url ?? "").trim();
+  if (!raw) return null;
+  const match = raw.match(/[?&]ref=([^&#]+)/i);
+  if (!match?.[1]) return null;
+  return decodeURIComponent(match[1]).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "") || null;
+}
 
 function handlePushNavigation(payload: any) {
   if (!navigationRef.isReady()) return;
@@ -122,6 +131,33 @@ function Bootstrap() {
   }, []);
 
   useEffect(() => {
+    let mounted = true;
+    const captureReferralFromUrl = async (url?: string | null) => {
+      const code = extractReferralCodeFromUrl(url);
+      if (!code) return;
+      await savePendingReferralCode(code);
+      if (!mounted) return;
+      queryClient.invalidateQueries({ queryKey: ["pending-referral-code"] }).catch(() => null);
+      if (navigationRef.isReady() && !token) {
+        navigationRef.navigate("Auth");
+      }
+    };
+
+    void Linking.getInitialURL?.()
+      ?.then((url) => captureReferralFromUrl(url))
+      .catch(() => null);
+
+    const subscription = Linking.addEventListener?.("url", ({ url }) => {
+      void captureReferralFromUrl(url);
+    });
+
+    return () => {
+      mounted = false;
+      subscription?.remove?.();
+    };
+  }, [token]);
+
+  useEffect(() => {
     void trackAppOpen({
       platform: "android",
       source: "bootstrap",
@@ -169,7 +205,7 @@ function Bootstrap() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [dispatch, token]);
 
   useCustomerNotificationSocket({
     enabled: Boolean(token && userId),
@@ -218,7 +254,7 @@ function Bootstrap() {
     return () => {
       cleanup?.();
     };
-  }, [token]);
+  }, [dispatch, token]);
 
   useEffect(() => {
     let active = true;
@@ -243,7 +279,7 @@ function Bootstrap() {
     return () => {
       active = false;
     };
-  }, [hydrated, refreshToken, token, user]);
+  }, [dispatch, hydrated, refreshToken, token, user]);
 
   return (
     <PaperProvider

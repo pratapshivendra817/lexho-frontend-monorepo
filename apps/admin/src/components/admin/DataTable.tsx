@@ -14,7 +14,7 @@ type DataTableProps<T> = {
 
 export function DataTable<T>({ columns, rows, rowKey }: DataTableProps<T>) {
   return (
-    <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+    <div className="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
       <table className="min-w-full text-left text-sm">
         <thead className="bg-[var(--color-surface-hover)] text-[var(--color-muted)]">
           <tr>

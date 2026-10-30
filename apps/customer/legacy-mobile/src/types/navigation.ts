@@ -13,7 +13,7 @@ export type AppTabParamList = {
 export type RecurringCartPayload = {
   serviceName?: string;
   serviceId?: number;
-  subscriptionServiceType?: "CLEANING" | "COOK";
+  subscriptionServiceType?: "CLEANING" | "COOK" | "VEHICLE_WASH" | "FITNESS_WELLNESS";
   frequencyDays?: string[];
   frequencyLabel?: string;
   startDate?: string;
@@ -60,7 +60,7 @@ export type AppStackParamList = {
         categoryName?: string;
         durationHours?: number;
         durationLabel?: string;
-        recurringBooking?: RecurringCartPayload;
+        recurringBooking?: RecurringCartPayload | null;
         cookFamilySizeId?: number;
         cookFamilySize?: string;
         cookFamilySizeLabel?: string;

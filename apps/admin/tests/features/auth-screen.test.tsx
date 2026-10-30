@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   verifyAdminOtp: vi.fn(),
   setAccessToken: vi.fn(),
   setRefreshToken: vi.fn(),
+  clearAccessToken: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -58,6 +59,7 @@ vi.mock("@/features/auth/api", () => ({
 vi.mock("@/utils/authSession", () => ({
   setAccessToken: mocks.setAccessToken,
   setRefreshToken: mocks.setRefreshToken,
+  clearAccessToken: mocks.clearAccessToken,
 }));
 
 vi.mock("react-hot-toast", () => ({
@@ -124,6 +126,7 @@ describe("AdminLoginScreen", () => {
         email: "admin@lexho.com",
         password: "secret123",
       });
+      expect(mocks.clearAccessToken).toHaveBeenCalledTimes(1);
     });
     expect(mocks.toastSuccess).toHaveBeenCalledWith("OTP sent");
     expect(await screen.findByLabelText("OTP")).toBeInTheDocument();

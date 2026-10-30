@@ -173,7 +173,7 @@ describe("useCurrentLocation utilities", () => {
       failureCallback({ code: 1, message: "late failure" });
     });
 
-    it("rejects mocked and weak sample sets", async () => {
+    it("rejects mocked samples and accepts approximate location accuracy", async () => {
       mockGeo.watchPosition
         .mockImplementationOnce(success => {
           success({ ...position(1, 2), mocked: true });
@@ -192,7 +192,7 @@ describe("useCurrentLocation utilities", () => {
           samples: 1,
           maxAcceptedAccuracyMeters: 100,
         }),
-      ).rejects.toThrow("accuracy is weak");
+      ).resolves.toMatchObject({ accuracy: 180 });
     });
 
     it.each([
@@ -265,7 +265,7 @@ describe("useCurrentLocation utilities", () => {
       });
     });
 
-    it("normalizes missing fallback metadata", async () => {
+    it("rejects unknown fallback accuracy instead of reporting zero-meter accuracy", async () => {
       mockGeo.watchPosition.mockImplementation((_success, failure) => {
         failure({});
         return 14;
@@ -277,13 +277,28 @@ describe("useCurrentLocation utilities", () => {
       );
       jest.spyOn(Date, "now").mockReturnValue(700);
 
-      await expect(getBestCurrentCoordinates()).resolves.toEqual({
-        latitude: 5,
-        longitude: 6,
-        accuracy: 0,
-        timestamp: 700,
-        mocked: false,
+      await expect(getBestCurrentCoordinates()).rejects.toThrow("accuracy is too weak");
+    });
+
+    it("does not accept unusable GPS just because the watch timed out", async () => {
+      jest.useFakeTimers();
+      mockGeo.watchPosition.mockImplementation(success => {
+        success(position(19.14, 72.80, 500));
+        return 16;
       });
+      const pending = getBestCurrentCoordinates({ timeoutMs: 100, maxAcceptedAccuracyMeters: 50 });
+      const assertion = expect(pending).rejects.toThrow("accuracy is too weak");
+      await jest.advanceTimersByTimeAsync(100);
+      await assertion;
+    });
+
+    it.each([500, 0])("rejects inaccurate fallback readings (%sm)", async accuracy => {
+      mockGeo.watchPosition.mockImplementation((_success, failure) => {
+        failure({ code: 3, message: "timeout" });
+        return 17;
+      });
+      mockGeo.getCurrentPosition.mockImplementation(success => success(position(19.14, 72.80, accuracy)));
+      await expect(getBestCurrentCoordinates({ maxAcceptedAccuracyMeters: 50 })).rejects.toThrow("accuracy is too weak");
     });
 
     it.each([

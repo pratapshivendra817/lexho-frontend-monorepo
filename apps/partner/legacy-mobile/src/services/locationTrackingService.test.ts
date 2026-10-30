@@ -239,6 +239,14 @@ describe("locationTrackingService", () => {
   });
 
   describe("detectAndSyncCurrentLocation", () => {
+    it("rejects a failed GPS upload when going online requires backend sync", async () => {
+      const service = await loadService();
+      queueLocations(makePosition(28.6, 77.2, 20, 1000), makePosition(28.6, 77.2, 18, 1001));
+      sendDispatchLocation.mockRejectedValueOnce(new Error("backend down"));
+      const assertion = expect(service.detectAndSyncCurrentLocation(true)).rejects.toThrow("backend down");
+      await jest.advanceTimersByTimeAsync(3500);
+      await assertion;
+    });
     it("uses backend metadata when available and returns high confidence", async () => {
       const service = await loadService();
       queueLocations(

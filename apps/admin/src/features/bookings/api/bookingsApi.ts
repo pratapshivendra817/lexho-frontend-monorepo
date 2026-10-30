@@ -199,7 +199,7 @@ export async function manualDispatchOrder(orderId: string) {
 }
 
 export async function updateOrderLifecycle(orderId: string, lifecycle: DispatchLifecycleStatus) {
-  await api.patch(`/api/admin/dispatch/orders/${orderId}/lifecycle`, { lifecycle });
+  await api.patch(`/api/admin/dispatch/orders/${orderId}/lifecycle`, { status: lifecycle });
 }
 
 

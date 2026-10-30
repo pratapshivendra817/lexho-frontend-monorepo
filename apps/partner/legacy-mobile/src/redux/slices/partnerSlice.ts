@@ -1,8 +1,7 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import type { PartnerDashboardStats, PartnerProfile } from "../../types/partner";
+import type { PartnerDashboardStats } from "../../types/partner";
 
 type PartnerState = {
-  profile: PartnerProfile | null;
   stats: PartnerDashboardStats | null;
   online: boolean;
   loading: boolean;
@@ -21,7 +20,6 @@ type PartnerState = {
 };
 
 const initialState: PartnerState = {
-  profile: null,
   stats: null,
   online: false,
   loading: false,
@@ -32,9 +30,6 @@ const partnerSlice = createSlice({
   name: "partner",
   initialState,
   reducers: {
-    setPartnerProfile: (state, action: PayloadAction<PartnerProfile | null>) => {
-      state.profile = action.payload;
-    },
     setPartnerStats: (state, action: PayloadAction<PartnerDashboardStats | null>) => {
       state.stats = action.payload;
     },
@@ -64,5 +59,5 @@ const partnerSlice = createSlice({
   },
 });
 
-export const { setPartnerProfile, setPartnerStats, setOnlineStatus, setPartnerLoading, setLastKnownLocation } = partnerSlice.actions;
+export const { setPartnerStats, setOnlineStatus, setPartnerLoading, setLastKnownLocation } = partnerSlice.actions;
 export default partnerSlice.reducer;

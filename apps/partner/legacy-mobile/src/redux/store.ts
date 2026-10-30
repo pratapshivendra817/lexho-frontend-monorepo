@@ -15,6 +15,8 @@ import analyticsReducer from "./slices/analyticsSlice";
 import locationReducer from "./slices/locationSlice";
 import offlineReducer from "./slices/offlineSlice";
 
+const IMMUTABILITY_CHECK_WARN_AFTER_MS = 128;
+
 const rootReducer = combineReducers({
   auth: authReducer,
   partner: partnerReducer,
@@ -45,6 +47,9 @@ export const store = configureStore({
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: false,
+      // Keep mutation detection during development without flagging normal
+      // mobile-store checks as slow. This middleware is never bundled for production.
+      immutableCheck: __DEV__ ? { warnAfter: IMMUTABILITY_CHECK_WARN_AFTER_MS } : false,
     }),
 });
 

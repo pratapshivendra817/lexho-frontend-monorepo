@@ -61,7 +61,7 @@ const normalizeTicket = (row: unknown): PartnerSupportTicket => {
     status: (asString(source.status).toUpperCase() || "OPEN") as PartnerSupportTicketStatus,
     categoryId: asString(source.categoryId) || undefined,
     bookingId: asString(source.bookingId) || undefined,
-    priority: (asString(source.priority).toUpperCase() || "") as PartnerSupportTicketPriority | "",
+    priority: asString(source.priority).toUpperCase() as PartnerSupportTicketPriority || undefined,
     createdAt: asString(source.createdAt) || undefined,
     updatedAt: asString(source.updatedAt) || undefined,
     messages: Array.isArray(source.messages) ? source.messages.map(normalizeMessage) : undefined,

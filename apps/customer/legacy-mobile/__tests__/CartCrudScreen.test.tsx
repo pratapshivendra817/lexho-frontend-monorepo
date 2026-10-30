@@ -7,6 +7,13 @@ import { DEFAULT_CART_POLICY } from "../src/constants/cartPolicy";
 const mockDispatch = jest.fn();
 const mockNavigate = jest.fn();
 const mockCreateBooking = jest.fn();
+const mockApplyCoupon = jest.fn();
+const mockGetCartCoupons = jest.fn();
+const mockCouponQueryOptions = jest.fn();
+jest.mock("../src/api/couponApi", () => ({
+  applyCoupon: (...args: unknown[]) => mockApplyCoupon(...args),
+  getCartCoupons: (...args: unknown[]) => mockGetCartCoupons(...args),
+}));
 const mockCreateSubscriptionBooking = jest.fn();
 const mockGetAvailableTimeSlots = jest.fn();
 const mockGetCookFamilySizes = jest.fn();
@@ -34,13 +41,25 @@ jest.mock("@react-navigation/native", () => ({
 }));
 
 jest.mock("@tanstack/react-query", () => ({
-  useQuery: ({ queryKey, enabled = true }: any) => {
+  useQuery: ({ queryKey, enabled = true, queryFn }: any) => {
+    if (queryKey[0] === "cart-coupons") mockCouponQueryOptions({ queryKey, enabled, queryFn });
     if (enabled === false) {
       return { data: undefined, isLoading: false, isError: false, error: null };
     }
     const key = Array.isArray(queryKey) ? queryKey[0] : queryKey;
     return mockQueryResults[key] ?? { data: undefined, isLoading: false, isError: false, error: null };
   },
+  useMutation: (options: any) => ({
+    isPending: false,
+    mutate: async (variables: unknown) => {
+      try {
+        const data = await options.mutationFn(variables);
+        await options.onSuccess?.(data, variables);
+      } catch (error) {
+        await options.onError?.(error, variables);
+      }
+    },
+  }),
 }));
 
 jest.mock("@react-native-async-storage/async-storage", () =>
@@ -241,6 +260,8 @@ async function pressLabel(view: Awaited<ReturnType<typeof renderCart>>, label: s
   await fireEvent.press(view.getByLabelText(label));
 }
 
+jest.mock("../src/api/homeApi", () => ({ getCategories: jest.fn() }));
+
 describe("CartCrudScreen", () => {
   beforeEach(async () => {
     jest.useFakeTimers();
@@ -272,7 +293,7 @@ describe("CartCrudScreen", () => {
     mockState = buildState();
     mockDispatch.mockImplementation((action) => action);
     mockCreateBooking.mockResolvedValue({ data: { id: "BKG-101" } });
-    mockCreateSubscriptionBooking.mockResolvedValue({ bookingId: "SUB-101" });
+    mockCreateSubscriptionBooking.mockResolvedValue({ bookingId: "SUB-101", subscriptionId: "PLAN-5" });
     mockGetAvailableTimeSlots.mockResolvedValue([
       { slot: "06:15-06:30", available: true, instantEligible: true, etaMinutes: 15 },
       { slot: "07:00-07:15", available: true, instantEligible: false, etaMinutes: 60 },
@@ -290,7 +311,51 @@ describe("CartCrudScreen", () => {
     jest.restoreAllMocks();
   });
 
-  it("creates an instant booking and navigates to payment on API success", async () => {
+  it("does not show an empty coupon message before the list succeeds", async () => {
+    const view = await renderCart();
+    expect(view.queryByText("No coupons available right now.")).toBeNull();
+  });
+
+  it("lets customers refresh a successfully loaded empty coupon list", async () => {
+    const refetch = jest.fn();
+    mockQueryResults["cart-coupons"] = { data: [], isSuccess: true, isLoading: false, isError: false, refetch };
+    const view = await renderCart();
+    expect(view.getByText("No coupons available right now.")).toBeTruthy();
+    await pressLabel(view, "Refresh available coupons");
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes the selected service and category when validating a coupon", async () => {
+    mockState = buildState({ cart: { items: [cartItem({ categoryId: "3" })] } });
+    mockApplyCoupon.mockResolvedValue({ valid: false, message: "Not eligible" });
+    const view = await renderCart();
+    await fireEvent.changeText(view.getByLabelText("Coupon code"), "DIWALI20");
+    await pressLabel(view, "Apply coupon");
+    expect(mockApplyCoupon).toHaveBeenCalledWith(expect.objectContaining({ code: "DIWALI20", planId: 11, categoryId: 3, bookingType: "INSTANT" }));
+  });
+
+  it("lists campaigns and applies the validated discount to the cart total", async () => {
+    mockState = buildState({ cart: { items: [cartItem({ categoryId: "3" })] } });
+    mockQueryResults["cart-coupons"] = { data: [{ code: "CAMPAIGN50", title: "Campaign offer", description: "Limited time offer", discountType: "PERCENTAGE", discountValue: 20, minimumPurchaseAmount: 10 }], isLoading: false, isError: false };
+    mockApplyCoupon.mockResolvedValue({ valid: true, couponCode: "CAMPAIGN50", discountAmount: 10, finalAmount: 41.46 });
+    const view = await renderCart();
+    expect(view.getByText("Campaign offer")).toBeTruthy();
+    expect(view.getByText("Limited time offer")).toBeTruthy();
+    expect(view.getByText("20% off")).toBeTruthy();
+    const options = mockCouponQueryOptions.mock.calls.at(-1)?.[0];
+    expect(options.enabled).toBe(true);
+    await options.queryFn();
+    expect(mockGetCartCoupons).toHaveBeenCalledWith();
+    await pressLabel(view, "Apply CAMPAIGN50");
+    expect(mockApplyCoupon).toHaveBeenCalledWith({ planId: 11, categoryId: 3, bookingType: "INSTANT", amount: 51.46, code: "CAMPAIGN50" });
+    expect(view.getByText("Applied")).toBeTruthy();
+    expect(view.getAllByText(/41\.46/).length).toBeGreaterThan(0);
+    expect(view.getByText("Coupon discount")).toBeTruthy();
+  });
+
+  it.each([101, "b5f02d8a-b64b-4329-89f7-a7daa1f67ef5"])("books with saved address %s without asking for details again", async addressId => {
+    mockState.cart.addresses = mockState.cart.addresses.map((address: any) => ({ ...address, id: addressId }));
+    mockState.cart.selectedAddressId = addressId;
     const view = await renderCart();
 
     expect(view.getByText("My Cart")).toBeTruthy();
@@ -308,7 +373,7 @@ describe("CartCrudScreen", () => {
     await waitFor(() =>
       expect(mockCreateBooking).toHaveBeenCalledWith(expect.objectContaining({
         serviceId: "11",
-        addressId: "101",
+        addressId: String(addressId),
         latitude: 22.72,
         longitude: 75.86,
       })),
@@ -343,7 +408,7 @@ describe("CartCrudScreen", () => {
     const view = await renderCart();
 
     expect(view.getByText("Loading cart...")).toBeTruthy();
-    expect(view.getByText("Unable to load cart")).toBeTruthy();
+    expect(view.queryByText("Unable to load cart")).toBeNull();
     expect(view.getByText("Add services to start booking.")).toBeTruthy();
     expect(view.getByLabelText("Book now").props.accessibilityState).toEqual({ disabled: true });
 
@@ -563,6 +628,93 @@ describe("CartCrudScreen", () => {
     });
   });
 
+  it.each(["Cook At Home", "CookAt home", "Cleaning Service", "Breakfast At Home", "COOK", "CLEANING", "BREAKFAST_AT_HOME"])(
+    "shows only Instant and Scheduled for regular %s cart items",
+    async categoryName => {
+      mockState = buildState({ cart: { items: [cartItem({ categoryName })] } });
+      const view = await renderCart({ route: { params: { bookingMode: "SUBSCRIPTION" } } });
+      expect(view.queryByLabelText("Subscription")).toBeNull();
+      expect(view.getByLabelText("Instant").props.accessibilityState).toEqual({ selected: true, disabled: false });
+      await pressLabel(view, "Scheduled");
+      expect(view.getByLabelText("Scheduled").props.accessibilityState).toEqual({ selected: true, disabled: false });
+      expect(view.getByText("Mock TimePicker")).toBeTruthy();
+    },
+  );
+
+  it.each([
+    { name: "Chicken Curry Special Cook", familySize: "1-2 Members" },
+    { name: "Kitchen Cleaning" },
+    { name: "Breakfast preparation" },
+  ])("hides Subscription for $name when category metadata is missing", async item => {
+    mockState = buildState({ cart: { items: [cartItem(item)] } });
+    const view = await renderCart();
+    expect(view.queryByLabelText("Subscription")).toBeNull();
+    expect(view.getByLabelText("Instant")).toBeTruthy();
+    expect(view.getByLabelText("Scheduled")).toBeTruthy();
+  });
+
+  it("resolves category IDs when cart responses omit category names", async () => {
+    mockState = buildState({ cart: { items: [cartItem({ categoryId: "42" })] } });
+    mockQueryResults["cart-service-categories"] = { data: [{ id: "42", name: "Breakfast At Home" }] };
+    const view = await renderCart();
+    expect(view.queryByLabelText("Subscription")).toBeNull();
+    expect(view.getByLabelText("Instant")).toBeTruthy();
+    expect(view.getByLabelText("Scheduled")).toBeTruthy();
+  });
+
+  it("uses the category passed from service details when cart metadata is missing", async () => {
+    const view = await renderCart({ route: { params: { categoryName: "Cook At Home" } } });
+    expect(view.queryByLabelText("Subscription")).toBeNull();
+  });
+
+  it.each(["Cook At Home", "Cleaning Service", "Breakfast At Home"])(
+    "clears a previous repeat selection when adding a regular %s service",
+    async categoryName => {
+      const view = await renderCart({ route: { params: { recurringBooking: {
+        serviceId: 91, serviceName: "Existing repeat service", subscriptionServiceType: "CLEANING",
+        durationHours: 1, visits: 5, price: 1500,
+      } } } });
+      expect(view.getByLabelText("Subscription").props.accessibilityState.selected).toBe(true);
+      await view.rerender(<CartCrudScreen navigation={{ navigate: mockNavigate }} route={{ params: {
+        recurringBooking: null, categoryName,
+      } }} />);
+      expect(view.queryByLabelText("Subscription")).toBeNull();
+      expect(view.queryByText("Existing repeat service")).toBeNull();
+      expect(view.getByLabelText("Instant").props.accessibilityState.selected).toBe(true);
+      expect(view.getByLabelText("Scheduled")).toBeTruthy();
+    },
+  );
+
+  it.each([
+    ["Cook At Home", "COOK"],
+    ["Cleaning Service", "CLEANING"],
+    ["Vehicle Wash", "VEHICLE_WASH"],
+    ["Fitness & Wellness", "FITNESS_WELLNESS"],
+  ])("shows only Subscription for %s from Repeat Booking despite a previous scheduled mode", async (categoryName, subscriptionServiceType) => {
+    mockState = buildState({ cart: { items: [cartItem({ categoryName })], scheduledTime: "2099-05-21T07:00:00" } });
+    const view = await renderCart({ route: { params: { categoryName, bookingMode: "SCHEDULED", recurringBooking: {
+      serviceId: 91, serviceName: "Repeat service", subscriptionServiceType,
+      durationHours: 1, visits: 5, price: 1500,
+    } } } });
+    expect(view.getByLabelText("Subscription").props.accessibilityState.selected).toBe(true);
+    expect(view.queryByLabelText("Instant")).toBeNull();
+    expect(view.queryByLabelText("Scheduled")).toBeNull();
+  });
+
+  it.each(["Cook At Home", "Cleaning Service", "Breakfast At Home", "Vehicle Wash", "Fitness & Wellness", "Party Services", "Other service"])(
+    "shows only Scheduled for %s from the Scheduled Booking flow",
+    async categoryName => {
+      mockState = buildState({ cart: { items: [cartItem({ categoryName })] } });
+      const view = await renderCart({ route: { params: {
+        categoryName, bookingMode: "SCHEDULED", scheduleMode: "FIXED", recurringBooking: null,
+      } } });
+      expect(view.queryByLabelText("Instant")).toBeNull();
+      expect(view.queryByLabelText("Subscription")).toBeNull();
+      expect(view.getByLabelText("Scheduled").props.accessibilityState).toEqual({ selected: true, disabled: false });
+      expect(view.getByText("Mock TimePicker")).toBeTruthy();
+    },
+  );
+
   it("switches booking modes and persists a confirmed scheduled slot", async () => {
     const view = await renderCart();
 
@@ -583,6 +735,35 @@ describe("CartCrudScreen", () => {
     expect(mockNavigate).toHaveBeenCalledWith("RecurringBooking");
     await pressLabel(view, "Instant");
     expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "cart/setScheduledTime" }));
+  });
+
+  it.each(["Vehicle Wash", "Fitness & Wellness", "VEHICLE_WASH", "Fitness and Wellness"])(
+    "hides Instant and defaults to Scheduled for %s, retaining Subscription",
+    async categoryName => {
+      mockState = buildState({ cart: { items: [cartItem({ categoryName })] } });
+      const view = await renderCart();
+
+      expect(view.queryByLabelText("Instant")).toBeNull();
+      expect(view.getByLabelText("Scheduled").props.accessibilityState).toEqual({ selected: true, disabled: false });
+      expect(view.getByText("Mock TimePicker")).toBeTruthy();
+      expect(mockCreateBooking).not.toHaveBeenCalled();
+      await pressLabel(view, "Subscription");
+      expect(mockNavigate).toHaveBeenCalledWith("RecurringBooking");
+      expect(view.getByLabelText("Subscription").props.accessibilityState.selected).toBe(true);
+    },
+  );
+
+  it("hides Instant when a restricted service is added to a mixed cart", async () => {
+    mockState = buildState({ cart: { items: [cartItem(), cartItem({ itemId: 22, serviceId: 22, categoryName: "Vehicle Wash" })] } });
+    const view = await renderCart();
+    expect(view.queryByLabelText("Instant")).toBeNull();
+    expect(view.getByLabelText("Scheduled").props.accessibilityState.selected).toBe(true);
+  });
+
+  it("uses the route category before cart category details are available", async () => {
+    const view = await renderCart({ route: { params: { categoryName: "Fitness & Wellness" } } });
+    expect(view.queryByLabelText("Instant")).toBeNull();
+    expect(view.getByLabelText("Scheduled").props.accessibilityState.selected).toBe(true);
   });
 
   it("disables instant and subscription modes for party bookings", async () => {
@@ -686,21 +867,25 @@ describe("CartCrudScreen", () => {
     expect(view.getByText("Frequency: Monday")).toBeTruthy();
     await pressText(view, /Pay now/);
     await waitFor(() =>
-      expect(mockCreateSubscriptionBooking).toHaveBeenCalledWith(expect.objectContaining({
-        serviceId: 91,
-        familySize: "SMALL",
-        addressId: 101,
-      })),
+      expect(mockCreateSubscriptionBooking).toHaveBeenCalledWith(
+        expect.objectContaining({
+          serviceId: 91,
+          familySize: "SMALL",
+          addressId: 101,
+        }),
+        expect.any(String),
+      ),
     );
     expect(mockNavigate).toHaveBeenCalledWith("Payment", expect.objectContaining({
       bookingId: "SUB-101",
+      subscriptionId: "PLAN-5",
       bookingMode: "SUBSCRIPTION",
     }));
 
     await cleanup();
     jest.clearAllMocks();
     mockState = buildState({ cart: { items: [] } });
-    mockCreateSubscriptionBooking.mockResolvedValueOnce({});
+    mockCreateSubscriptionBooking.mockResolvedValueOnce({ id: "PLAN-5", subscriptionId: "PLAN-5" });
     jest.spyOn(Alert, "alert").mockImplementation(jest.fn());
     view = await renderCart({ route: { params: { recurringBooking } } });
     await pressText(view, /Pay now/);
@@ -723,6 +908,33 @@ describe("CartCrudScreen", () => {
 
     await pressLabel(view, "Remove recurring booking");
     expect(view.queryByText("Cook Subscription")).toBeNull();
+  });
+
+  it("does not block repeat booking checkout on regular cart refresh", async () => {
+    const recurringBooking = {
+      serviceId: 91,
+      serviceName: "Cleaning Subscription",
+      subscriptionServiceType: "CLEANING",
+      frequencyDays: ["Monday"],
+      startDate: "2099-06-01",
+      endDate: "2099-06-30",
+      visits: 4,
+      durationHours: 2,
+      timeSlot: "10:00",
+      price: 4500,
+    };
+    mockState = buildState({ cart: { items: [] } });
+    mockThunkOutcomes["cart/fetch"] = new Error("regular cart endpoint unavailable");
+    mockCreateSubscriptionBooking.mockResolvedValueOnce({ data: { bookingId: "SUB-91" } });
+
+    const view = await renderCart({ route: { params: { recurringBooking } } });
+    await pressText(view, /Pay now/);
+
+    await waitFor(() => expect(mockCreateSubscriptionBooking).toHaveBeenCalled());
+    expect(Alert.alert).not.toHaveBeenCalledWith(
+      "Service unavailable",
+      "Unable to validate latest cart. Please retry.",
+    );
   });
 
   it("renders image and null-field edge cases without crashing", async () => {

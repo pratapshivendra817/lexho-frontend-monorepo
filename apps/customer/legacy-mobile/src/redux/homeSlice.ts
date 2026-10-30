@@ -23,6 +23,7 @@ const initialState: HomeState = {
   recommended: [],
   quick: [],
 };
+const POPULAR_CATEGORY_BATCH_SIZE = 4;
 
 export const fetchHomeData = createAsyncThunk("home/fetch", async () => {
   const [bannersRes, categoriesRes] = await Promise.allSettled([
@@ -92,12 +93,19 @@ export const fetchHomeData = createAsyncThunk("home/fetch", async () => {
       .slice(0, 12);
     if (categoryIds.length > 0) {
       const merged: any[] = [];
-      for (const categoryId of categoryIds) {
-        const rows = await getPopularServicesByCategory(categoryId);
-        rows.forEach((row: any) => {
-          merged.push({
-            ...row,
-            categoryId: row?.categoryId ?? categoryId,
+      for (let offset = 0; offset < categoryIds.length; offset += POPULAR_CATEGORY_BATCH_SIZE) {
+        const categoryBatch = categoryIds.slice(offset, offset + POPULAR_CATEGORY_BATCH_SIZE);
+        const responses = await Promise.allSettled(
+          categoryBatch.map((categoryId) => getPopularServicesByCategory(categoryId)),
+        );
+        responses.forEach((response, index) => {
+          if (response.status !== "fulfilled") return;
+          const categoryId = categoryBatch[index];
+          response.value.forEach((row: any) => {
+            merged.push({
+              ...row,
+              categoryId: row?.categoryId ?? categoryId,
+            });
           });
         });
       }

@@ -160,7 +160,7 @@ export function getDisplayCookCoverageItems(params: {
           quantity: quantity != null && quantity > 0 ? quantity : undefined,
         }));
       })
-      .filter((item): item is { name: string; quantity?: number } => Boolean(item?.name));
+      .filter((item) => Boolean(item.name));
 
   const formatItem = (item: { name: string; quantity?: number }) =>
     item.quantity != null && item.quantity > 1 ? `${item.name} x${item.quantity}` : item.name;

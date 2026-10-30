@@ -1,6 +1,7 @@
 ﻿import type { AdminRouteConfig } from "./types";
 
 import { adminPaymentsRoutes } from "../features/admin-payments";
+import { couponsRoutes } from "../features/coupons";
 import { apiReadinessRoutes } from "../features/api-readiness";
 import { bannersRoutes } from "../features/banners";
 import { bookingsRoutes } from "../features/bookings";
@@ -15,7 +16,6 @@ import { notificationsRoutes } from "../features/notifications";
 import { operationsRoutes } from "../features/operations";
 import { popularServicesRoutes } from "../features/popular-services";
 import { payoutsRoutes } from "../features/payouts";
-import { partnersRoutes } from "../features/providers";
 import { recommendedAddonsRoutes } from "../features/recommended-addons";
 import { reviewsRoutes } from "../features/reviews";
 import { sectionsRoutes } from "../features/sections";
@@ -26,17 +26,23 @@ import { subscriptionsRoutes } from "../features/subscriptions";
 import { supportRoutes } from "../features/support";
 import { usersRoutes } from "../features/users";
 import { liveDispatchRoutes } from "../features/live-dispatch";
+import { legalContentRoutes } from "../features/legal-content";
+import { screeningCentreRoutes } from "../features/screening-centre";
+import { websiteCitiesRoutes } from "../features/website-cities";
 import { bannerManagementRoutes } from "../modules/banner";
+import { accountDeletionRoutes } from "../features/account-deletion";
+import { socialMediaRoutes } from "../features/social-media";
+import { partnerOnboardingRoutes } from "../features/partner-onboarding";
 
 export const adminRoutes: AdminRouteConfig[] = [
   ...dashboardRoutes,
+  ...couponsRoutes,
   ...emergencySosRoutes,
   ...customerProfileControlRoutes,
   ...categoriesRoutes,
   ...usersRoutes,
   ...bookingsRoutes,
   ...cartBookingSettingsRoutes,
-  ...partnersRoutes,
   ...servicesRoutes,
   ...cookFamilySizesRoutes,
   ...cleaningCoverageRoutes,
@@ -46,6 +52,11 @@ export const adminRoutes: AdminRouteConfig[] = [
   ...sectionsRoutes,
   ...serviceableAreaRoutes,
   ...liveDispatchRoutes,
+  ...accountDeletionRoutes,
+  ...socialMediaRoutes,
+  ...legalContentRoutes,
+  ...websiteCitiesRoutes,
+  ...screeningCentreRoutes,
   ...notificationsRoutes,
   ...popularServicesRoutes,
   ...recommendedAddonsRoutes,
@@ -56,6 +67,5 @@ export const adminRoutes: AdminRouteConfig[] = [
   ...payoutsRoutes,
   ...operationsRoutes,
   ...apiReadinessRoutes,
+  ...partnerOnboardingRoutes,
 ];
-
-

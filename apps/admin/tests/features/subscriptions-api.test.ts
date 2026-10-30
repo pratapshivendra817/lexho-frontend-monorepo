@@ -24,6 +24,7 @@ import {
   getAdminSubscriptionAssignment,
   getAdminSubscriptionCalendar,
   getAdminSubscriptionDetail,
+  getAdminSubscriptionEligiblePartners,
   getAdminSubscriptions,
   replaceAdminSubscriptionPartner,
   updateAdminSubscriptionStatus,
@@ -152,11 +153,35 @@ describe("subscriptions api", () => {
     });
   });
 
+  it("uses the canonical admin subscription change-request endpoint consistently", async () => {
+    mocks.get.mockResolvedValue({ data: { data: [] } });
+    mocks.patch.mockResolvedValue({ data: { ok: true } });
+
+    await expect(import("@/features/subscriptions/api/subscriptionsApi").then(({ getAdminSubscriptionChangeRequests }) =>
+      getAdminSubscriptionChangeRequests("15"),
+    )).resolves.toEqual([]);
+    await expect(import("@/features/subscriptions/api/subscriptionsApi").then(({ reviewAdminSubscriptionChangeRequest }) =>
+      reviewAdminSubscriptionChangeRequest(101, { status: "APPROVED", reason: "Looks good" }),
+    )).resolves.toEqual({ ok: true });
+
+    expect(mocks.get).toHaveBeenCalledTimes(1);
+    expect(mocks.get).toHaveBeenCalledWith("/api/subscriptions/change-requests/admin");
+    expect(mocks.patch).toHaveBeenCalledTimes(1);
+    expect(mocks.patch).toHaveBeenCalledWith("/api/subscriptions/change-requests/101/review", {
+      status: "APPROVED",
+      reason: "Looks good",
+    });
+  });
+
   it("calls subscription mutation endpoints with exact payloads", async () => {
     mocks.patch.mockResolvedValue({ data: { ok: true } });
     mocks.post.mockResolvedValue({ data: { data: { subscriptionId: 15, partnerId: 9 } } });
 
     await expect(updateAdminSubscriptionStatus("15", "PAUSED")).resolves.toEqual({ ok: true });
+    await expect(updateAdminSubscriptionStatus("15", "active" as never)).resolves.toEqual({ ok: true });
+    await expect(updateAdminSubscriptionStatus("15", "NOT_A_STATUS" as never)).rejects.toThrow(
+      "Invalid subscription status",
+    );
     await expect(updateAdminSubscriptionVisitStatus("15", 3, "COMPLETED")).resolves.toEqual({ ok: true });
     await expect(assignAdminSubscriptionPartner("15", { partnerId: 9, reason: "best fit" })).resolves.toMatchObject({
       subscriptionId: 15,
@@ -170,13 +195,23 @@ describe("subscriptions api", () => {
     });
 
     expect(mocks.patch).toHaveBeenNthCalledWith(1, "/api/admin/subscriptions/15/status", { status: "PAUSED" });
-    expect(mocks.patch).toHaveBeenNthCalledWith(2, "/api/admin/subscriptions/15/visits/3/status", { status: "COMPLETED" });
+    expect(mocks.patch).toHaveBeenNthCalledWith(2, "/api/admin/subscriptions/15/status", { status: "ACTIVE" });
+    expect(mocks.patch).toHaveBeenNthCalledWith(3, "/api/admin/subscriptions/15/visits/3/status", { status: "COMPLETED" });
     expect(mocks.post).toHaveBeenNthCalledWith(1, "/api/admin/subscriptions/15/assign-partner", { partnerId: 9, reason: "best fit" });
     expect(mocks.post).toHaveBeenNthCalledWith(2, "/api/admin/subscriptions/15/replacement-partner", { partnerId: 10, reason: "reassign" });
-    expect(mocks.patch).toHaveBeenNthCalledWith(3, "/api/admin/subscriptions/15/visits/7/assign-partner", {
+    expect(mocks.patch).toHaveBeenNthCalledWith(4, "/api/admin/subscriptions/15/visits/7/assign-partner", {
       partnerId: 10,
       reason: "visit",
     });
+  });
+
+  it("loads only the backend-provided eligible subscription partners", async () => {
+    mocks.get.mockResolvedValue({ data: { data: [{ partnerId: 5, partnerName: "Approved partner" }] } });
+
+    await expect(getAdminSubscriptionEligiblePartners("22")).resolves.toEqual([
+      { partnerId: 5, partnerName: "Approved partner" },
+    ]);
+    expect(mocks.get).toHaveBeenCalledWith("/api/admin/subscriptions/22/eligible-partners");
   });
 
   it("maps pricing payloads, sorting, defaults, and delete messages", async () => {

@@ -64,6 +64,14 @@ export function ServiceInProgressScreen({ route, navigation }: { route: ServiceI
             <Text style={styles.value}>{formatTime(details?.estimatedCompletionTime)}</Text>
           </View>
         </View>
+
+        {String(details?.serviceCompletePin ?? "").trim() ? (
+          <View style={styles.pinCard}>
+            <Text style={styles.label}>Service Complete PIN</Text>
+            <Text style={styles.pinValue}>{details?.serviceCompletePin}</Text>
+            <Text style={styles.meta}>Expires: {formatTime(details?.serviceCompletePinExpiresAt)}</Text>
+          </View>
+        ) : null}
       </View>
     </BookingStageShell>
   );
@@ -106,6 +114,16 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     gap: 3,
   },
+  pinCard: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: COLORS.borderSoft,
+    backgroundColor: COLORS.offWhite,
+    padding: spacing.sm,
+    gap: 4,
+    alignItems: "center",
+  },
+  pinValue: { color: bookingTheme.colors.textPrimary, fontSize: 26, fontWeight: "900", letterSpacing: 4 },
   label: { color: COLORS.slate500, fontSize: 10, fontWeight: "900", textTransform: "uppercase" },
   value: { color: bookingTheme.colors.textPrimary, fontSize: 13, fontWeight: "900" },
 });

@@ -228,6 +228,17 @@ describe("banner and popular service APIs", () => {
     await expect(getPopularServicesByCategory("cleaning")).resolves.toEqual([expect.objectContaining({ id: 9, thumbnailUrl: "http://api.test:8082/relative.png" })]);
   });
 
+  it("falls back when an available popular endpoint returns no rows", async () => {
+    mockApi.get
+      .mockResolvedValueOnce({ data: { data: [] } })
+      .mockResolvedValueOnce({ data: { data: { data: [{ id: 10, serviceName: "Deep Cleaning" }] } } });
+
+    await expect(getPopularServicesByCategory("2")).resolves.toEqual([
+      expect.objectContaining({ id: 10, serviceName: "Deep Cleaning" }),
+    ]);
+    expect(mockApi.get).toHaveBeenCalledTimes(2);
+  });
+
   it("handles blank, 404, invalid, and compatibility popular helpers", async () => {
     await expect(getPopularServicesByCategory(" ")).resolves.toEqual([]);
     mockApi.get.mockRejectedValueOnce({ response: { status: 404 } }).mockResolvedValueOnce({ data: { invalid: true } });

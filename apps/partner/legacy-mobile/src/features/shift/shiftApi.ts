@@ -1,6 +1,7 @@
 import API, { getReadableApiError } from "../../services/api";
 import type { LocationPayload } from "./types";
 import type { ShiftHistoryItem } from "./types";
+import { getShiftState, saveShiftState } from "./shiftStorage";
 
 export type StartShiftPayload = {
   shiftDate?: string;
@@ -27,6 +28,24 @@ const assertContractSuccess = (payload: unknown, expectedMessages: string[], fal
   // Backends can return different success messages across environments.
   // Treat success=true as source of truth instead of hard message matching.
 };
+
+const assertServiceAvailability = (payload: unknown, online: boolean) => {
+  const envelope = readEnvelope(payload);
+  const state = (envelope.data ?? payload) as { online?: boolean } | null;
+  if (envelope.success === false || (state?.online !== online && envelope.success !== true)) {
+    throw new Error("Service availability update failed");
+  }
+};
+
+async function persistStartedShift() {
+  const previous = await getShiftState().catch(() => null);
+  await saveShiftState({
+    shiftStarted: true,
+    online: previous?.online ?? false,
+    locationEnabled: previous?.locationEnabled ?? false,
+    startedAt: previous?.startedAt ?? Date.now(),
+  }).catch(() => null);
+}
 
 export async function startShiftApi(payload?: StartShiftPayload) {
   const payloadCandidates = payload
@@ -55,11 +74,13 @@ export async function startShiftApi(payload?: StartShiftPayload) {
     try {
       const { data } = await API.post("/api/partner/dispatch/shift/start");
       assertContractSuccess(data, ["Partner shift started"], "Shift start failed");
+      await persistStartedShift();
       return data;
     } catch {
       try {
         const { data } = await API.post("/api/v1/partner/dispatch/shift/start");
         assertContractSuccess(data, ["Partner shift started"], "Shift start failed");
+        await persistStartedShift();
         return data;
       } catch {
         // Try payload variants if no-body request fails.
@@ -71,12 +92,14 @@ export async function startShiftApi(payload?: StartShiftPayload) {
       try {
         const { data } = await API.post("/api/partner/dispatch/shift/start", candidate);
         assertContractSuccess(data, ["Partner shift started"], "Shift start failed");
+        await persistStartedShift();
         return data;
       } catch (error) {
         lastError = error;
         try {
           const { data } = await API.post("/api/v1/partner/dispatch/shift/start", candidate);
           assertContractSuccess(data, ["Partner shift started"], "Shift start failed");
+          await persistStartedShift();
           return data;
         } catch {
           // continue trying other payloads
@@ -162,20 +185,39 @@ export async function setPartnerAvailabilityApi(online: boolean, maxActiveJobs?:
       throw lastDispatchError;
     }
 
-    // Keep partner availability in sync when endpoint exists.
+    // Dispatch and service availability must both succeed before showing Online.
+    let serviceUpdated = false;
+    let serviceError: unknown;
     for (const payload of payloadCandidates) {
       try {
-        await API.put("/api/v1/partner/availability", payload);
+        const { data } = await API.put("/api/v1/partner/availability", payload);
+        assertServiceAvailability(data, online);
+        serviceUpdated = true;
         break;
       } catch {
         try {
-          await API.put("/api/partner/availability", payload);
+          const { data } = await API.put("/api/partner/availability", payload);
+          assertServiceAvailability(data, online);
+          serviceUpdated = true;
           break;
-        } catch {
-          // optional sync call
+        } catch (error) {
+          serviceError = error;
         }
       }
     }
+    if (!serviceUpdated) {
+      if (online) {
+        await API.put("/api/v1/partner/dispatch/availability", { online: false }).catch(() => null);
+      }
+      throw serviceError ?? new Error("Service availability update failed");
+    }
+    const previous = await getShiftState().catch(() => null);
+    await saveShiftState({
+      shiftStarted: previous?.shiftStarted ?? true,
+      online,
+      locationEnabled: previous?.locationEnabled ?? online,
+      startedAt: previous?.startedAt ?? Date.now(),
+    }).catch(() => null);
   } catch (error) {
     throw new Error(getReadableApiError(error, "Unable to update availability"));
   }

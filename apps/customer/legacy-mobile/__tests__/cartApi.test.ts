@@ -21,7 +21,7 @@ const { api } = jest.requireMock("../src/api/client") as { api: { get: jest.Mock
 
 describe("cartApi", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
   });
 
   it("maps cart item name and imageUrl from nested service payload", async () => {
@@ -58,7 +58,7 @@ describe("cartApi", () => {
       data: {
         data: {
           slots: [
-            { label: "11:00-13:00" },
+            { label: "11:00-13:00", available: true },
             { startTime: "13:00" },
             { time: "15:00" },
           ],
@@ -70,25 +70,30 @@ describe("cartApi", () => {
     expect(api.get).toHaveBeenCalledWith("/api/customer/cart/slots", {
       params: { date: "2026-05-05" },
     });
-    expect(slots).toHaveLength(68);
+    expect(slots).toHaveLength(1);
     expect(slots[0]).toEqual({
-      slot: "06:00-06:15",
+      slot: "11:00-13:00",
       available: true,
       instantEligible: false,
       etaMinutes: 999,
     });
   });
 
-  it("returns fallback full-day slot list when slots API fails", async () => {
+  it("rejects instead of inventing available slots when the API fails", async () => {
     api.get.mockRejectedValueOnce(new Error("network error"));
-    const slots = await getAvailableTimeSlots("2026-05-05");
-    expect(slots).toHaveLength(68);
-    expect(slots[slots.length - 1]).toEqual({
-      slot: "22:45-23:00",
-      available: true,
-      instantEligible: false,
-      etaMinutes: 999,
-    });
+    await expect(getAvailableTimeSlots("2026-05-05")).rejects.toThrow();
+  });
+
+  it("keeps configured half-hour intervals and unavailable flags from the backend", async () => {
+    api.get.mockResolvedValueOnce({ data: { data: { slots: [
+      { slot: "15:30-16:00", available: true },
+      { slot: "16:00-16:30", available: false },
+    ] } } });
+    const slots = await getAvailableTimeSlots("2026-09-15");
+    expect(slots).toEqual([
+      expect.objectContaining({ slot: "15:30-16:00", available: true }),
+      expect.objectContaining({ slot: "16:00-16:30", available: false }),
+    ]);
   });
 
   it("loads cart policy from fallback endpoints or defaults", async () => {
@@ -113,15 +118,161 @@ describe("cartApi", () => {
     });
   });
 
-  it("uses the legacy add endpoint only for 404/405", async () => {
+  it("uses the legacy add endpoint when the customer route is unavailable", async () => {
     (api as any).post
       .mockRejectedValueOnce({ response: { status: 404 } })
       .mockResolvedValueOnce({ data: { matchedPartners: null } });
     (api as any).get.mockResolvedValueOnce({ data: { items: [], grandTotal: 0 } });
     await expect(addCustomerCartItem({ serviceId: 2, quantity: 0 })).resolves.toMatchObject({ matchedPartners: 0, assignmentMode: undefined });
-    expect((api as any).post).toHaveBeenNthCalledWith(2, "/api/customer/cart/add", { serviceId: 2, quantity: 0 });
+    expect((api as any).post).toHaveBeenNthCalledWith(2, "/api/cart/add", { serviceId: 2, quantity: 0 });
     (api as any).post.mockRejectedValueOnce({ response: { status: 500 }, message: "server" });
     await expect(addCustomerCartItem({ serviceId: 2, quantity: 1 })).rejects.toThrow("server");
+  });
+
+  it("falls back to the legacy add endpoint after a 403 from the customer route", async () => {
+    (api as any).post
+      .mockRejectedValueOnce({ response: { status: 403 } })
+      .mockResolvedValueOnce({ data: { items: [{ itemId: 9, serviceId: 2 }], grandTotal: 0 } });
+    (api as any).get.mockResolvedValueOnce({ data: { items: [{ itemId: 9, serviceId: 2 }], grandTotal: 0 } });
+
+    await expect(addCustomerCartItem({ serviceId: 2, quantity: 1 })).resolves.toMatchObject({
+      requestStatus: "PENDING",
+      items: [{ itemId: 9, serviceId: 2 }],
+    });
+    expect((api as any).post).toHaveBeenNthCalledWith(2, "/api/cart/add", { serviceId: 2, quantity: 1 });
+  });
+
+  it("uses the fallback cart read endpoint when the customer cart route is unavailable", async () => {
+    (api as any).post.mockResolvedValueOnce({ data: { matchedPartners: 1 } });
+    (api as any).get
+      .mockRejectedValueOnce({ response: { status: 404 } })
+      .mockResolvedValueOnce({ data: { items: [{ itemId: 7, serviceId: 2 }], grandTotal: 0 } });
+
+    await expect(addCustomerCartItem({ serviceId: 2, quantity: 1 })).resolves.toMatchObject({
+      requestStatus: "PENDING",
+      matchedPartners: 1,
+      items: [{ itemId: 7, serviceId: 2 }],
+    });
+    expect((api as any).get).toHaveBeenNthCalledWith(2, "/api/cart");
+  });
+
+  it("falls back to legacy cart mutation endpoints when the customer routes are unavailable", async () => {
+    (api as any).put.mockRejectedValueOnce({ response: { status: 404 } }).mockResolvedValueOnce({ data: { items: [{ itemId: 1, serviceId: 5 }], grandTotal: 0 } });
+    (api as any).delete
+      .mockRejectedValueOnce({ response: { status: 404 } })
+      .mockResolvedValueOnce({ data: { items: [], grandTotal: 0 } })
+      .mockRejectedValueOnce({ response: { status: 404 } })
+      .mockResolvedValueOnce({ data: { items: [], grandTotal: 0 } });
+    (api as any).get
+      .mockResolvedValueOnce({ data: { items: [{ itemId: 1, serviceId: 5 }], grandTotal: 0 } })
+      .mockResolvedValueOnce({ data: { items: [], grandTotal: 0 } })
+      .mockResolvedValueOnce({ data: { items: [], grandTotal: 0 } });
+
+    await expect(updateCustomerCartItem({ itemId: 1, quantity: 2 })).resolves.toMatchObject({ items: [{ serviceId: 5 }] });
+    await expect(removeCustomerCartItem(1)).resolves.toMatchObject({ items: [] });
+    await expect(clearCustomerCart()).resolves.toMatchObject({ items: [] });
+    expect((api as any).put).toHaveBeenNthCalledWith(2, "/api/cart/item", { itemId: 1, quantity: 2 });
+    expect((api as any).delete).toHaveBeenNthCalledWith(2, "/api/cart/item/1");
+    expect((api as any).delete).toHaveBeenNthCalledWith(4, "/api/cart/clear");
+  });
+
+  it("resolves the real cart item id before deleting when the app is holding a stale or service-level id", async () => {
+    (api as any).delete
+      .mockRejectedValueOnce({ response: { status: 404 } })
+      .mockResolvedValueOnce({ data: { items: [], grandTotal: 0 } });
+    (api as any).get.mockResolvedValueOnce({
+      data: {
+        data: {
+          items: [{ itemId: 42, serviceId: 11, name: "AC Service", price: 499, quantity: 1, totalPrice: 499 }],
+          grandTotal: 499,
+        },
+      },
+    }).mockResolvedValueOnce({
+      data: { data: { items: [], grandTotal: 0 } },
+    });
+
+    await expect(removeCustomerCartItem(11)).resolves.toMatchObject({ items: [] });
+    expect((api as any).delete).toHaveBeenNthCalledWith(1, "/api/customer/cart/item/42");
+    expect((api as any).delete).toHaveBeenNthCalledWith(2, "/api/cart/item/42");
+  });
+
+  it("keeps the add-to-cart request successful when the refreshed cart read fails after a successful POST", async () => {
+    (api as any).post.mockResolvedValueOnce({
+      data: {
+        data: {
+          matchedPartners: 2,
+          assignmentMode: "AUTO",
+          items: [{ itemId: 42, serviceId: 9, name: "Deep Cleaning", price: 320, quantity: 1, totalPrice: 320 }],
+          grandTotal: 320,
+        },
+      },
+    });
+    (api as any).get.mockRejectedValueOnce(new Error("cart read failed"));
+
+    await expect(addCustomerCartItem({ serviceId: 9, quantity: 1 })).resolves.toMatchObject({
+      requestStatus: "PENDING",
+      matchedPartners: 2,
+      assignmentMode: "AUTO",
+      items: [expect.objectContaining({ serviceId: 9, name: "Deep Cleaning" })],
+    });
+  });
+
+  it("keeps the added item when the first refreshed cart read is transiently empty", async () => {
+    (api as any).post.mockResolvedValueOnce({
+      data: {
+        data: {
+          itemId: 43,
+          serviceId: 10,
+          name: "Bathroom Cleaning",
+          price: 250,
+          quantity: 1,
+          totalPrice: 250,
+        },
+      },
+    });
+    (api as any).get
+      .mockResolvedValueOnce({ data: { data: { items: [], grandTotal: 0 } } })
+      .mockResolvedValueOnce({ data: { data: { items: [{ itemId: 43, serviceId: 10, name: "Bathroom Cleaning", price: 250, quantity: 1, totalPrice: 250 }], grandTotal: 250 } } });
+
+    await expect(addCustomerCartItem({ serviceId: 10, quantity: 1 })).resolves.toMatchObject({
+      items: [expect.objectContaining({ serviceId: 10, name: "Bathroom Cleaning" })],
+    });
+  });
+
+  it("returns a safe empty cart instead of throwing when cart refresh fails after quantity update", async () => {
+    (api as any).put.mockResolvedValueOnce({ data: {} });
+    (api as any).get.mockRejectedValueOnce(new Error("cart read failed"));
+
+    await expect(updateCustomerCartItem({ itemId: 1, quantity: 2 })).resolves.toMatchObject({
+      items: [],
+      grandTotal: 0,
+      requestStatus: "IDLE",
+    });
+  });
+
+  it("normalizes a single-item add response into the cart shape so the newly added service is visible immediately", async () => {
+    (api as any).post.mockResolvedValueOnce({
+      data: {
+        data: {
+          itemId: 77,
+          serviceId: 15,
+          name: "Kitchen Sanitization",
+          price: 450,
+          quantity: 1,
+          totalPrice: 450,
+          matchedPartners: 1,
+          assignmentMode: "AUTO",
+        },
+      },
+    });
+    (api as any).get.mockRejectedValueOnce(new Error("cart read failed"));
+
+    await expect(addCustomerCartItem({ serviceId: 15, quantity: 1 })).resolves.toMatchObject({
+      requestStatus: "PENDING",
+      matchedPartners: 1,
+      assignmentMode: "AUTO",
+      items: [expect.objectContaining({ serviceId: 15, name: "Kitchen Sanitization" })],
+    });
   });
 
   it("updates, removes, clears, and patches customer cart", async () => {
@@ -141,10 +292,21 @@ describe("cartApi", () => {
     (api as any).get
       .mockResolvedValueOnce({ data: { data: { items: [{ id: "2", line1: "Home", city: "Indore", pincode: 452001, latitude: "1", longitude: "2", isDefault: true }] } } })
       .mockResolvedValueOnce({ data: { content: [{ id: 3, fullAddress: "Work" }] } });
-    await expect(getCustomerAddresses()).resolves.toEqual([expect.objectContaining({ id: 2, fullAddress: "Home", default: true })]);
+    await expect(getCustomerAddresses()).resolves.toEqual([expect.objectContaining({ id: "2", fullAddress: "Home, Indore, 452001", default: true })]);
     await expect(getCustomerAddresses()).resolves.toEqual([expect.objectContaining({ id: 3, fullAddress: "Work" })]);
     (api as any).get.mockRejectedValueOnce(new Error("address failed"));
     await expect(getCustomerAddresses()).rejects.toThrow("address failed");
+  });
+
+  it("loads saved location addresses with UUID and complete flat/building details", async () => {
+    (api as any).get.mockResolvedValueOnce({ data: { data: { items: [{
+      id: "saved-address-uuid", flatNo: "201", floor: "2", buildingName: "Jangle house",
+      addressLine: "Versova", city: "Mumbai", pincode: "400061", isDefault: true,
+    }] } } });
+    await expect(getCustomerAddresses()).resolves.toEqual([expect.objectContaining({
+      id: "saved-address-uuid", fullAddress: "201, Floor 2, Jangle house, Versova, Mumbai, 400061", default: true,
+    })]);
+    expect((api as any).get).toHaveBeenLastCalledWith("/api/v1/customer/location/all", { params: { page: 0, size: 50 } });
   });
 
   it("retains all legacy cart aliases", async () => {

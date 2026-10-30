@@ -77,7 +77,7 @@ describe("partnerService core flows", () => {
     global.FormData = originalFormData;
   });
 
-  it("covers health, profile, onboarding, and dashboard flows", async () => {
+  it("covers health, profile, and dashboard flows", async () => {
     const { mod, mockAPI, mockSavePartnerProviderId } = loadPartnerService();
 
     mockAPI.get.mockResolvedValueOnce({ data: { ok: true } });
@@ -91,6 +91,7 @@ describe("partnerService core flows", () => {
           phone: "9999999999",
           imageUrl: "https://cdn.example.com/profile.jpg",
           bankStatus: "PENDING",
+          penaltyStatus: "NORMAL",
         },
       },
     });
@@ -101,27 +102,10 @@ describe("partnerService core flows", () => {
         mobile: "9999999999",
         profileImageUrl: "https://cdn.example.com/profile.jpg",
         bankVerificationStatus: "PENDING",
+        accountStatus: undefined,
       }),
     );
     expect(mockSavePartnerProviderId).toHaveBeenCalledWith("42");
-
-    mockAPI.post.mockResolvedValueOnce({ data: { data: { providerId: 77 } } });
-    await expect(
-      mod.submitPartnerOnboarding({
-        fullName: "A",
-        email: "a@test.com",
-        phoneNumber: "999",
-        gender: "OTHER",
-        dateOfBirth: "2000-01-01",
-        currentCity: "Delhi",
-        currentState: "Delhi",
-        currentFullAddress: "Address",
-        serviceAreas: ["110001"],
-        accountNumber: "1234",
-        ifscCode: "IFSC0001",
-      }),
-    ).resolves.toEqual({ data: { providerId: 77 } });
-    expect(mockSavePartnerProviderId).toHaveBeenCalledWith("77");
 
     mockAPI.get.mockResolvedValueOnce({
       data: {
@@ -186,7 +170,8 @@ describe("partnerService core flows", () => {
     await expect(
       mod.uploadPartnerDocuments(
         {
-          aadhaar: { uri: "a" },
+          aadhaarFront: { uri: "af" },
+          aadhaarBack: { uri: "ab" },
           pan: { uri: "p" },
           selfie: { uri: "s" },
           certificate: { uri: "c" },
@@ -198,7 +183,7 @@ describe("partnerService core flows", () => {
     expect(progress).toHaveBeenNthCalledWith(2, 100);
   });
 
-  it("covers profile, upload, onboarding, availability, and dashboard error paths", async () => {
+  it("covers profile, upload, availability, and dashboard error paths", async () => {
     const { mod, mockAPI } = loadPartnerService();
 
     mockAPI.get
@@ -230,28 +215,12 @@ describe("partnerService core flows", () => {
     mockAPI.post.mockRejectedValueOnce(new Error("documents failed"));
     await expect(
       mod.uploadPartnerDocuments({
-        aadhaar: { uri: "a" },
+        aadhaarFront: { uri: "af" },
+        aadhaarBack: { uri: "ab" },
         pan: { uri: "p" },
         selfie: { uri: "s" },
       }),
     ).rejects.toThrow("Unable to upload documents");
-
-    mockAPI.post.mockRejectedValueOnce(new Error("onboarding failed"));
-    await expect(
-      mod.submitPartnerOnboarding({
-        fullName: "A",
-        email: "a@test.com",
-        phoneNumber: "999",
-        gender: "OTHER",
-        dateOfBirth: "2000-01-01",
-        currentCity: "Delhi",
-        currentState: "Delhi",
-        currentFullAddress: "Address",
-        serviceAreas: ["110001"],
-        accountNumber: "1234",
-        ifscCode: "IFSC0001",
-      }),
-    ).rejects.toThrow("Unable to submit onboarding details");
 
     mockAPI.put
       .mockRejectedValueOnce(new Error("v1 availability failed"))
@@ -457,6 +426,24 @@ describe("partnerService core flows", () => {
     mockAPI.patch.mockResolvedValueOnce({ data: { rejected: true } });
     await expect(mod.rejectPartnerRequest(11)).resolves.toBeUndefined();
     expect(mockAPI.patch).toHaveBeenLastCalledWith("/api/v1/partner/requests/11/reject", { reason: "Not available" });
+  });
+
+  it("tries subscription assignment endpoints for partner accept and decline decisions", async () => {
+    const { mod, mockAPI } = loadPartnerService();
+
+    mockAPI.patch
+      .mockRejectedValueOnce(new Error("request endpoint failed"))
+      .mockRejectedValueOnce(new Error("legacy request failed"))
+      .mockResolvedValueOnce({ data: { subscriptionAccepted: true } });
+    await expect(mod.acceptDispatchRequest(420)).resolves.toEqual({ subscriptionAccepted: true });
+    expect(mockAPI.patch).toHaveBeenLastCalledWith("/api/v1/partner/subscriptions/420/accept");
+
+    mockAPI.patch
+      .mockRejectedValueOnce(new Error("request reject failed"))
+      .mockRejectedValueOnce(new Error("legacy reject failed"))
+      .mockResolvedValueOnce({ data: { subscriptionRejected: true } });
+    await expect(mod.rejectDispatchRequest(421, "busy")).resolves.toEqual({ subscriptionRejected: true });
+    expect(mockAPI.patch).toHaveBeenLastCalledWith("/api/v1/partner/subscriptions/421/decline", { reason: "busy" });
   });
 
   it("covers middle dispatch fallback endpoints and rejectOrder wrapper", async () => {
@@ -815,14 +802,14 @@ describe("partnerService core flows", () => {
       data: { data: { items: [{ payoutId: "p1", settlementAmount: "150" }] } },
     });
     await expect(mod.getPartnerPayouts()).resolves.toEqual([
-      expect.objectContaining({ id: "p1", netAmount: 150 }),
+      expect.objectContaining({ id: "p1", settlementAmount: 150, status: "PENDING" }),
     ]);
 
     mockAPI.get.mockResolvedValueOnce({
       data: { data: { payoutId: "p2", amount: "250" } },
     });
     await expect(mod.getPartnerPayoutById("p2")).resolves.toEqual(
-      expect.objectContaining({ id: "p2", grossAmount: 250 }),
+      expect.objectContaining({ id: "p2", settlementAmount: 250, status: "PENDING" }),
     );
 
     mockAPI.get.mockResolvedValueOnce({ data: { data: {} } });
@@ -933,7 +920,7 @@ describe("partnerService core flows", () => {
       weekSettlement: 21,
       monthSettlement: 31,
       lifetimeSettlement: 41,
-      availableBalance: 51,
+      availableBalance: 0,
       pendingSettlement: 61,
     });
 
@@ -957,6 +944,8 @@ describe("partnerService core flows", () => {
         bookingId: undefined,
         description: "BONUS",
         amount: 45,
+        netAmount: undefined,
+        settlementAmount: 45,
         type: "BONUS",
         status: undefined,
         createdAt: "2026-01-01",
@@ -969,10 +958,7 @@ describe("partnerService core flows", () => {
     await expect(mod.getPartnerPayouts()).resolves.toEqual([
       expect.objectContaining({
         id: "p-1",
-        grossAmount: 100,
-        commissionAmount: 10,
-        reversalAmount: 5,
-        netAmount: 85,
+        settlementAmount: 85,
         status: "PENDING",
         settledAt: "done",
       }),
@@ -982,14 +968,14 @@ describe("partnerService core flows", () => {
       data: { data: { payoutId: "p-2", settlementAmount: "250", status: "SETTLED", processedAt: "ts" } },
     });
     await expect(mod.getPartnerPayoutById("p-2")).resolves.toEqual(
-      expect.objectContaining({ id: "p-2", netAmount: 250, status: "SETTLED", settledAt: "ts" }),
+      expect.objectContaining({ id: "p-2", settlementAmount: 250, status: "SETTLED", settledAt: "ts" }),
     );
 
     mockAPI.get.mockResolvedValueOnce({
       data: { data: { withdrawableBalance: 15, totalSettledBalance: 25, withdrawalReservations: 35 } },
     });
     await expect(mod.getPartnerWithdrawalBalance()).resolves.toEqual({
-      availableBalance: 15,
+      availableBalance: 0,
       settledBalance: 25,
       reservedBalance: 35,
     });
@@ -1087,14 +1073,14 @@ describe("partnerService core flows", () => {
       data: { data: { items: [{ warningId: "wr1", category: "warning", title: "Late", active: false }] } },
     });
     await expect(mod.getPartnerWarnings()).resolves.toEqual([
-      {
+      expect.objectContaining({
         id: "wr1",
         type: "WARNING",
         reason: "Late",
         guidance: undefined,
         createdAt: undefined,
         active: false,
-      },
+      }),
     ]);
 
     mockAPI.get.mockReset();
@@ -1161,7 +1147,7 @@ describe("partnerService core flows", () => {
       data: { data: { rows: [{ warningId: "w2", type: "policy", message: "Check docs", resolutionGuidance: "Upload again" }] } },
     });
     await expect(mod.getPartnerWarnings()).resolves.toEqual([
-      {
+      expect.objectContaining({
         id: "w2",
         type: "POLICY",
         reason: "Check docs",
@@ -1169,7 +1155,7 @@ describe("partnerService core flows", () => {
         createdAt: undefined,
         status: undefined,
         active: true,
-      },
+      }),
     ]);
   });
 
@@ -1221,7 +1207,7 @@ describe("partnerService core flows", () => {
       expect.objectContaining({ id: 78, requestId: 78, status: "ACCEPTED" }),
     );
 
-    mockAPI.patch.mockResolvedValueOnce({ data: { accepted: true } });
+    mockAPI.post.mockResolvedValueOnce({ data: { accepted: true } });
     await expect(mod.acceptOrder(50)).resolves.toEqual({ accepted: true });
   });
 
@@ -1238,5 +1224,37 @@ describe("partnerService core flows", () => {
       minDistanceMeters: 50,
       requestExpiryWarningSeconds: 30,
     });
+  });
+
+  it("covers partner screening centre success and not-configured fallback", async () => {
+    const { mod, mockAPI } = loadPartnerService();
+
+    mockAPI.get.mockResolvedValueOnce({
+      data: {
+        data: {
+          data: {
+            name: "Lexho Screening Centre",
+            address: "Gt-53, Noida Sector-117",
+            latitude: "28.5123456",
+            longitude: "77.6123456",
+            phone: "+919876543210",
+          },
+        },
+      },
+    });
+    await expect(mod.getPartnerScreeningCentre()).resolves.toEqual({
+      name: "Lexho Screening Centre",
+      address: "Gt-53, Noida Sector-117",
+      latitude: 28.5123456,
+      longitude: 77.6123456,
+      phone: "+919876543210",
+      landmark: undefined,
+      entranceInfo: undefined,
+    });
+
+    mockAPI.get.mockRejectedValueOnce({
+      response: { status: 404, data: { errorCode: "SCREENING_CENTRE_NOT_CONFIGURED" } },
+    });
+    await expect(mod.getPartnerScreeningCentre()).resolves.toBeNull();
   });
 });

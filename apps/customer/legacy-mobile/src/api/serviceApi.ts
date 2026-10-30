@@ -223,7 +223,11 @@ export async function fetchCustomerServicesByCategory(params: {
   const cacheKey = `service-providers-${String(categoryId)}-${page}-${size}`;
 
   const extractList = (data: any): CustomerServiceDto[] => {
+    if (Array.isArray(data?.data?.data)) return mapServiceImages(data.data.data as CustomerServiceDto[]);
     if (Array.isArray(data?.data)) return mapServiceImages(data.data as CustomerServiceDto[]);
+    if (Array.isArray(data?.data?.content)) return mapServiceImages(data.data.content as CustomerServiceDto[]);
+    if (Array.isArray(data?.data?.items)) return mapServiceImages(data.data.items as CustomerServiceDto[]);
+    if (Array.isArray(data?.data?.rows)) return mapServiceImages(data.data.rows as CustomerServiceDto[]);
     if (Array.isArray(data?.content)) return mapServiceImages(data.content as CustomerServiceDto[]);
     if (Array.isArray(data?.items)) return mapServiceImages(data.items as CustomerServiceDto[]);
     if (Array.isArray(data)) return mapServiceImages(data as CustomerServiceDto[]);
@@ -419,7 +423,11 @@ export async function fetchCustomerServicesCatalog(query: CustomerCatalogQuery =
   const search = asString(query.search, "");
 
   const extractList = (data: any): CustomerServiceDto[] => {
+    if (Array.isArray(data?.data?.data)) return mapServiceImages(data.data.data as CustomerServiceDto[]);
     if (Array.isArray(data?.data)) return mapServiceImages(data.data as CustomerServiceDto[]);
+    if (Array.isArray(data?.data?.content)) return mapServiceImages(data.data.content as CustomerServiceDto[]);
+    if (Array.isArray(data?.data?.items)) return mapServiceImages(data.data.items as CustomerServiceDto[]);
+    if (Array.isArray(data?.data?.rows)) return mapServiceImages(data.data.rows as CustomerServiceDto[]);
     if (Array.isArray(data?.content)) return mapServiceImages(data.content as CustomerServiceDto[]);
     if (Array.isArray(data?.items)) return mapServiceImages(data.items as CustomerServiceDto[]);
     if (Array.isArray(data)) return mapServiceImages(data as CustomerServiceDto[]);

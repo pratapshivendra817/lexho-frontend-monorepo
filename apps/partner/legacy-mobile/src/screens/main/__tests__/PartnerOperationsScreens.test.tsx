@@ -21,6 +21,12 @@ jest.mock("../../../context/AppFeedbackContext", () => ({
   useAppFeedback: () => ({ toast: mockToast }),
 }));
 
+jest.mock("../../../context/AppLanguageContext", () => ({
+  useAppLanguage: () => ({
+    t: (_key: string, fallback?: string) => fallback ?? "",
+  }),
+}));
+
 jest.mock("../../../components/payments/PaymentHeader", () => {
   const React = require("react");
   const { Text, TouchableOpacity, View } = require("react-native");

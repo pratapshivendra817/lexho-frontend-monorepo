@@ -5,13 +5,15 @@ import { Alert, AppState, Linking, Platform } from "react-native";
 import HomeScreen from "../HomeScreen";
 import { setLastKnownLocation, setOnlineStatus, setPartnerStats } from "../../../redux/slices/partnerSlice";
 import { setWalletSnapshot } from "../../../redux/slices/walletSlice";
-import { getDashboardStats, getPartnerHomeBanners } from "../../../services/partnerService";
+import { getDashboardStats, getPartnerHomeBanners, getPartnerScreeningCentre } from "../../../services/partnerService";
 import { detectAndSyncCurrentLocation } from "../../../services/locationTrackingService";
 import { setPartnerAvailabilityApi } from "../../../features/shift/shiftApi";
+import { getShiftState } from "../../../features/shift/shiftStorage";
 
 const mockNavigate = jest.fn();
 const mockDispatch = jest.fn();
 let mockPartnerState: any;
+let mockOrderState: any;
 let appStateListener: ((next: string) => void) | null = null;
 
 jest.mock("@react-navigation/native", () => ({
@@ -20,7 +22,7 @@ jest.mock("@react-navigation/native", () => ({
 
 jest.mock("../../../hooks/useRedux", () => ({
   useAppDispatch: () => mockDispatch,
-  useAppSelector: (selector: any) => selector({ partner: mockPartnerState }),
+  useAppSelector: (selector: any) => selector({ partner: mockPartnerState, orders: mockOrderState }),
 }));
 
 jest.mock("../../../redux/slices/partnerSlice", () => ({
@@ -36,6 +38,7 @@ jest.mock("../../../redux/slices/walletSlice", () => ({
 jest.mock("../../../services/partnerService", () => ({
   getDashboardStats: jest.fn(),
   getPartnerHomeBanners: jest.fn(),
+  getPartnerScreeningCentre: jest.fn(),
 }));
 
 jest.mock("../../../services/locationTrackingService", () => ({
@@ -43,7 +46,12 @@ jest.mock("../../../services/locationTrackingService", () => ({
 }));
 
 jest.mock("../../../features/shift/shiftApi", () => ({
+  startShiftApi: jest.fn(async () => ({ success: true })),
   setPartnerAvailabilityApi: jest.fn(),
+}));
+
+jest.mock("../../../features/shift/shiftStorage", () => ({
+  getShiftState: jest.fn(),
 }));
 
 describe("HomeScreen toggle flows", () => {
@@ -51,8 +59,10 @@ describe("HomeScreen toggle flows", () => {
     jest.clearAllMocks();
     appStateListener = null;
     mockPartnerState = { online: false, lastKnownLocation: null };
+    mockOrderState = { activeOrder: null };
     (getDashboardStats as jest.Mock).mockResolvedValue({ todayEarnings: 120 });
     (getPartnerHomeBanners as jest.Mock).mockResolvedValue([]);
+    (getPartnerScreeningCentre as jest.Mock).mockResolvedValue(null);
     (detectAndSyncCurrentLocation as jest.Mock).mockResolvedValue({
       latitude: 28.61,
       longitude: 77.2,
@@ -61,6 +71,7 @@ describe("HomeScreen toggle flows", () => {
       confidence: "HIGH",
     });
     (setPartnerAvailabilityApi as jest.Mock).mockResolvedValue(undefined);
+    (getShiftState as jest.Mock).mockResolvedValue({ shiftStarted: true });
     jest.spyOn(Alert, "alert").mockImplementation(jest.fn());
     (Linking as any).sendIntent = jest.fn().mockResolvedValue(undefined);
     jest.spyOn(Linking, "openSettings").mockResolvedValue();
@@ -99,7 +110,7 @@ describe("HomeScreen toggle flows", () => {
 
     fireEvent.press(view.getByText("ONLINE"));
     await waitFor(() => {
-      expect(Alert.alert).toHaveBeenCalledWith("Unable to go offline", "Please try again.");
+      expect(Alert.alert).toHaveBeenCalledWith("Unable to go offline", "Retry");
     });
 
     fireEvent.press(view.getByText("ONLINE"));
@@ -158,9 +169,7 @@ describe("HomeScreen toggle flows", () => {
     await waitFor(() => {
       expect(setPartnerAvailabilityApi).toHaveBeenCalledWith(true);
     });
-    await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith("Shift");
-    });
+    expect(mockNavigate).not.toHaveBeenCalledWith("Shift");
     expect(setLastKnownLocation).toHaveBeenCalled();
     expect((setOnlineStatus as jest.Mock).mock.calls.some(([value]) => value === true)).toBe(true);
   });
@@ -180,5 +189,34 @@ describe("HomeScreen toggle flows", () => {
       expect(Alert.alert).toHaveBeenCalledWith("Unable to go online", "server down");
     });
     expect(setOnlineStatus).toHaveBeenCalledWith(false);
+  });
+
+  it("activates availability before GPS upload and rolls back a failed upload", async () => {
+    const calls: string[] = [];
+    (setPartnerAvailabilityApi as jest.Mock).mockImplementation(async (online) => {
+      calls.push(online ? "online" : "offline");
+    });
+    (detectAndSyncCurrentLocation as jest.Mock).mockImplementation(async () => {
+      calls.push("gps");
+      throw Object.assign(new Error("GPS upload failed"), { code: "LOCATION_SYNC_FAILED" });
+    });
+    const view = await render(<HomeScreen />);
+    fireEvent.press(await view.findByText("OFFLINE"));
+    await waitFor(() => expect(Alert.alert).toHaveBeenCalledWith("Unable to go online", "GPS upload failed"));
+    expect(calls).toEqual(["online", "gps", "offline"]);
+    expect(setOnlineStatus).not.toHaveBeenCalledWith(true);
+  });
+
+  it("ignores repeated taps while an availability request is pending", async () => {
+    let finish!: () => void;
+    (setPartnerAvailabilityApi as jest.Mock).mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const view = await render(<HomeScreen />);
+    const toggle = await view.findByTestId("home-online-toggle");
+    fireEvent.press(toggle);
+    fireEvent.press(toggle);
+    await waitFor(() => expect(setPartnerAvailabilityApi).toHaveBeenCalledTimes(1));
+    await act(async () => { finish(); });
+    await waitFor(() => expect(setOnlineStatus).toHaveBeenCalledWith(true));
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

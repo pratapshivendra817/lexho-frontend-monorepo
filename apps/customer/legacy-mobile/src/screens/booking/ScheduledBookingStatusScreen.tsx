@@ -3,8 +3,6 @@ import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIc
 import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text } from "react-native-paper";
 import { BookingStageShell } from "../../components/booking/BookingStageShell";
-import { StatusBadge } from "../../components/booking/StatusBadge";
-import { bookingTheme } from "../../components/booking/bookingTheme";
 import { cancelBooking } from "../../api/bookingExtrasApi";
 import { useInstantBookingLifecycle } from "../../hooks/useInstantBookingLifecycle";
 import { useBookingLifecycleNavigation } from "../../hooks/useBookingLifecycleNavigation";
@@ -45,7 +43,6 @@ export function ScheduledBookingStatusScreen({ route, navigation }: { route: Sch
 
   const details = bookingQuery.data;
   const meta = getBookingMeta(details);
-  const currentStatus = String(details?.status ?? details?.assignmentStatus ?? "CREATED").toUpperCase();
   const cancelMutation = useMutation({
     mutationFn: async () => cancelBooking(bookingId),
     onSuccess: () => {
@@ -66,17 +63,9 @@ export function ScheduledBookingStatusScreen({ route, navigation }: { route: Sch
   });
 
   return (
-    <BookingStageShell title="Scheduled Booking" subtitle="Your booking is confirmed. Track updates here.">
+    <BookingStageShell fullWidth title="Scheduled Booking" subtitle="Your booking is confirmed. Track updates here.">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.heroCard}>
-          <View style={styles.heroTop}>
-            <StatusBadge status={currentStatus} />
-            <View style={styles.modePill}>
-              <MaterialCommunityIcon name="calendar-check-outline" size={12} color={COLORS.goldSoft} />
-              <Text style={styles.modePillText}>Scheduled</Text>
-            </View>
-          </View>
-
           <View style={styles.card}>
             <View style={styles.rowLine}><Text style={styles.rowLabel}>Booking ID</Text><Text style={styles.rowValue}>{details?.id ?? bookingId}</Text></View>
             <View style={styles.rowLine}><Text style={styles.rowLabel}>Service</Text><Text style={styles.rowValue}>{details?.serviceName ?? "-"}</Text></View>
@@ -141,19 +130,6 @@ const styles = StyleSheet.create({
     gap: 10,
     ...shadows.sm,
   },
-  heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  modePill: {
-    flexDirection: "row",
-    gap: 4,
-    alignItems: "center",
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm + 2,
-    paddingVertical: spacing.xs + 1,
-    backgroundColor: "rgba(217,164,65,0.12)",
-    borderWidth: 1,
-    borderColor: COLORS.goldSoft,
-  },
-  modePillText: { color: COLORS.goldSoft, fontSize: 11, fontWeight: "800", letterSpacing: 0.2 },
   card: {
     gap: 8,
   },

@@ -6,6 +6,15 @@ import { useAppDispatch, useAppSelector } from "../../hooks/useRedux";
 import { fetchChatThreads } from "../../redux/slices/chatSlice";
 import type { ChatThread } from "../../types/chat";
 
+const CHAT_LIST_COPY = {
+  title: "Order Chats",
+  subtitle: "Customer conversations linked to assigned orders",
+  tapToRetry: "Tap to retry",
+  noConversations: "No order conversations yet.",
+  openConversation: "Open conversation",
+  order: "Order",
+} as const;
+
 export default function ChatListScreen({ navigation }: any) {
   const dispatch = useAppDispatch();
   const { threads, threadsPage, threadsHasMore, threadsLoading, threadsError, connected } = useAppSelector(state => state.chat);
@@ -27,8 +36,8 @@ export default function ChatListScreen({ navigation }: any) {
     <View style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Order Chats</Text>
-          <Text style={styles.subtitle}>Customer conversations linked to assigned orders</Text>
+          <Text style={styles.title}>{CHAT_LIST_COPY.title}</Text>
+          <Text style={styles.subtitle}>{CHAT_LIST_COPY.subtitle}</Text>
         </View>
         <View style={[styles.connectionDot, connected ? styles.online : styles.offline]} />
       </View>
@@ -36,7 +45,7 @@ export default function ChatListScreen({ navigation }: any) {
       {threadsError ? (
         <TouchableOpacity style={styles.errorCard} onPress={refresh} accessibilityRole="button">
           <Text style={styles.errorText}>{threadsError}</Text>
-          <Text style={styles.retryText}>Tap to retry</Text>
+          <Text style={styles.retryText}>{CHAT_LIST_COPY.tapToRetry}</Text>
         </TouchableOpacity>
       ) : null}
 
@@ -48,19 +57,21 @@ export default function ChatListScreen({ navigation }: any) {
         refreshControl={<RefreshControl refreshing={threadsLoading && threadsPage === 0} onRefresh={refresh} tintColor={COLORS.secondary} />}
         onEndReached={loadMore}
         onEndReachedThreshold={0.4}
-        ListEmptyComponent={showInitialLoader ? <ActivityIndicator color={COLORS.secondary} /> : <Text style={styles.emptyText}>No order conversations yet.</Text>}
+        ListEmptyComponent={showInitialLoader ? <ActivityIndicator color={COLORS.secondary} /> : <Text style={styles.emptyText}>{CHAT_LIST_COPY.noConversations}</Text>}
         ListFooterComponent={threadsLoading && threads.length ? <ActivityIndicator color={COLORS.secondary} /> : null}
-        renderItem={({ item }) => <ChatRow item={item} onPress={() => navigation.navigate("Chat", {
-          orderId: item.orderId,
-          customerName: item.customerName,
-        })} />}
+        renderItem={({ item }) => (
+          <ChatRow
+            item={item}
+            onPress={() => navigation.navigate("Chat", { orderId: item.orderId, customerName: item.customerName })}
+          />
+        )}
       />
     </View>
   );
 }
 
 function ChatRow({ item, onPress }: { item: ChatThread; onPress: () => void }) {
-  const preview = item.lastMessage?.text || item.serviceName || "Open conversation";
+  const preview = item.lastMessage?.text || item.serviceName || CHAT_LIST_COPY.openConversation;
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} accessibilityRole="button">
       <View style={styles.avatar}><Text style={styles.avatarText}>{item.customerName.slice(0, 1).toUpperCase()}</Text></View>
@@ -69,7 +80,7 @@ function ChatRow({ item, onPress }: { item: ChatThread; onPress: () => void }) {
           <Text style={styles.customerName} numberOfLines={1}>{item.customerName}</Text>
           <Text style={styles.time}>{formatTime(item.updatedAt)}</Text>
         </View>
-        <Text style={styles.orderLabel}>{`Order #${item.orderId}${item.serviceName ? ` • ${item.serviceName}` : ""}`}</Text>
+        <Text style={styles.orderLabel}>{`${CHAT_LIST_COPY.order} #${item.orderId}${item.serviceName ? ` - ${item.serviceName}` : ""}`}</Text>
         <Text style={[styles.preview, item.unreadCount > 0 && styles.previewUnread]} numberOfLines={1}>{preview}</Text>
       </View>
       {item.unreadCount > 0 ? <View style={styles.badge}><Text style={styles.badgeText}>{Math.min(item.unreadCount, 99)}</Text></View> : null}

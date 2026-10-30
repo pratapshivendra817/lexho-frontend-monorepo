@@ -38,23 +38,39 @@ function mapStatusHistory(row: any) {
 }
 
 function toBookingSummary(row: any): BookingSummaryDto {
+  row = row?.data && typeof row.data === "object" ? row.data : row;
+  const service = row?.service && typeof row.service === "object" ? row.service : {};
+  const address = row?.address && typeof row.address === "object" ? row.address : {};
+  const partner = row?.partner && typeof row.partner === "object" ? row.partner : {};
   const meta = row?.meta && typeof row.meta === "object" ? row.meta : {};
   const status = String(row?.status ?? row?.bookingStatus ?? "").toUpperCase() || undefined;
   const assignment = String(row?.assignmentStatus ?? row?.dispatchStatus ?? status ?? "").toUpperCase() || undefined;
   return {
-    id: String(row?.id ?? row?.bookingId ?? ""),
+    id: String(row?.id ?? row?.bookingId ?? row?.orderId ?? ""),
+    bookingId: String(row?.bookingId ?? row?.id ?? row?.orderId ?? "").trim() || undefined,
+    serviceId: String(row?.serviceId ?? service?.id ?? "").trim() || undefined,
     status,
-    serviceName: row?.serviceName ?? row?.service?.name ?? row?.categoryName,
+    serviceName: row?.serviceName ?? service?.serviceName ?? service?.name ?? row?.serviceType ?? row?.categoryName ?? row?.itemName,
     createdAt: row?.createdAt ?? row?.bookingTime,
+    scheduledAt: row?.scheduledAt ?? row?.scheduledDateTime ?? row?.bookingDateTime ?? (row?.date && row?.slot ? `${row.date}T${row.slot}` : undefined),
+    completedAt: row?.completedAt,
+    amount: row?.amount != null ? Number(row.amount) : row?.payableAmount != null ? Number(row.payableAmount) : undefined,
+    totalAmount: row?.totalAmount != null ? Number(row.totalAmount) : row?.finalAmount != null ? Number(row.finalAmount) : undefined,
+    price: row?.price != null ? Number(row.price) : service?.price != null ? Number(service.price) : undefined,
+    address: typeof row?.address === "string" ? row.address : row?.customerAddress ?? row?.serviceAddress ?? address?.addressLine ?? address?.line1,
+    fullAddress: row?.fullAddress ?? address?.fullAddress ?? address?.formattedAddress,
     bookingType: String(row?.bookingType ?? "").toUpperCase() as any,
     assignmentStatus: assignment as any,
-    promisedStartTime: row?.promisedStartTime ?? row?.slaStartTime,
+    promisedStartTime: row?.promisedStartTime ?? row?.slaStartTime ?? row?.scheduledAt,
     slaMinutes: row?.slaMinutes != null ? Number(row.slaMinutes) : undefined,
     unavailableReason: row?.unavailableReason ?? row?.reasonCode,
     message: row?.message,
     etaMinutes: row?.etaMinutes != null ? Number(row.etaMinutes) : undefined,
-    partnerName: row?.partnerName ?? row?.partner?.name,
-    partnerPhone: row?.partnerPhone ?? row?.partner?.phone,
+    partnerName: row?.partnerName ?? partner?.name ?? partner?.fullName,
+    partnerPhone: row?.partnerPhone ?? partner?.phone ?? partner?.mobile,
+    partnerId: String(row?.partnerId ?? partner?.id ?? "").trim() || undefined,
+    partnerRating: row?.partnerRating != null ? Number(row.partnerRating) : partner?.rating != null ? Number(partner.rating) : undefined,
+    partnerProfileImage: row?.partnerProfileImage ?? partner?.profileImage ?? partner?.imageUrl,
     subscriptionId: String(row?.subscriptionId ?? row?.subscription?.id ?? "").trim() || undefined,
     subscriptionServiceType: row?.subscriptionServiceType ?? row?.subscription?.subscriptionServiceType ?? row?.subscription?.serviceType,
     frequencyDays: Array.isArray(row?.frequencyDays)
@@ -141,7 +157,7 @@ export async function getBookingsHistoryPage(params: { page?: number; size?: num
     const hasMore =
       typeof root?.hasMore === "boolean"
         ? root.hasMore
-        : Boolean(root?.instantBookings?.hasMore || root?.scheduledBookings?.hasMore || root?.subscriptions?.hasMore)
+        : root?.instantBookings?.hasMore || root?.scheduledBookings?.hasMore || root?.subscriptions?.hasMore
           ? true
         : typeof root?.last === "boolean"
           ? !root.last
@@ -164,7 +180,7 @@ export async function getBookingsHistory(): Promise<BookingSummaryDto[]> {
 export async function createBooking(payload: CreateBookingRequest) {
   const normalizedDate = String(payload.date ?? "").trim();
   const normalizedSlot = String(payload.slot ?? "").trim();
-  const bookingType = normalizedDate && normalizedSlot ? "SCHEDULED" : "INSTANT";
+  const bookingType = payload.bookingType ?? (normalizedDate && normalizedSlot ? "SCHEDULED" : "INSTANT");
   const latitude = Number(payload.latitude);
   const longitude = Number(payload.longitude);
   const hasCoordinates =
@@ -174,7 +190,7 @@ export async function createBooking(payload: CreateBookingRequest) {
     longitude !== 0;
   const body = {
     serviceId: Number(payload.serviceId ?? 0),
-    addressId: Number(payload.addressId ?? 0),
+    addressId: /^\d+$/.test(String(payload.addressId ?? "")) ? Number(payload.addressId) : payload.addressId,
     latitude: hasCoordinates ? latitude : undefined,
     longitude: hasCoordinates ? longitude : undefined,
     coordinates: hasCoordinates ? { lat: latitude, lng: longitude } : undefined,
@@ -182,6 +198,7 @@ export async function createBooking(payload: CreateBookingRequest) {
     date: normalizedDate || undefined,
     slot: normalizedSlot || undefined,
     note: String(payload.note ?? "").trim() || undefined,
+    couponCode: String(payload.couponCode ?? "").trim() || undefined,
   };
   const throwCreateError = (error: unknown) => {
     const readable = parseApiError(error, "Booking failed");
@@ -237,6 +254,7 @@ export async function createBooking(payload: CreateBookingRequest) {
         date: normalizedDate,
         slot: normalizedSlot,
         note: body.note,
+        couponCode: body.couponCode,
       };
       const { data } = await api.post("/api/bookings/create", legacyBody);
       const root = data?.data && typeof data?.data === "object" ? data.data : data;

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { sendOtp } from "../../api/authApi";
 import { getCustomerProfileContent } from "../../api/customerProfileApi";
 import { PrimaryButton } from "../../components/buttons/PrimaryButton";
+import { getPendingReferralCode } from "../../utils/storage";
 
 const schema = z.object({ mobile: z.string().regex(/^[6-9][0-9]{9}$/, "Enter valid 10-digit mobile") });
 
@@ -34,7 +35,16 @@ const LOGIN_BACKGROUND = "#06132D";
 
 export function LoginScreen({ navigation }: any) {
   const { control, handleSubmit, formState: { errors } } = useForm<Form>({ defaultValues: { mobile: "" }, resolver: zodResolver(schema) });
-  const mutation = useMutation({ mutationFn: ({ mobile }: Form) => sendOtp(mobile), onSuccess: (_, vars) => navigation.navigate("Otp", { mobile: vars.mobile }) });
+  const pendingReferralQuery = useQuery({
+    queryKey: ["pending-referral-code"],
+    queryFn: getPendingReferralCode,
+    staleTime: 0,
+  });
+  const pendingReferralCode = String(pendingReferralQuery.data ?? "").trim() || undefined;
+  const mutation = useMutation({
+    mutationFn: ({ mobile }: Form) => sendOtp(mobile),
+    onSuccess: (_, vars) => navigation.navigate("Otp", { mobile: vars.mobile, referralCode: pendingReferralCode }),
+  });
   const legalContentQuery = useQuery({
     queryKey: ["customer-profile-content", "login"],
     queryFn: getCustomerProfileContent,
@@ -61,6 +71,12 @@ export function LoginScreen({ navigation }: any) {
           <View style={styles.panel}>
             <Text variant="headlineMedium" style={styles.title}>Sign in to Lexho</Text>
             <Text style={styles.sub}>Fast home services at your doorstep</Text>
+            {pendingReferralCode ? (
+              <View style={styles.referralBanner}>
+                <Text style={styles.referralBannerTitle}>Referral unlocked</Text>
+                <Text style={styles.referralBannerText}>Code `{pendingReferralCode}` will be sent securely during signup.</Text>
+              </View>
+            ) : null}
             <Controller control={control} name="mobile" render={({ field: { value, onChange } }) => (
               <TextInput
                 mode="outlined"
@@ -150,4 +166,15 @@ const styles = StyleSheet.create({
   trustText: { color: COLORS.neutral100, fontSize: 12, lineHeight: 18 },
   consent: { color: COLORS.neutral100, fontSize: 12, lineHeight: 18, textAlign: "center" },
   legalLink: { color: COLORS.goldSoft, fontWeight: "800", textDecorationLine: "underline" },
+  referralBanner: {
+    borderWidth: 1,
+    borderColor: COLORS.goldSoft,
+    borderRadius: 14,
+    backgroundColor: "rgba(217,164,65,0.12)",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 4,
+  },
+  referralBannerTitle: { color: COLORS.goldSoft, fontWeight: "900", fontSize: 13 },
+  referralBannerText: { color: COLORS.white, fontSize: 12, lineHeight: 18, fontWeight: "600" },
 });

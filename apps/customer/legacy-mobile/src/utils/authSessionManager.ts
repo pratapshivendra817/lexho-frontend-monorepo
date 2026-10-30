@@ -2,6 +2,8 @@ import { clearSession, getOrCreateDeviceId, getRefreshToken, loadSession, saveSe
 import { API_BASE_URL, DEV_LOGIN_BYPASS } from "../constants/env";
 
 type AnyObj = Record<string, any>;
+type PersistedSession = Awaited<ReturnType<typeof loadSession>>;
+const AUTH_REFRESH_TIMEOUT_MS = 5000;
 
 function normalizeTokenValue(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -43,8 +45,11 @@ export function extractRefreshToken(payload: unknown, fallback?: string | null):
   return normalizeTokenValue(fallback ?? "");
 }
 
-export async function tryRefreshSessionWithAxios(axiosClient: any) {
-  const session = await loadSession();
+export async function tryRefreshSessionWithAxios(
+  axiosClient: any,
+  persistedSession?: PersistedSession,
+) {
+  const session = persistedSession ?? (await loadSession());
   const currentRefreshToken = session.refreshToken || (await getRefreshToken());
   if (!currentRefreshToken) {
     return { ok: false as const, reason: "NO_REFRESH_TOKEN" };
@@ -54,7 +59,7 @@ export async function tryRefreshSessionWithAxios(axiosClient: any) {
   const { data } = await axiosClient.post(`${String(API_BASE_URL).replace(/\/+$/, "")}/api/auth/refresh`, {
     refreshToken: currentRefreshToken,
     deviceId,
-  });
+  }, { timeout: AUTH_REFRESH_TIMEOUT_MS });
   const nextAccessToken = extractAccessToken(data);
   const nextRefreshToken = extractRefreshToken(data, currentRefreshToken);
   if (!nextAccessToken) {
@@ -73,8 +78,9 @@ export async function clearSessionWithReason(
   reason: string,
   dispatch?: (action: any) => void,
   clearAction?: any,
-  context?: { source?: string; status?: number; endpoint?: string; message?: string },
+  _context?: { source?: string; status?: number; endpoint?: string; message?: string },
 ) {
+  void _context;
   if (!(DEV_LOGIN_BYPASS && __DEV__)) {
     try {
       await clearSession();

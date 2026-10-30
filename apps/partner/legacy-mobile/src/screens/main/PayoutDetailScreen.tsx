@@ -7,7 +7,34 @@ import type { PartnerPayout } from "../../types/payment";
 import { useAppFeedback } from "../../context/AppFeedbackContext";
 import PaymentHeader from "../../components/payments/PaymentHeader";
 
-const money = (value: number) => `INR ${value.toFixed(2)}`;
+const money = (value: number, currencyLabel: string) => `${currencyLabel} ${value.toFixed(2)}`;
+const PAYOUT_DETAIL_COPY = {
+  currencyLabel: "INR",
+  title: "Payout",
+  notFound: "Payout not found.",
+  loadError: "Unable to load payout",
+  settlementAmount: "Settlement Amount",
+  createdAt: "Created At",
+  settledAt: "Settled At",
+} as const;
+
+type TranslationResolver = (key: string, fallback: string) => string;
+
+export function getPayoutStatusLabel(status: string | undefined, tr: TranslationResolver): string {
+  const normalizedStatus = String(status ?? "").trim();
+  return tr(`payouts.status_${normalizedStatus.toLowerCase()}`, normalizedStatus || "-");
+}
+
+export function getPayoutDetailRows(
+  payout: PartnerPayout,
+  tr: TranslationResolver,
+): Array<{ label: string; value: string; strong?: boolean }> {
+  return [
+    { label: PAYOUT_DETAIL_COPY.settlementAmount, value: money(payout.settlementAmount, PAYOUT_DETAIL_COPY.currencyLabel), strong: true },
+    { label: PAYOUT_DETAIL_COPY.createdAt, value: payout.createdAt ? new Date(payout.createdAt).toLocaleString() : "-" },
+    { label: PAYOUT_DETAIL_COPY.settledAt, value: payout.settledAt ? new Date(payout.settledAt).toLocaleString() : "-" },
+  ];
+}
 
 export default function PayoutDetailScreen({ route, navigation }: any) {
   const payoutId = String(route?.params?.payoutId ?? "");
@@ -21,7 +48,7 @@ export default function PayoutDetailScreen({ route, navigation }: any) {
     try {
       setPayout(await getPartnerPayoutById(payoutId));
     } catch (error: any) {
-      toast(error?.message ?? "Unable to load payout");
+      toast(error?.message ?? PAYOUT_DETAIL_COPY.loadError);
     } finally {
       setLoading(false);
     }
@@ -32,18 +59,17 @@ export default function PayoutDetailScreen({ route, navigation }: any) {
   }, [load]);
 
   if (!payout && loading) return <View style={styles.center}><ActivityIndicator testID="payout-detail-loading" color={COLORS.secondary} /></View>;
-  if (!payout) return <View style={styles.center}><Text style={styles.meta}>Payout not found.</Text></View>;
+  if (!payout) return <View style={styles.center}><Text style={styles.meta}>{PAYOUT_DETAIL_COPY.notFound}</Text></View>;
+  const payoutStatus = getPayoutStatusLabel(payout.status, (_key, fallback) => fallback);
+  const payoutRows = getPayoutDetailRows(payout, (_key, fallback) => fallback);
 
   return (
     <ScrollView testID="payout-detail-scroll" style={styles.root} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load()} />}>
-      <PaymentHeader title={`Payout #${payout.id}`} onBack={() => navigation.goBack()} />
-      <Text style={styles.status}>{payout.status}</Text>
-      <Line label="Gross Amount" value={money(payout.grossAmount)} />
-      <Line label="Commission" value={money(payout.commissionAmount)} />
-      <Line label="Refund Reversal" value={money(payout.reversalAmount)} />
-      <Line label="Net Settlement" value={money(payout.netAmount)} strong />
-      <Line label="Created At" value={payout.createdAt ? new Date(payout.createdAt).toLocaleString() : "-"} />
-      <Line label="Settled At" value={payout.settledAt ? new Date(payout.settledAt).toLocaleString() : "-"} />
+      <PaymentHeader title={`${PAYOUT_DETAIL_COPY.title} #${payout.id}`} onBack={() => navigation.goBack()} />
+      <Text style={styles.status}>{payoutStatus}</Text>
+      {payoutRows.map((row) => (
+        <Line key={row.label} label={row.label} value={row.value} strong={row.strong} />
+      ))}
     </ScrollView>
   );
 }

@@ -1,14 +1,18 @@
 import axios, { AxiosError } from "axios";
 import { NativeModules, Platform } from "react-native";
 import Config from "react-native-config";
-import { clearSession, getOrCreateDeviceId, getRefreshToken, getToken, saveRefreshToken, saveToken } from "../utils/storage";
+import { clearSession, getOrCreateDeviceId, getPartnerLanguage, getRefreshToken, getToken, saveRefreshToken, saveToken } from "../utils/storage";
 import { logApiFailure } from "./crashlyticsService";
 
 const API_PORT = "8082";
-const MANUAL_REAL_DEVICE_API_HOST = "";
-const USE_ADB_REVERSE_FOR_REAL_ANDROID_DEVICE = true;
-const DEV_MACHINE_LAN_IP = "192.168.31.38";
-const ANDROID_EMULATOR_API_HOST = "10.0.2.2";
+const MANUAL_REAL_DEVICE_API_HOST = String(Config.MANUAL_REAL_DEVICE_API_HOST ?? "").trim();
+const USE_ADB_REVERSE_FOR_REAL_ANDROID_DEVICE =
+  Platform.OS === "android" &&
+  String(Config.USE_ADB_REVERSE_FOR_REAL_ANDROID_DEVICE ?? "false").trim().toLowerCase() === "true";
+const DEV_MACHINE_LAN_IP = String(Config.DEV_LAN_HOST ?? "192.168.31.38").trim();
+// Android emulator reaches the development machine through 10.0.2.2.
+// A localhost fallback makes every local API request target the emulator itself.
+const ANDROID_EMULATOR_API_HOST = String(Config.ANDROID_EMULATOR_HOST ?? "10.0.2.2").trim();
 
 function normalizeConfiguredApiBaseUrl(value: unknown) {
   const trimmed = String(value ?? "").trim();
@@ -41,16 +45,22 @@ function getMetroHost() {
 }
 
 function resolveApiHost() {
-  const manualHost = String(MANUAL_REAL_DEVICE_API_HOST ?? "").trim();
-  if (manualHost) return manualHost;
   if (isProbablyAndroidEmulator()) return ANDROID_EMULATOR_API_HOST;
+  if (MANUAL_REAL_DEVICE_API_HOST) return MANUAL_REAL_DEVICE_API_HOST;
   if (Platform.OS === "android" && USE_ADB_REVERSE_FOR_REAL_ANDROID_DEVICE) return "localhost";
-  return getMetroHost() || DEV_MACHINE_LAN_IP;
+  // On a physical device Metro already exposes the machine's reachable LAN
+  // host. Prefer it over a stale IP kept in .env after changing networks.
+  const metroHost = getMetroHost();
+  if (metroHost) return metroHost;
+  return DEV_MACHINE_LAN_IP;
 }
 
+const PRODUCTION_API_BASE_URL = "https://api.lexho.com";
 const configuredApiBaseUrl = normalizeConfiguredApiBaseUrl(Config.API_BASE_URL);
+const effectiveConfiguredApiBaseUrl =
+  __DEV__ && configuredApiBaseUrl === PRODUCTION_API_BASE_URL ? "" : configuredApiBaseUrl;
 const API_HOST = resolveApiHost();
-export const API_BASE_URL = configuredApiBaseUrl || `http://${API_HOST}:${API_PORT}`;
+export const API_BASE_URL = effectiveConfiguredApiBaseUrl || `http://${API_HOST}:${API_PORT}`;
 export const ENABLE_DISPATCH_WS = true;
 
 export const API_ENDPOINTS = {
@@ -58,6 +68,8 @@ export const API_ENDPOINTS = {
   adminVerifyOtp: "/api/admin/verify-otp",
   authOtpSend: "/otp/send",
   authOtpVerify: "/otp/verify",
+  partnerCategories: "/api/partner/categories",
+  partnerOnboarding: "/api/partner/onboarding",
 };
 
 type UnauthorizedHandler = () => Promise<void> | void;
@@ -93,10 +105,24 @@ const refreshClient = axios.create({
 
 API.interceptors.request.use(
   async config => {
+    if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+      config.headers = config.headers || {};
+      const headers = config.headers as any;
+      if (typeof headers.set === "function") {
+        headers.set("Content-Type", "multipart/form-data");
+      } else {
+        headers["Content-Type"] = "multipart/form-data";
+      }
+    }
     const token = await getToken();
     if (token) {
       config.headers = config.headers || {};
       (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
+    }
+    const language = await getPartnerLanguage();
+    if (language) {
+      config.headers = config.headers || {};
+      (config.headers as Record<string, string>)["Accept-Language"] = language;
     }
     return config;
   },

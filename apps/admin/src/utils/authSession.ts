@@ -1,13 +1,12 @@
 ﻿export type AdminRole = "ADMIN";
 
 const ADMIN_TOKEN_KEY = "admin_access_token";
-const ACCESS_TOKEN_KEY = "access_token";
 const ADMIN_REFRESH_TOKEN_KEY = "admin_refresh_token";
 const ADMIN_DEVICE_ID_KEY = "admin_device_id";
 let fallbackAdminDeviceIdSequence = 0;
 
 export function getAccessToken() {
-  return localStorage.getItem(ADMIN_TOKEN_KEY) ?? localStorage.getItem(ACCESS_TOKEN_KEY);
+  return localStorage.getItem(ADMIN_TOKEN_KEY);
 }
 
 export function setAccessToken(token: string) {
@@ -50,7 +49,6 @@ export function getOrCreateAdminDeviceId() {
 
 export function clearAccessToken() {
   localStorage.removeItem(ADMIN_TOKEN_KEY);
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
   clearRefreshToken();
 }
 

@@ -53,7 +53,7 @@ function CategoryBadge({ categoryId }: { categoryId?: Ticket["categoryId"] }) {
 
 export default function TicketTable({ tickets, onSelect, selectedId }: Props) {
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-800 bg-[#020617] text-white shadow">
+    <div className="min-w-[760px] overflow-hidden rounded-xl border border-gray-800 bg-[#020617] text-white shadow">
       <table className="w-full text-sm">
         <thead className="bg-gray-800 text-left text-gray-300">
           <tr>

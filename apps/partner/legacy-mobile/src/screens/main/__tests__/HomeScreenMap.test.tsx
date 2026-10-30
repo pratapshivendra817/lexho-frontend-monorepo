@@ -3,12 +3,14 @@ import { AppState } from "react-native";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 import HomeScreen from "../HomeScreen";
-import { getDashboardStats, getPartnerHomeBanners } from "../../../services/partnerService";
+import { getDashboardStats, getPartnerHomeBanners, getPartnerScreeningCentre } from "../../../services/partnerService";
 import { detectAndSyncCurrentLocation } from "../../../services/locationTrackingService";
+import { getShiftState } from "../../../features/shift/shiftStorage";
 
 const mockNavigate = jest.fn();
 const mockDispatch = jest.fn();
 let mockPartnerState: any;
+let mockOrderState: any;
 
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({ navigate: mockNavigate }),
@@ -16,7 +18,7 @@ jest.mock("@react-navigation/native", () => ({
 
 jest.mock("../../../hooks/useRedux", () => ({
   useAppDispatch: () => mockDispatch,
-  useAppSelector: (selector: any) => selector({ partner: mockPartnerState }),
+  useAppSelector: (selector: any) => selector({ partner: mockPartnerState, orders: mockOrderState }),
 }));
 
 jest.mock("../../../redux/slices/partnerSlice", () => ({
@@ -32,6 +34,7 @@ jest.mock("../../../redux/slices/walletSlice", () => ({
 jest.mock("../../../services/partnerService", () => ({
   getDashboardStats: jest.fn(),
   getPartnerHomeBanners: jest.fn(),
+  getPartnerScreeningCentre: jest.fn(),
 }));
 
 jest.mock("../../../services/locationTrackingService", () => ({
@@ -40,6 +43,10 @@ jest.mock("../../../services/locationTrackingService", () => ({
 
 jest.mock("../../../features/shift/shiftApi", () => ({
   setPartnerAvailabilityApi: jest.fn(),
+}));
+
+jest.mock("../../../features/shift/shiftStorage", () => ({
+  getShiftState: jest.fn(),
 }));
 
 describe("HomeScreen map and banner branches", () => {
@@ -58,12 +65,15 @@ describe("HomeScreen map and banner branches", () => {
         pincode: "110075",
       },
     };
+    mockOrderState = { activeOrder: null };
     (getDashboardStats as jest.Mock).mockResolvedValue({ todayEarnings: 200 });
     (getPartnerHomeBanners as jest.Mock).mockResolvedValue([
       { id: "banner-1", title: "Monsoon Offer", subtitle: "Extra jobs", imageUrl: "https://cdn/banner-1.jpg" },
       { id: "banner-2", title: "Weekend Boost", subtitle: "High demand", imageUrl: "https://cdn/banner-2.jpg" },
     ]);
+    (getPartnerScreeningCentre as jest.Mock).mockResolvedValue(null);
     (detectAndSyncCurrentLocation as jest.Mock).mockResolvedValue(mockPartnerState.lastKnownLocation);
+    (getShiftState as jest.Mock).mockResolvedValue({ shiftStarted: true });
     jest.spyOn(AppState, "addEventListener").mockImplementation((() => ({ remove: jest.fn() })) as any);
     mockDispatch.mockImplementation((action) => action);
   });

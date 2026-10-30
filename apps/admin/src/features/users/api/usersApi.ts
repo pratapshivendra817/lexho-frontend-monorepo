@@ -97,6 +97,7 @@ const toUser = (row: UnknownRecord): AdminUser => {
     name: asString(row.name ?? row.fullName ?? profile.name),
     email: asString(row.email ?? profile.email),
     phone: asString(row.phone ?? row.mobile ?? profile.phone),
+    gender: asString(row.gender ?? profile.gender) || undefined,
     role,
     status,
     city: asString(row.city ?? address.city ?? profile.city),

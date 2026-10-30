@@ -2,17 +2,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Animated, Image, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import MaterialCommunityIcon from "react-native-vector-icons/MaterialCommunityIcons";
-import { Snackbar, Text } from "react-native-paper";
+import { Snackbar, Text, TextInput } from "react-native-paper";
+import { applyCoupon, getCartCoupons } from "../../api/couponApi";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { createBooking } from "../../api/bookingApi";
 import { getAvailableTimeSlots } from "../../api/cartApi";
+import { getCategories } from "../../api/homeApi";
 import { getCookFamilySizes, type CookFamilySizeOptionDto } from "../../api/cookFamilySizeApi";
 import { createSubscriptionBooking } from "../../api/subscriptionBookingApi";
 import { getSubscriptionPricing, type SubscriptionDurationPrice } from "../../api/subscriptionPricingApi";
 import { TimePicker } from "../../components/cart/TimePicker";
-import { CART_CONFIG, isPartyCategoryName } from "../../constants/cartConfig";
+import { CART_CONFIG, hidesInstantBooking, hidesSubscriptionBooking, isPartyCategoryName } from "../../constants/cartConfig";
 import { CLEANING_COVERAGE_OPTIONS } from "../../constants/cleaningCoverageConfig";
 import { API_BASE_URL, DEV_IMAGE_HOST, DEV_INTERNAL_TOKEN, DEV_LOGIN_BYPASS } from "../../constants/env";
 import { palette, radii, shadows, spacing } from "../../constants/theme";
@@ -22,6 +24,7 @@ import {
   fetchCustomerAddressesThunk,
   fetchCustomerCartThunk,
   fetchCartPolicyThunk,
+  clearRecentlyAdded,
   lockCartUntilPayment,
   removeCartItemThunk,
   restoreCartSnapshotThunk,
@@ -99,8 +102,11 @@ function toSlotStart(rawSlot: string) {
 }
 
 function readableBookingError(input: string) {
-  const message = String(input || "").toUpperCase();
-  if (message.includes("INSTANT_UNAVAILABLE")) return "No partner available right now. Please book a scheduled slot.";
+  const raw = String(input || "").trim();
+  const message = raw.toUpperCase();
+  if (message.includes("INSTANT_UNAVAILABLE") || message.includes("NO_PARTNER") || message.includes("NO PARTNER AVAILABLE")) {
+    return "No partner is available for instant service right now. Please choose a scheduled slot.";
+  }
   if (message.includes("NO_PARTNER_IN_30_MIN")) return "No partner can reach within 30 minutes. Please choose a scheduled slot.";
   if (message.includes("SLOT_EXPIRED")) return "Selected slot has expired. Please choose another slot.";
   if (message.includes("SERVICE_UNAVAILABLE")) return "Service unavailable.";
@@ -109,7 +115,10 @@ function readableBookingError(input: string) {
   if (message.includes("ADDON_UNAVAILABLE")) return "Add-on unavailable.";
   if (message.includes("QUANTITY_EXCEEDED")) return "Quantity exceeded.";
   if (message.includes("CART_LIMIT_EXCEEDED")) return "Cart limit exceeded.";
-  return input;
+  // Development builds may include status, reason and the complete request
+  // payload. Never show that diagnostic blob in the customer dialog.
+  const clientMessage = raw.match(/\[client:([^\]]+)\]/i)?.[1]?.trim();
+  return clientMessage || raw.replace(/\s*\[(?:status|reason|msg|payload):.*$/i, "").trim() || "Booking failed. Please try again.";
 }
 
 function parseScheduledDateTime(input?: string | null) {
@@ -158,7 +167,7 @@ type BookingMode = "INSTANT" | "SCHEDULED" | "SUBSCRIPTION";
 type RecurringCartPayload = {
   serviceName?: string;
   serviceId?: number;
-  subscriptionServiceType?: "CLEANING" | "COOK";
+  subscriptionServiceType?: "CLEANING" | "COOK" | "VEHICLE_WASH" | "FITNESS_WELLNESS";
   frequencyDays?: string[];
   frequencyLabel?: string;
   startDate?: string;
@@ -424,6 +433,7 @@ export function CartCrudScreen({ route, navigation }: any) {
     scheduledTime,
     loading,
     error,
+    recentlyAddedServiceId,
   } = useAppSelector((s) => s.cart);
   const authUser = useAppSelector((s) => s.auth.user);
   const cartPolicy = useAppSelector((s) => s.cart.policy);
@@ -432,6 +442,16 @@ export function CartCrudScreen({ route, navigation }: any) {
 
   const [snackVisible, setSnackVisible] = useState(false);
   const [snackMessage, setSnackMessage] = useState("");
+  const [couponCodeInput, setCouponCodeInput] = useState("");
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    originalAmount: number;
+    discountAmount: number;
+    finalAmount: number;
+    currency: string;
+  } | null>(null);
+  const [couponContextKey, setCouponContextKey] = useState("");
   const [attemptedCheckout, setAttemptedCheckout] = useState(false);
   const [checkoutInFlight, setCheckoutInFlight] = useState(false);
   const [openTimePickerKey, setOpenTimePickerKey] = useState(0);
@@ -476,11 +496,11 @@ export function CartCrudScreen({ route, navigation }: any) {
   );
   const didInitModeFromCart = useRef(false);
   const checkoutInFlightRef = useRef(false);
+  const subscriptionIdempotencyKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     dispatch(restoreCartSnapshotThunk());
     dispatch(fetchCartPolicyThunk());
-    dispatch(fetchCustomerCartThunk());
     dispatch(fetchCustomerAddressesThunk());
   }, [dispatch]);
 
@@ -510,13 +530,31 @@ export function CartCrudScreen({ route, navigation }: any) {
 
   useFocusEffect(
     useCallback(() => {
+      const routeServiceId = Number(route?.params?.serviceId ?? 0);
+      if (
+        recentlyAddedServiceId &&
+        routeServiceId > 0 &&
+        Number(recentlyAddedServiceId) === routeServiceId &&
+        items.some((item) => Number(item.serviceId) === routeServiceId)
+      ) {
+        dispatch(clearRecentlyAdded());
+        return undefined;
+      }
       dispatch(fetchCustomerCartThunk());
       dispatch(fetchCustomerAddressesThunk());
       return undefined;
-    }, [dispatch]),
+    }, [dispatch, items, recentlyAddedServiceId, route?.params?.serviceId]),
   );
 
   useEffect(() => {
+    if (route?.params?.recurringBooking === null) {
+      setRecurringCartItem(null);
+      setBookingMode(route?.params?.bookingMode === "SCHEDULED" ? "SCHEDULED" : "INSTANT");
+      setRequiresScheduledSlotSelection(route?.params?.bookingMode === "SCHEDULED");
+      dispatch(setScheduledTime(null));
+      didInitModeFromCart.current = true;
+      return;
+    }
     if (route?.params?.recurringBooking) {
       setRecurringCartItem(route.params.recurringBooking);
       setBookingMode("SUBSCRIPTION");
@@ -524,10 +562,10 @@ export function CartCrudScreen({ route, navigation }: any) {
       dispatch(setScheduledTime(null));
       didInitModeFromCart.current = true;
     }
-  }, [dispatch, route?.params?.recurringBooking]);
+  }, [dispatch, route?.params?.recurringBooking, route?.params?.bookingMode]);
 
   const selectedAddress = useMemo(
-    () => addresses.find((row) => Number(row.id) === Number(selectedAddressId)) ?? null,
+    () => addresses.find((row) => String(row.id) === String(selectedAddressId)) ?? null,
     [addresses, selectedAddressId],
   );
   const hasDetectedLocation = useMemo(() => {
@@ -685,6 +723,9 @@ export function CartCrudScreen({ route, navigation }: any) {
   };
   const recurringPrice = useMemo(() => Number(recurringCartItem?.price ?? 0), [recurringCartItem?.price]);
   const hasRecurringCartItem = Boolean(recurringCartItem);
+  const isScheduledBookingFlow = !hasRecurringCartItem && (
+    route?.params?.scheduleMode === "FIXED" || route?.params?.scheduleMode === "HOURLY"
+  );
   const cartServiceCount = items.length + (hasRecurringCartItem ? 1 : 0);
   const hasCartContent = cartServiceCount > 0;
   const itemTotal = useMemo(
@@ -703,12 +744,16 @@ export function CartCrudScreen({ route, navigation }: any) {
     [apiItemTotal, getSelectedCleaningDurationPriceForItem, hasTimeBasedCleaningSelection, items, recurringPrice, shouldUseTimeBasedForItem],
   );
   const totalTaxAndFees = useMemo(() => Number(gstAmount || 0) + Number(serviceFee || 0) + Number(taxAmount || 0), [gstAmount, serviceFee, taxAmount]);
-  const toPay = useMemo(() => {
+  const baseToPay = useMemo(() => {
     const apiBaseTotal = Number(apiToPay || grandTotal || 0);
     if (apiBaseTotal > 0 && !hasTimeBasedCleaningSelection) return apiBaseTotal + recurringPrice;
     return Number(itemTotal + totalTaxAndFees || 0);
   }, [apiToPay, grandTotal, hasTimeBasedCleaningSelection, itemTotal, recurringPrice, totalTaxAndFees]);
-  const totalSaved = useMemo(() => Math.max(0, Number(apiTotalSaved || 0)), [apiTotalSaved]);
+  const toPay = appliedCoupon?.finalAmount != null ? Number(appliedCoupon.finalAmount) : baseToPay;
+  const totalSaved = useMemo(
+    () => Math.max(0, Number(apiTotalSaved || 0)) + Math.max(0, Number(appliedCoupon?.discountAmount ?? 0)),
+    [apiTotalSaved, appliedCoupon?.discountAmount],
+  );
   const bookingContactName = (contactName || authUser?.name || "Contact").trim();
   const bookingContactPhone = (contactPhone || authUser?.mobile || "").trim();
   const displayPhone = bookingContactPhone;
@@ -726,6 +771,32 @@ export function CartCrudScreen({ route, navigation }: any) {
       ),
     [items, route?.params?.categoryName],
   );
+  const hideInstant = useMemo(
+    () => hidesInstantBooking(route?.params?.categoryName) || items.some((item) =>
+      hidesInstantBooking(item.categoryName) || hidesInstantBooking(item.serviceType),
+    ),
+    [items, route?.params?.categoryName],
+  );
+  const cartCategoriesQuery = useQuery({
+    queryKey: ["cart-service-categories"],
+    queryFn: getCategories,
+    enabled: items.some(item => !item.categoryName && Boolean(item.categoryId)),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const hideSubscription = !hasRecurringCartItem && (
+    hidesSubscriptionBooking(route?.params?.categoryName) || items.some(item =>
+      hidesSubscriptionBooking(item.categoryName) || hidesSubscriptionBooking(item.serviceType) ||
+      hidesSubscriptionBooking(item.name) ||
+      (!item.categoryName && !isPartyScheduledOnly && (
+        isCookCartItem(item) || isCleaningCartItem(item) || /\bbreakfast\b/i.test(item.name ?? "")
+      )) ||
+      (cartCategoriesQuery.data ?? []).some(category =>
+        String(category.categoryId ?? category.id) === String(item.categoryId) &&
+        hidesSubscriptionBooking(category.categoryName ?? category.name),
+      ),
+    )
+  );
   const confirmedScheduledDate = bookingMode === "SCHEDULED" ? parseScheduledDateTime(scheduledTime) : null;
   const hasConfirmedScheduledSlot =
     bookingMode === "SCHEDULED" && Boolean(confirmedScheduledDate) && !requiresScheduledSlotSelection;
@@ -737,28 +808,117 @@ export function CartCrudScreen({ route, navigation }: any) {
       : bookingMode === "SCHEDULED"
         ? CART_CONFIG.actions.selectTimeSlot
         : CART_CONFIG.actions.bookNow;
+  const effectivePlanId = Number(recurringCartItem?.serviceId ?? items[0]?.serviceId ?? 0);
+  const couponCategoryId = Number(items[0]?.categoryId ?? 0);
+  const couponBookingType = bookingMode === "SUBSCRIPTION" ? null : bookingMode;
+  const couponRequest = {
+    planId: effectivePlanId,
+    ...(Number.isSafeInteger(couponCategoryId) && couponCategoryId > 0 ? { categoryId: couponCategoryId } : {}),
+    amount: Number(baseToPay || 0),
+    bookingType: couponBookingType ?? "INSTANT" as const,
+  };
+  const availableCoupons = useQuery({
+    queryKey: ["cart-coupons", authUser?.id],
+    queryFn: () => getCartCoupons(),
+    enabled: Boolean(couponBookingType && items.length > 0),
+  });
+  const couponMutation = useMutation({
+    mutationFn: async (code: string) => {
+      if (!code) throw new Error("Enter valid coupon code");
+      if (!couponBookingType) throw new Error("Coupons are available for instant and scheduled bookings only.");
+      if (!effectivePlanId) throw new Error("Add a service before applying coupon.");
+      return applyCoupon({
+        code,
+        ...couponRequest,
+      });
+    },
+    onSuccess: (result, requestedCode) => {
+      if (!result?.valid) {
+        setAppliedCoupon(null);
+        setCouponError(result?.message || "Coupon is not valid for this booking.");
+        return;
+      }
+      setCouponError(null);
+      setAppliedCoupon({
+        code: String(result.couponCode ?? requestedCode).trim().toUpperCase(),
+        originalAmount: Number(result.originalAmount ?? baseToPay ?? 0),
+        discountAmount: Number(result.discountAmount ?? 0),
+        finalAmount: Number(result.finalAmount ?? baseToPay ?? 0),
+        currency: String(result.currency ?? currency ?? "INR"),
+      });
+      setCouponCodeInput(String(result.couponCode ?? requestedCode).trim().toUpperCase());
+      setSnackMessage(result?.message || "Coupon applied successfully.");
+      setSnackVisible(true);
+    },
+    onError: (error: any) => {
+      setAppliedCoupon(null);
+      setCouponError(String(error?.message ?? "Unable to apply coupon."));
+    },
+  });
+
+  useEffect(() => {
+    const nextContextKey = JSON.stringify({
+      bookingMode,
+      baseToPay: Number(baseToPay.toFixed(2)),
+      itemIds: items.map((item) => `${item.itemId}:${item.serviceId}:${item.categoryId}:${item.quantity}:${item.totalPrice}`).join("|"),
+      recurring: recurringCartItem ? `${recurringCartItem.serviceId}:${recurringCartItem.price}:${recurringCartItem.visits}` : "",
+    });
+    if (!couponContextKey) {
+      setCouponContextKey(nextContextKey);
+      return;
+    }
+    if (couponContextKey !== nextContextKey) {
+      setCouponContextKey(nextContextKey);
+      if (appliedCoupon) {
+        setAppliedCoupon(null);
+        setCouponError("Cart changed. Please reapply your coupon to get updated pricing.");
+      }
+      return;
+    }
+    setCouponContextKey(nextContextKey);
+  }, [appliedCoupon, baseToPay, bookingMode, couponContextKey, items, recurringCartItem]);
+
+  const removeAppliedCoupon = useCallback(() => {
+    setAppliedCoupon(null);
+    setCouponError(null);
+    setSnackMessage("Coupon removed");
+    setSnackVisible(true);
+  }, []);
 
   useEffect(() => {
     const routeMode = String(route?.params?.bookingMode ?? "").toUpperCase();
+    if (hasRecurringCartItem) return;
+    if (isScheduledBookingFlow && routeMode !== "SCHEDULED") return;
     if (routeMode !== "SCHEDULED" && routeMode !== "SUBSCRIPTION") return;
     if (isPartyScheduledOnly && routeMode !== "SCHEDULED") return;
+    if (hideSubscription && routeMode === "SUBSCRIPTION") return;
     setBookingMode(routeMode as BookingMode);
     setRequiresScheduledSlotSelection(routeMode === "SCHEDULED");
     if (routeMode === "SCHEDULED" || routeMode === "SUBSCRIPTION") {
       dispatch(setScheduledTime(null));
     }
     didInitModeFromCart.current = true;
-  }, [dispatch, isPartyScheduledOnly, route?.params?.bookingMode]);
+  }, [dispatch, hasRecurringCartItem, hideSubscription, isPartyScheduledOnly, isScheduledBookingFlow, route?.params?.bookingMode]);
 
   useEffect(() => {
-    if (!isPartyScheduledOnly || bookingMode === "SCHEDULED") return;
+    if (!hideSubscription || bookingMode !== "SUBSCRIPTION") return;
+    const needsSchedule = isScheduledBookingFlow || hideInstant || isPartyScheduledOnly || Boolean(scheduledTime);
+    setBookingMode(needsSchedule ? "SCHEDULED" : "INSTANT");
+    setRequiresScheduledSlotSelection(needsSchedule);
+    didInitModeFromCart.current = true;
+  }, [bookingMode, hideInstant, hideSubscription, isPartyScheduledOnly, isScheduledBookingFlow, scheduledTime]);
+
+  useEffect(() => {
+    if (hasRecurringCartItem) return;
+    if (!((isScheduledBookingFlow || isPartyScheduledOnly) && bookingMode !== "SCHEDULED") && !(hideInstant && bookingMode === "INSTANT")) return;
     setBookingMode("SCHEDULED");
     setRequiresScheduledSlotSelection(true);
     dispatch(setScheduledTime(null));
     didInitModeFromCart.current = true;
-  }, [bookingMode, dispatch, isPartyScheduledOnly]);
+  }, [bookingMode, dispatch, hasRecurringCartItem, hideInstant, isPartyScheduledOnly, isScheduledBookingFlow]);
 
   useEffect(() => {
+    if (hasRecurringCartItem) return;
     if (didInitModeFromCart.current) return;
     if (scheduledTime) {
       setBookingMode("SCHEDULED");
@@ -766,7 +926,7 @@ export function CartCrudScreen({ route, navigation }: any) {
       return;
     }
     didInitModeFromCart.current = true;
-  }, [scheduledTime]);
+  }, [hasRecurringCartItem, scheduledTime]);
 
   useEffect(() => {
     if (selectedAddressId && attemptedCheckout) {
@@ -774,12 +934,17 @@ export function CartCrudScreen({ route, navigation }: any) {
     }
   }, [attemptedCheckout, selectedAddressId]);
 
-  const updateMetaIfReady = (nextAddressId: number | null, nextScheduledTime: string | null) => {
+  const updateMetaIfReady = (nextAddressId: number | string | null, nextScheduledTime: string | null) => {
     if (!nextAddressId || !nextScheduledTime) return;
     dispatch(updateCartMetaThunk({ addressId: nextAddressId, scheduledTime: nextScheduledTime }));
   };
 
   const validateCartBeforeCheckout = async () => {
+    // Repeat bookings are carried in the navigation payload, not in regular cart rows.
+    // Do not block this flow on a separate cart read that may be empty or unavailable.
+    if (hasRecurringCartItem && items.length === 0) {
+      return true;
+    }
     if (items.length > cartPolicy.maxCartItems) {
       Alert.alert("Cart limit exceeded", `Maximum ${cartPolicy.maxCartItems} services allowed.`);
       return false;
@@ -835,7 +1000,11 @@ export function CartCrudScreen({ route, navigation }: any) {
   };
 
   const selectBookingMode = (nextMode: BookingMode) => {
-    if (isPartyScheduledOnly && nextMode !== "SCHEDULED") return;
+    if (isScheduledBookingFlow && nextMode !== "SCHEDULED") return;
+    if (hasRecurringCartItem && nextMode !== "SUBSCRIPTION") return;
+    if (hideSubscription && nextMode === "SUBSCRIPTION") return;
+    if (hideInstant && nextMode === "INSTANT") return;
+    if (!hasRecurringCartItem && isPartyScheduledOnly && nextMode !== "SCHEDULED") return;
     setBookingMode(nextMode);
     setAttemptedCheckout(false);
     if (nextMode === "SUBSCRIPTION") {
@@ -865,7 +1034,7 @@ export function CartCrudScreen({ route, navigation }: any) {
     try {
     if (!(await validateCartBeforeCheckout())) return;
     const promptManualAddressIfMissing = () => {
-      if (selectedAddressId && selectedAddress && Number(selectedAddress.id) === Number(selectedAddressId)) {
+      if (selectedAddressId && selectedAddress && String(selectedAddress.id) === String(selectedAddressId)) {
         return false;
       }
       setAttemptedCheckout(true);
@@ -905,6 +1074,10 @@ export function CartCrudScreen({ route, navigation }: any) {
         return;
       }
       try {
+        if (!subscriptionIdempotencyKeyRef.current) {
+          subscriptionIdempotencyKeyRef.current =
+            `subscription-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+        }
         const subscription = await createSubscriptionBooking({
           serviceId: recurringCartItem.serviceId,
           subscriptionServiceType: recurringCartItem.subscriptionServiceType,
@@ -915,15 +1088,18 @@ export function CartCrudScreen({ route, navigation }: any) {
           durationHours: recurringCartItem.durationHours,
           familySize: recurringCartItem.familySize,
           timeSlot: recurringCartItem.timeSlot,
-          addressId: Number(selectedAddressId),
+          addressId: selectedAddressId,
           latitude: bookingCoordinates.latitude,
           longitude: bookingCoordinates.longitude,
-        });
-        const bookingId = subscription?.bookingId ?? subscription?.id ?? subscription?.subscriptionId ?? null;
+          couponCode: appliedCoupon?.code,
+        }, subscriptionIdempotencyKeyRef.current);
+        const bookingId = subscription?.bookingId;
+        const subscriptionId = subscription?.subscriptionId ?? subscription?.id;
         if (!bookingId) {
           Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Unable to start subscription payment. Booking id missing.");
           return;
         }
+        subscriptionIdempotencyKeyRef.current = null;
         dispatch(lockCartUntilPayment({ bookingId: String(bookingId) }));
         navigation.navigate("Payment", {
           bookingId: String(bookingId),
@@ -931,131 +1107,11 @@ export function CartCrudScreen({ route, navigation }: any) {
           amount: recurringPrice || toPay,
           currency,
           bookingMode: "SUBSCRIPTION",
+          subscriptionId: subscriptionId == null ? undefined : String(subscriptionId),
           postPaymentRoute: "SubscriptionConfirmed",
         });
       } catch (error: any) {
         Alert.alert(CART_CONFIG.messages.bookingFailedTitle, readableBookingError(error?.message ?? "Unable to create subscription booking."));
-      }
-      return;
-    }
-
-    if (hasConfirmedScheduledSlot) {
-      if (items.length === 0) {
-        Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Cart is empty. Please add service first.");
-        setAttemptedCheckout(true);
-        return;
-      }
-      if (promptManualAddressIfMissing()) {
-        return;
-      }
-      if (!selectedAddressId) {
-        if (items.length === 0) {
-          Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Cart is empty. Please add service first.");
-        } else {
-          Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Please select address before payment.");
-        }
-        setAttemptedCheckout(true);
-        return;
-      }
-      if (!scheduledTime) {
-        Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Please choose and confirm a schedule slot.");
-        return;
-      }
-      try {
-        const firstServiceId = Number(items[0]?.serviceId ?? 0);
-        if (!firstServiceId) {
-          Alert.alert(CART_CONFIG.messages.bookingFailedTitle, CART_CONFIG.messages.missingServiceId);
-          return;
-        }
-        if (!selectedAddress || Number(selectedAddress.id) !== Number(selectedAddressId)) {
-          Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Please select a valid saved address.");
-          return;
-        }
-        const targetDate = parseScheduledDateTime(scheduledTime);
-        if (!targetDate) {
-          Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Invalid scheduled slot. Please select again.");
-          setOpenTimePickerKey((v) => v + 1);
-          return;
-        }
-        const dateKey = toLocalDate(targetDate);
-        const selectedSlotStart = `${String(targetDate.getHours()).padStart(2, "0")}:${String(targetDate.getMinutes()).padStart(2, "0")}`;
-        let bookingWindow = toDateAndSlot(scheduledTime);
-        try {
-          const nowMs = Date.now();
-          const slots = await getAvailableTimeSlots(dateKey);
-          const exact = slots
-            .map((row) => {
-              const rawSlot = String(row?.slot ?? "").trim();
-              const start = toSlotStart(rawSlot);
-              if (!start) return null;
-              const t = new Date(`${dateKey}T${start}:00`);
-              if (!Number.isFinite(t.getTime()) || t.getTime() <= nowMs) return null;
-              return { row, start };
-            })
-            .filter(Boolean)
-            .find((item: any) => item.start === selectedSlotStart) as { row: any; start: string } | undefined;
-
-          if (!exact) {
-            Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Selected slot is no longer available. Please reselect slot.");
-            setOpenTimePickerKey((v) => v + 1);
-            return;
-          }
-          bookingWindow = { date: dateKey, slot: String(exact.row.slot).trim() };
-          dispatch(setScheduledTime(`${dateKey}T${exact.start}:00`));
-          updateMetaIfReady(selectedAddressId, `${dateKey}T${exact.start}:00`);
-        } catch {
-          Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Unable to verify latest slots. Please retry and confirm slot again.");
-          setOpenTimePickerKey((v) => v + 1);
-          return;
-        }
-        if (!bookingCoordinates) {
-          Alert.alert(
-            CART_CONFIG.messages.bookingFailedTitle,
-            "Selected address does not have valid map coordinates. Please reselect location and save address details.",
-          );
-          return;
-        }
-        const scheduledNote = [
-          "Payment pending from customer app",
-          scheduledCook?.familySizeLabel ? `Cook family size: ${scheduledCook.familySizeLabel}` : "",
-          selectedCleaningDurationSummaryLabel ? `Cleaning duration: ${selectedCleaningDurationSummaryLabel}` : "",
-        ].filter(Boolean).join(" | ");
-        const booking = await createBooking({
-          serviceId: String(firstServiceId),
-          addressId: String(selectedAddressId),
-          latitude: bookingCoordinates?.latitude,
-          longitude: bookingCoordinates?.longitude,
-          date: bookingWindow.date,
-          slot: bookingWindow.slot,
-          note: scheduledNote,
-        });
-        const bookingId = (booking as any)?.data?.id ?? (booking as any)?.id ?? null;
-        if (!bookingId) {
-          Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Unable to start payment. Booking id missing.");
-          return;
-        }
-        void trackBookingCreated({
-          booking_id: String(bookingId),
-          booking_mode: "SCHEDULED",
-          payment_required: true,
-          service_id: firstServiceId,
-          service_count: items.length,
-          cart_id: cartId ?? undefined,
-          amount: toPay,
-          currency,
-          source: "cart_scheduled_pay_now",
-        });
-        dispatch(lockCartUntilPayment({ bookingId: String(bookingId) }));
-        navigation.navigate("Payment", {
-          bookingId: String(bookingId),
-          cartId,
-          amount: toPay,
-          currency,
-          bookingMode: "SCHEDULED",
-          postPaymentRoute: "BookingPaymentConfirm",
-        });
-      } catch (e: any) {
-        Alert.alert(CART_CONFIG.messages.bookingFailedTitle, readableBookingError(e?.message ?? CART_CONFIG.messages.bookingErrorFallback));
       }
       return;
     }
@@ -1091,40 +1147,55 @@ export function CartCrudScreen({ route, navigation }: any) {
         Alert.alert(CART_CONFIG.messages.bookingFailedTitle, CART_CONFIG.messages.missingServiceId);
         return;
       }
-      if (!selectedAddress || Number(selectedAddress.id) !== Number(selectedAddressId)) {
+      if (!selectedAddress || String(selectedAddress.id) !== String(selectedAddressId)) {
         Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Please select a valid saved address.");
         return;
       }
       let bookingWindow = toDateAndSlot(effectiveScheduledTime);
       try {
-          const targetDate = parseScheduledDateTime(effectiveScheduledTime);
-          if (targetDate) {
-            const dateKey = toLocalDate(targetDate);
+        const targetDate = parseScheduledDateTime(effectiveScheduledTime);
+        if (targetDate) {
+          const dateKey = toLocalDate(targetDate);
+          const selectedSlotStart = `${String(targetDate.getHours()).padStart(2, "0")}:${String(targetDate.getMinutes()).padStart(2, "0")}`;
           const slots = await getAvailableTimeSlots(dateKey);
           const nowMs = Date.now();
           const selectedFromApi = slots.find((row) => {
+            if (row.available === false) return false;
             const rawSlot = String(row?.slot ?? "").trim();
             const start = toSlotStart(rawSlot);
             if (!start) return false;
             const t = new Date(`${dateKey}T${start}:00`);
             if (!Number.isFinite(t.getTime()) || t.getTime() <= nowMs) return false;
-            if (bookingMode !== "INSTANT") return true;
+            if (bookingMode === "SCHEDULED") return start === selectedSlotStart;
             const diffMins = (t.getTime() - nowMs) / 60000;
             return diffMins <= cartPolicy.instantBookingWindowMinutes;
           });
-          if (bookingMode === "INSTANT" && !selectedFromApi) {
-            Alert.alert(
-              "Instant unavailable",
-              `No partner slot available within ${cartPolicy.instantBookingWindowMinutes} minutes. Please choose Scheduled.`,
-            );
+          if (bookingMode === "SCHEDULED" && !selectedFromApi) {
+            Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Selected slot is no longer available. Please reselect slot.");
+            setOpenTimePickerKey((v) => v + 1);
             return;
           }
+          if (bookingMode === "INSTANT" && !selectedFromApi) {
+            bookingWindow = toDateAndSlot(new Date().toISOString());
+          }
           if (selectedFromApi) {
-            bookingWindow = { date: dateKey, slot: String(selectedFromApi.slot).trim() };
+            const selectedSlot = String(selectedFromApi.slot).trim();
+            const selectedStart = toSlotStart(selectedSlot) ?? selectedSlotStart;
+            const nextScheduledTime = `${dateKey}T${selectedStart}:00`;
+            bookingWindow = { date: dateKey, slot: selectedSlot };
+            if (bookingMode === "SCHEDULED") {
+              dispatch(setScheduledTime(nextScheduledTime));
+              updateMetaIfReady(selectedAddressId, nextScheduledTime);
+            }
           }
         }
       } catch {
-        // Keep fallback booking window if slots API fails.
+        if (bookingMode === "SCHEDULED") {
+          Alert.alert(CART_CONFIG.messages.bookingFailedTitle, "Unable to verify latest slots. Please retry and confirm slot again.");
+          setOpenTimePickerKey((v) => v + 1);
+          return;
+        }
+        // Keep fallback booking window for instant bookings if slots API fails.
       }
       if (!bookingCoordinates) {
         Alert.alert(
@@ -1136,11 +1207,12 @@ export function CartCrudScreen({ route, navigation }: any) {
       const bookingNote = [
         bookingMode === "INSTANT"
           ? `Instant booking requested (within ${cartPolicy.instantBookingWindowMinutes} mins)`
-          : "Booking from customer app",
+          : "Payment pending from customer app",
         bookingMode === "SCHEDULED" && scheduledCook?.familySizeLabel ? `Cook family size: ${scheduledCook.familySizeLabel}` : "",
         selectedCleaningDurationSummaryLabel ? `Cleaning duration: ${selectedCleaningDurationSummaryLabel}` : "",
       ].filter(Boolean).join(" | ");
       const booking = await createBooking({
+        bookingType: bookingMode === "INSTANT" ? "INSTANT" : "SCHEDULED",
         serviceId: String(firstServiceId),
         addressId: String(selectedAddressId),
         latitude: bookingCoordinates?.latitude,
@@ -1148,19 +1220,20 @@ export function CartCrudScreen({ route, navigation }: any) {
         date: bookingWindow.date,
         slot: bookingWindow.slot,
         note: bookingNote,
+        couponCode: appliedCoupon?.code,
       });
       const bookingId = (booking as any)?.data?.id ?? (booking as any)?.id ?? null;
       if (bookingId) {
         void trackBookingCreated({
           booking_id: String(bookingId),
           booking_mode: bookingMode,
-          payment_required: bookingMode === "INSTANT",
+          payment_required: bookingMode === "INSTANT" || bookingMode === "SCHEDULED",
           service_id: firstServiceId,
           service_count: items.length,
           cart_id: cartId ?? undefined,
           amount: toPay,
           currency,
-          source: "cart_checkout",
+          source: bookingMode === "SCHEDULED" ? "cart_scheduled_pay_now" : "cart_checkout",
         });
       }
       setSnackMessage(bookingId ? `${CART_CONFIG.messages.bookingSuccess} ID: ${bookingId}` : CART_CONFIG.messages.bookingSuccess);
@@ -1174,10 +1247,23 @@ export function CartCrudScreen({ route, navigation }: any) {
           currency,
           bookingMode: "INSTANT",
           postPaymentRoute: "BookingPaymentConfirm",
+          serviceName: items[0]?.name,
+          address: bookingLocationText,
+          scheduledAt: bookingWindow.date && bookingWindow.slot ? `${bookingWindow.date}T${bookingWindow.slot}` : undefined,
         });
       } else if (bookingMode === "SCHEDULED" && bookingId) {
-        dispatch(fetchCustomerCartThunk());
-        navigation.navigate("ScheduledBookingStatus", { bookingId: String(bookingId) });
+        dispatch(lockCartUntilPayment({ bookingId: String(bookingId) }));
+        navigation.navigate("Payment", {
+          bookingId: String(bookingId),
+          cartId,
+          amount: toPay,
+          currency,
+          bookingMode: "SCHEDULED",
+          postPaymentRoute: "BookingPaymentConfirm",
+          serviceName: items[0]?.name,
+          address: bookingLocationText,
+          scheduledAt: bookingWindow.date && bookingWindow.slot ? `${bookingWindow.date}T${bookingWindow.slot}` : undefined,
+        });
       } else if (bookingId) {
         dispatch(fetchCustomerCartThunk());
         navigation.navigate("Main", { screen: "Bookings" });
@@ -1240,7 +1326,6 @@ export function CartCrudScreen({ route, navigation }: any) {
     <SafeAreaView edges={["bottom"]} style={styles.root}>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 76 + insets.bottom }]} showsVerticalScrollIndicator={false}>
         {loading ? <Text style={styles.info}>{CART_CONFIG.messages.loadCartFailed}</Text> : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={[styles.topSummaryStrip, styles.edgeToEdge]}>
           <View style={styles.topSummaryLeft}>
@@ -1443,8 +1528,12 @@ export function CartCrudScreen({ route, navigation }: any) {
         </View>
         <View style={[styles.modeRow, styles.edgeToEdge]}>
           {(Object.keys(BOOKING_MODE_META) as BookingMode[]).map((modeKey) => {
+            if (isScheduledBookingFlow && modeKey !== "SCHEDULED") return null;
+            if (hasRecurringCartItem && modeKey !== "SUBSCRIPTION") return null;
+            if (hideInstant && modeKey === "INSTANT") return null;
+            if (hideSubscription && modeKey === "SUBSCRIPTION") return null;
             const active = bookingMode === modeKey;
-            const disabled = isPartyScheduledOnly && modeKey !== "SCHEDULED";
+            const disabled = !hasRecurringCartItem && isPartyScheduledOnly && modeKey !== "SCHEDULED";
             return (
               <Pressable
                 key={modeKey}
@@ -1460,7 +1549,7 @@ export function CartCrudScreen({ route, navigation }: any) {
                   size={17}
                   color={disabled ? palette.mutedSoft : COLORS.white}
                 />
-                <Text style={[styles.modeBtnText, active && styles.modeBtnTextActive, disabled && styles.modeBtnTextDisabled]}>{BOOKING_MODE_META[modeKey].label}</Text>
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[styles.modeBtnText, active && styles.modeBtnTextActive, disabled && styles.modeBtnTextDisabled]}>{BOOKING_MODE_META[modeKey].label}</Text>
               </Pressable>
             );
           })}
@@ -1486,6 +1575,94 @@ export function CartCrudScreen({ route, navigation }: any) {
           </>
         ) : null}
 
+        {couponBookingType ? <>
+        <Text style={[styles.sectionTitle, styles.edgeToEdgeTitle]}>Coupon code</Text>
+        <View style={[styles.card, styles.edgeToEdge]}>
+          <View style={styles.couponInputRow}>
+            <TextInput
+              mode="outlined"
+              label="Coupon code"
+              accessibilityLabel="Coupon code"
+              value={couponCodeInput}
+              onChangeText={(text: string) => {
+                setCouponCodeInput(text.replace(/\s+/g, "").toUpperCase());
+                if (couponError) setCouponError(null);
+              }}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!couponMutation.isPending}
+              style={styles.couponInput}
+              theme={{ colors: { onSurfaceVariant: COLORS.neutral100 } }}
+            />
+            <Pressable
+              style={[styles.couponApplyBtn, couponMutation.isPending && styles.primaryBtnDisabled]}
+              onPress={() => {
+                if (!couponMutation.isPending) couponMutation.mutate(couponCodeInput.trim().toUpperCase());
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={couponMutation.isPending ? "Applying coupon" : "Apply coupon"}
+              disabled={couponMutation.isPending}
+            >
+              <Text style={styles.couponApplyText}>{couponMutation.isPending ? "Applying..." : "Apply"}</Text>
+            </Pressable>
+          </View>
+          {couponError ? <Text style={styles.inlineError}>{couponError}</Text> : null}
+          {appliedCoupon ? (
+            <View style={styles.appliedCouponWrap}>
+              <View style={styles.appliedCouponRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.appliedCouponCode}>{appliedCoupon.code}</Text>
+                  <Text style={styles.appliedCouponMeta}>
+                    Discount {formatCurrency(appliedCoupon.discountAmount, appliedCoupon.currency)} applied.
+                  </Text>
+                </View>
+                <Pressable onPress={removeAppliedCoupon} accessibilityRole="button" accessibilityLabel="Remove coupon">
+                  <Text style={styles.removeCouponText}>Remove</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+          <Text style={styles.appliedCouponCode}>Available coupons</Text>
+          {availableCoupons.isLoading ? <Text style={styles.appliedCouponMeta}>Loading coupons...</Text> : null}
+          {availableCoupons.isError ? <View>
+            <Text style={styles.inlineError}>Unable to load available coupons.</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Retry available coupons" onPress={() => void availableCoupons.refetch()}>
+              <Text style={styles.removeCouponText}>Retry</Text>
+            </Pressable>
+          </View> : null}
+          {availableCoupons.isSuccess && availableCoupons.data?.length === 0 ? <View>
+            <Text style={styles.appliedCouponMeta}>No coupons available right now.</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Refresh available coupons" onPress={() => void availableCoupons.refetch()}>
+              <Text style={styles.removeCouponText}>Refresh</Text>
+            </Pressable>
+          </View> : null}
+          {(availableCoupons.data ?? []).map((coupon) => <View key={String(coupon.id ?? coupon.code)} style={styles.appliedCouponWrap}>
+            <View style={styles.appliedCouponRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.appliedCouponCode}>{coupon.code}</Text>
+                {coupon.title ? <Text style={styles.appliedCouponMeta}>{coupon.title}</Text> : null}
+                {coupon.description ? <Text style={styles.appliedCouponMeta}>{coupon.description}</Text> : null}
+                <Text style={styles.appliedCouponMeta}>{coupon.discountType === "PERCENTAGE"
+                  ? `${coupon.discountValue ?? coupon.discount ?? 0}% off`
+                  : `${formatCurrency(Number(coupon.discountValue ?? coupon.discount ?? 0), currency)} off`}</Text>
+                {coupon.minimumPurchaseAmount != null ? <Text style={styles.appliedCouponMeta}>
+                  Minimum purchase {formatCurrency(Number(coupon.minimumPurchaseAmount), currency)}
+                </Text> : null}
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Apply ${coupon.code}`}
+                disabled={couponMutation.isPending || appliedCoupon?.code === coupon.code}
+                onPress={() => {
+                  if (couponMutation.isPending) return;
+                  setCouponCodeInput(coupon.code);
+                  couponMutation.mutate(coupon.code);
+                }}>
+                <Text style={styles.removeCouponText}>{appliedCoupon?.code === coupon.code ? "Applied" : "Apply"}</Text>
+              </Pressable>
+            </View>
+          </View>)}
+        </View>
+        </> : null}
+
         <Text style={[styles.sectionTitle, styles.edgeToEdgeTitle]}>{CART_CONFIG.sectionLabels.billDetails}</Text>
         <View style={[styles.card, styles.edgeToEdge]}>
           <View style={styles.billTop}>
@@ -1495,6 +1672,8 @@ export function CartCrudScreen({ route, navigation }: any) {
           <View style={styles.divider} />
           <View style={styles.billRow}><Text style={styles.billLabel}>{CART_CONFIG.sectionLabels.itemTotal}</Text><Text style={styles.billValue}>{formatCurrency(itemTotal, currency)}</Text></View>
           <View style={styles.billRow}><Text style={styles.billLabel}>{CART_CONFIG.sectionLabels.gstAndFees}</Text><Text style={styles.billValue}>{formatCurrency(totalTaxAndFees, currency)}</Text></View>
+          {appliedCoupon ? <View style={styles.billRow}><Text style={styles.billLabel}>Original price</Text><Text style={styles.billValue}>{formatCurrency(appliedCoupon.originalAmount, appliedCoupon.currency)}</Text></View> : null}
+          {appliedCoupon ? <View style={styles.billRow}><Text style={styles.billLabel}>Coupon discount</Text><Text style={styles.billDiscountValue}>-{formatCurrency(appliedCoupon.discountAmount, appliedCoupon.currency)}</Text></View> : null}
           <View style={styles.billRow}><Text style={styles.billLabelStrong}>{CART_CONFIG.sectionLabels.toPay}</Text><Text style={styles.billValueStrong}>{formatCurrency(toPay, currency)}</Text></View>
         </View>
 
@@ -1736,6 +1915,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   couponText: { color: palette.muted, fontWeight: "800", fontSize: 15, fontFamily: FONT?.semibold },
+  couponInputRow: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
+  couponInput: { flex: 1, backgroundColor: COLORS.navyDark },
+  couponApplyBtn: {
+    minWidth: 92,
+    borderRadius: radii.md,
+    backgroundColor: COLORS.goldSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 15,
+  },
+  couponApplyText: { color: COLORS.navyDark, fontWeight: "900", fontSize: 14, fontFamily: FONT?.bold },
+  appliedCouponWrap: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "rgba(224,169,75,0.4)",
+    backgroundColor: "rgba(224,169,75,0.12)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  appliedCouponRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  appliedCouponCode: { color: COLORS.white, fontSize: 15, fontWeight: "900", fontFamily: FONT?.bold },
+  appliedCouponMeta: { color: COLORS.neutral100, fontSize: 12, fontWeight: "700", marginTop: 2, fontFamily: FONT?.regular },
+  removeCouponText: { color: COLORS.goldSoft, fontWeight: "900", fontSize: 13, fontFamily: FONT?.bold },
   detailRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   detailTextWrap: { flex: 1 },
   locationTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -1760,6 +1963,7 @@ const styles = StyleSheet.create({
   billValue: { color: COLORS.white, fontSize: 15, fontWeight: "800", fontFamily: FONT?.bold },
   billLabelStrong: { color: COLORS.goldSoft, fontSize: 17, fontWeight: "900", fontFamily: FONT?.bold },
   billValueStrong: { color: COLORS.goldSoft, fontSize: 17, fontWeight: "900", fontFamily: FONT?.bold },
+  billDiscountValue: { color: palette.success, fontSize: 15, fontWeight: "900", fontFamily: FONT?.bold },
   modeRow: { flexDirection: "row", gap: 10 },
   modeBtn: {
     flex: 1,

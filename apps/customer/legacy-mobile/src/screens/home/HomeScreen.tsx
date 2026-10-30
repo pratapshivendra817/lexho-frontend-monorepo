@@ -13,7 +13,6 @@ import { getUnreadNotificationCount } from "../../api/notificationApi";
 import { PopularServicesShimmer } from "../../components/home/PopularServicesShimmer";
 import { SectionHeader } from "../../components/home/SectionHeader";
 import { ServiceCard as PopularServiceCard } from "../../components/home/ServiceCard";
-import { ServiceCard as LegacyServiceCard } from "../../components/cards/ServiceCard";
 import { EmptyStateCard } from "../../components/common/EmptyStateCard";
 import { QuickBookingSheet } from "../../components/common/QuickBookingSheet";
 import { SkeletonList } from "../../components/common/SkeletonList";
@@ -108,11 +107,6 @@ function isSearchMatch(text: unknown, query: unknown) {
   if (!normalizedQuery) return true;
   if (!normalizedText) return false;
   return normalizedText.includes(normalizedQuery);
-}
-
-function isHiddenHomeService(item: any) {
-  const name = normalizeSearchText(item?.name ?? item?.serviceName ?? "");
-  return name === "simple veg food";
 }
 
 function asArray<T>(value: unknown): T[] {
@@ -459,6 +453,7 @@ export function HomeScreen({ navigation }: any) {
         (section) => {
           if (section.key === popularCleaningSection?.key || section.key === popularCookSection?.key) return false;
           const title = String(section.title ?? "").toLowerCase();
+          if (/^(popular\s*)+(services?)?$/.test(title.trim())) return false;
           if (title.includes("cook") || title.includes("khana") || title.includes("khaana")) return false;
           return true;
         },
@@ -679,19 +674,6 @@ export function HomeScreen({ navigation }: any) {
     if (fromRecommended.length > 0) return filterRows(fromRecommended).slice(0, 8);
     return filterRows(Array.isArray(quick) ? quick : []).slice(0, 8);
   }, [categoryMatchedServices, containsCatalogResults, fuzzyLocalResults, indexedCatalogResults, popular, quick, recommended, searchQuery, searchedServices]);
-  const nonCookServicesToRender = useMemo(
-    () =>
-      allServicesToRender.filter((item: any) => {
-        if (isHiddenHomeService(item)) return false;
-        const name = String(item?.name ?? item?.serviceName ?? "").toLowerCase();
-        if (name.includes("cook") || name.includes("khana") || name.includes("khaana")) return false;
-        if (name.includes("bathroom cleaning")) return false;
-        if (name.includes("fridge cleaning")) return false;
-        if (name.includes("room cleaning")) return false;
-        return true;
-      }),
-    [allServicesToRender],
-  );
   const normalizedSearchQuery = searchQuery.trim();
   const matchedCategories = useMemo(
     () =>
@@ -856,7 +838,7 @@ export function HomeScreen({ navigation }: any) {
         return;
       }
       try {
-        await dispatch(addToCartThunk({ serviceId: parsedId, quantity: 1 })).unwrap();
+        await dispatch(addToCartThunk({ serviceId: parsedId, quantity: 1, categoryName: meta?.categoryName })).unwrap();
         void trackServiceAddedToCart({
           service_id: parsedId,
           category_name: meta?.categoryName,
@@ -865,12 +847,12 @@ export function HomeScreen({ navigation }: any) {
         });
         navigation.navigate(
           "CartCrud",
-          isPartyCategoryName(meta?.categoryName)
-            ? {
-                bookingMode: "SCHEDULED",
-                categoryName: meta?.categoryName,
-              }
-            : undefined,
+          {
+            recurringBooking: null,
+            scheduleMode: undefined,
+            bookingMode: isPartyCategoryName(meta?.categoryName) ? "SCHEDULED" : undefined,
+            categoryName: meta?.categoryName,
+          },
         );
       } catch (error: any) {
         Alert.alert("Add to cart failed", String(error?.message ?? "Please try again."));
@@ -1487,30 +1469,6 @@ export function HomeScreen({ navigation }: any) {
       <StaggeredFadeIn delay={260} style={styles.fullBleedSection}>
         <DynamicHomeSections />
       </StaggeredFadeIn>
-      {(loading || (!isSearchMode && nonCookServicesToRender.length > 0)) ? (
-        <View style={styles.sectionCarouselWrap}>
-          {loading ? <SkeletonList rows={2} /> : null}
-          {!loading && !isSearchMode && nonCookServicesToRender.length > 0 ? (
-            <FlatList
-              horizontal
-              data={nonCookServicesToRender}
-              keyExtractor={(item, i) => String(item?.id ?? i)}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.listRow}
-              renderItem={({ item, index }) => (
-                <View style={index === nonCookServicesToRender.length - 1 ? styles.lastItem : undefined}>
-                  <LegacyServiceCard
-                    title={item?.name ?? item?.serviceName ?? "Service"}
-                    subtitle={item?.description ?? "Trusted professionals near your location"}
-                    price={item?.price ? `Rs. ${formatPrice(Number(item.price))}` : undefined}
-                    badge="All Services"
-                  />
-                </View>
-              )}
-            />
-          ) : null}
-        </View>
-      ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
       {!loading && !error && asArray<any>(categories).length === 0 && asArray<any>(popular).length === 0 ? <EmptyStateCard title="No services yet" subtitle="Try again in a moment or change location." /> : null}

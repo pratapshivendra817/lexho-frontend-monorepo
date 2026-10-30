@@ -36,12 +36,20 @@ jest.mock("../src/components/booking/BookingTimeline", () => ({
   },
 }));
 
+jest.mock("../src/components/booking/AssignedPartnerMap", () => ({
+  AssignedPartnerMap: ({ booking }: any) => {
+    const { Text } = require("react-native");
+    return <Text testID="assigned-partner-map">{String(booking?.map?.partner?.latitude ?? "waiting")}</Text>;
+  },
+}));
+
 describe("BookingPaymentConfirmScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockMeta = { canReschedule: true, canRaiseIssue: true };
     mockTarget = { name: "LiveTracking" };
     mockQuery = {
+      refetch: jest.fn(),
       data: {
         id: "B1",
         bookingType: "SCHEDULED",
@@ -71,6 +79,50 @@ describe("BookingPaymentConfirmScreen", () => {
       />,
     );
   }
+
+  it("refreshes PINs and only shows the PIN for the current service stage", async () => {
+    mockQuery.data = { ...mockQuery.data, serviceStartPin: "0123", serviceCompletePin: "0456" };
+    const view = await renderScreen();
+    expect(view.getByText("Start Service PIN")).toBeTruthy();
+    expect(view.getByText("End Service PIN")).toBeTruthy();
+    expect(view.queryByText("0123")).toBeNull();
+    expect(view.queryByText("0456")).toBeNull();
+    await fireEvent.press(view.getByText("Refresh PINs & Status"));
+    expect(mockQuery.refetch).toHaveBeenCalledTimes(1);
+
+    for (const status of ["ARRIVED", "IN_PROGRESS", "STARTED", "COMPLETED", "CANCELLED"]) {
+      mockQuery.data = { ...mockQuery.data, assignmentStatus: status };
+      await view.rerender(<BookingPaymentConfirmScreen route={{ params: { bookingId: "B1" } }} navigation={{ navigate: mockNavigate, replace: mockReplace }} />);
+      expect(Boolean(view.queryByText("0123"))).toBe(status === "ARRIVED");
+      expect(Boolean(view.queryByText("0456"))).toBe(["IN_PROGRESS", "STARTED"].includes(status));
+    }
+  });
+
+  it("shows and updates the map only for an assigned instant booking", async () => {
+    mockQuery.data = { ...mockQuery.data, bookingType: "INSTANT", assignmentStatus: "SEARCHING_PARTNER" };
+    const view = await renderScreen("INSTANT");
+    expect(view.queryByTestId("assigned-partner-map")).toBeNull();
+    const refresh = () => view.rerender(<BookingPaymentConfirmScreen route={{ params: { bookingId: "B1" } }} navigation={{ navigate: mockNavigate, replace: mockReplace }} />);
+    for (const status of ["ACCEPTED", "PARTNER_ASSIGNED", "ON_THE_WAY", "ARRIVED"]) {
+      mockQuery.data = { ...mockQuery.data, assignmentStatus: status };
+      await refresh();
+      expect(view.getByTestId("assigned-partner-map")).toBeTruthy();
+    }
+    mockQuery.data = { ...mockQuery.data, map: { partner: { latitude: 19.14 } } };
+    await refresh();
+    expect(view.getByText("19.14")).toBeTruthy();
+    mockQuery.data = { ...mockQuery.data, map: { partner: { latitude: 19.15 } } };
+    await refresh();
+    expect(view.getByText("19.15")).toBeTruthy();
+    for (const status of ["IN_PROGRESS", "COMPLETED", "CANCELLED"]) {
+      mockQuery.data = { ...mockQuery.data, assignmentStatus: status };
+      await refresh();
+      expect(view.queryByTestId("assigned-partner-map")).toBeNull();
+    }
+    mockQuery.data = { ...mockQuery.data, bookingType: "SCHEDULED", assignmentStatus: "PARTNER_ASSIGNED" };
+    await refresh();
+    expect(view.queryByTestId("assigned-partner-map")).toBeNull();
+  });
 
   it("renders scheduled details, proceeds, reschedules, raises issue, and calls support", async () => {
     const view = await renderScreen();

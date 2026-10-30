@@ -7,11 +7,12 @@ import type { PartnerOrder } from "../../types/order";
 const STEPS = [
   { key: "NEW", label: "Order Created", timeKey: "createdAt" },
   { key: "ACCEPTED", label: "Accepted", timeKey: "acceptedAt" },
-  { key: "STARTED", label: "Started", timeKey: "startedAt" },
+  { key: "ARRIVED", label: "Arrived", timeKey: "acceptedAt" },
+  { key: "IN_PROGRESS", label: "In Progress", timeKey: "startedAt" },
   { key: "COMPLETED", label: "Completed", timeKey: "completedAt" },
 ] as const;
 
-const orderRank: Record<string, number> = { NEW: 0, PENDING: 0, ACCEPTED: 1, STARTED: 2, COMPLETED: 3 };
+const orderRank: Record<string, number> = { NEW: 0, PENDING: 0, ACCEPTED: 1, ARRIVED: 2, STARTED: 3, IN_PROGRESS: 3, COMPLETED: 4 };
 
 export function OrderLifecycleTimeline({ order }: { order?: Partial<PartnerOrder> | null }) {
   const auditEvents = order?.timeline ?? [];

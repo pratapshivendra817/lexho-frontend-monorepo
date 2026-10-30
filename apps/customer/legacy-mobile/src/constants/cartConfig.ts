@@ -60,6 +60,21 @@ export const CART_CONFIG = {
   },
 } as const;
 
+export function hidesSubscriptionBooking(value?: string | number | null) {
+  const normalized = String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+  return /^(cook(athome)?|cleaning|breakfast(athome)?)(services?)?$/.test(normalized);
+}
+
+export function hidesInstantBooking(value?: string | number | null) {
+  const normalized = String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return /^(vehicle wash|vehical wash|fitness wellness|fitness and wellness)( services?)?$/.test(normalized);
+}
+
 export function isPartyCategoryName(value?: string | number | null) {
   const normalized = String(value ?? "")
     .toLowerCase()

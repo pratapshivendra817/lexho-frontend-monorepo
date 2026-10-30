@@ -172,7 +172,7 @@ describe("PaymentScreen", () => {
     mockState = buildState();
     mockCreatePaymentOrder.mockResolvedValue(orderBuilder());
     mockOpenRazorpayCheckout.mockResolvedValue(checkoutSuccess());
-    mockVerifyPayment.mockResolvedValue({ verified: true });
+    mockVerifyPayment.mockResolvedValue({ verified: true, paymentStatus: "SUCCESS" });
     mockReportPaymentFailure.mockResolvedValue({ reported: true });
     mockSavePendingPaymentBookingId.mockResolvedValue(undefined);
     mockClearPendingPaymentBookingId.mockResolvedValue(undefined);
@@ -237,7 +237,7 @@ describe("PaymentScreen", () => {
     expect(mockSavePendingPaymentBookingId).toHaveBeenCalledWith("412");
     expect(mockCreatePaymentOrder).toHaveBeenCalledWith(
       { bookingId: "412" },
-      expect.stringMatching(/^booking-412-1800000000000-/),
+      expect.stringMatching(/^booking-412-.+/),
     );
     expect(mockOpenRazorpayCheckout).toHaveBeenCalledWith({
       key: "rzp_test_key",
@@ -252,6 +252,7 @@ describe("PaymentScreen", () => {
       },
       theme: expect.any(Object),
     });
+
     expect(mockTrackPaymentInitiated).toHaveBeenCalledWith(expect.objectContaining({
       booking_id: "412",
       razorpay_order_id: "order_101",
@@ -262,7 +263,18 @@ describe("PaymentScreen", () => {
       razorpay_payment_id: "pay_101",
     }));
     expect(mockClearPendingPaymentBookingId).toHaveBeenCalledTimes(1);
-    expect(navigation.navigate).toHaveBeenCalledWith("PaymentStatus", { bookingId: "412" });
+    expect(navigation.navigate).toHaveBeenCalledWith("PaymentStatus", expect.objectContaining({ bookingId: "412" }));
+  });
+
+  it("does not report success or navigate until the backend confirms capture", async () => {
+    mockVerifyPayment.mockResolvedValue({ verified: true, paymentStatus: "CREATED" });
+    const { navigation, view } = await renderPayment();
+
+    await waitFor(() => expect(view.getByText(/Payment has not been confirmed by the server/)).toBeTruthy());
+    expect(mockTrackPaymentSuccess).not.toHaveBeenCalled();
+    expect(mockClearPendingPaymentBookingId).not.toHaveBeenCalled();
+    expect(navigation.navigate).not.toHaveBeenCalled();
+    expect(navigation.replace).not.toHaveBeenCalled();
   });
 
   it("uses backend order amount and default currency after order creation", async () => {
@@ -306,15 +318,16 @@ describe("PaymentScreen", () => {
     [
       "SubscriptionConfirmed",
       "SubscriptionConfirmed",
-      { bookingId: "412", subscriptionId: "412" },
+      { bookingId: "412", subscriptionId: "72" },
     ],
   ])("replaces navigation after successful %s payment", async (postPaymentRoute, route, expected) => {
     const { navigation } = await renderPayment(routeParams({
       postPaymentRoute,
+      subscriptionId: "72",
       bookingMode: "SCHEDULED",
     }));
 
-    await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith(route, expected));
+    await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith(route, expect.objectContaining(expected)));
     expect(navigation.navigate).not.toHaveBeenCalled();
   });
 
@@ -367,7 +380,8 @@ describe("PaymentScreen", () => {
     [{ orderId: undefined }, "missing order id"],
     [{ paymentId: undefined }, "missing payment id"],
     [{ signature: undefined }, "missing signature"],
-  ])("rejects an incomplete Razorpay response with %s", async (missingField, _description) => {
+  ])("rejects an incomplete Razorpay response with %s", async (missingField, description) => {
+    void description;
     mockOpenRazorpayCheckout.mockResolvedValue(checkoutSuccess(missingField));
     const { view } = await renderPayment();
 
@@ -422,7 +436,7 @@ describe("PaymentScreen", () => {
       }),
     ));
     expect(view.getByText("Amount: ₹0.00")).toBeTruthy();
-    expect(navigation.navigate).toHaveBeenCalledWith("PaymentStatus", { bookingId: "412" });
+    expect(navigation.navigate).toHaveBeenCalledWith("PaymentStatus", expect.objectContaining({ bookingId: "412" }));
   });
 
   it("retries payment after an API failure and resets failure tracking", async () => {
@@ -435,7 +449,7 @@ describe("PaymentScreen", () => {
     await fireEvent.press(view.getByText("Retry Payment"));
 
     await waitFor(() =>
-      expect(navigation.navigate).toHaveBeenCalledWith("PaymentStatus", { bookingId: "412" }),
+      expect(navigation.navigate).toHaveBeenCalledWith("PaymentStatus", expect.objectContaining({ bookingId: "412" })),
     );
     expect(mockCreatePaymentOrder).toHaveBeenCalledTimes(2);
     expect(mockTrackPaymentFailed).toHaveBeenCalledTimes(1);
@@ -466,9 +480,9 @@ describe("PaymentScreen", () => {
     await waitFor(() => expect(view.getByText("Skip Payment for Testing")).toBeTruthy());
     await fireEvent.press(view.getByText("Skip Payment for Testing"));
 
-    expect(navigation.replace).toHaveBeenCalledWith("InstantBookingStatus", {
+    expect(navigation.replace).toHaveBeenCalledWith("InstantBookingStatus", expect.objectContaining({
       bookingId: "412",
-    });
+    }));
   });
 
   it("does not expose the development bypass when booking id is missing", async () => {

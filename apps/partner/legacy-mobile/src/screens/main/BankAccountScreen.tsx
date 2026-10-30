@@ -9,6 +9,27 @@ import { useAppFeedback } from "../../context/AppFeedbackContext";
 import PaymentHeader from "../../components/payments/PaymentHeader";
 
 const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+const BANK_COPY = {
+  loadError: "Unable to load bank account",
+  updateSuccess: "Bank account updated",
+  updateError: "Unable to update bank account",
+  title: "Bank Account",
+  subtitle: "Your account number is masked after saving.",
+  linkedAccount: "Linked Account",
+  noAccountLinked: "No bank account linked",
+  ifsc: "IFSC",
+  verification: "Verification",
+  actionRequired: "Action Required",
+  verificationPendingHint: "Bank account verification is pending. Please confirm your account number and IFSC are correct.",
+  updateTitle: "Update Bank Account",
+  addTitle: "Add Bank Account",
+  accountPlaceholder: "Account number",
+  accountAccessibility: "Bank account number",
+  ifscPlaceholder: "IFSC code",
+  ifscAccessibility: "IFSC code",
+  saving: "Saving...",
+  saveButton: "Save Bank Account",
+} as const;
 
 export function normalizeBankAccountInput(value: string) {
   return value.replace(/\D/g, "").slice(0, 18);
@@ -46,7 +67,7 @@ export default function BankAccountScreen({ navigation }: any) {
       setSaved(next);
       setIfscCode(next?.ifscCode ?? "");
     } catch (error: any) {
-      toast(error?.message ?? "Unable to load bank account");
+      toast(error?.message ?? BANK_COPY.loadError);
     }
   }, [toast]);
 
@@ -55,7 +76,7 @@ export default function BankAccountScreen({ navigation }: any) {
   }, [load]);
 
   const save = async () => {
-    const { error, normalizedAccount, normalizedIfsc } = validateBankAccountDetails(accountNumber, ifscCode);
+      const { error, normalizedAccount, normalizedIfsc } = validateBankAccountDetails(accountNumber, ifscCode);
     if (error) {
       toast(error);
       return;
@@ -65,10 +86,10 @@ export default function BankAccountScreen({ navigation }: any) {
     try {
       setSaved(await updatePartnerBankDetails({ accountNumber: normalizedAccount, ifscCode: normalizedIfsc }));
       setAccountNumber("");
-      toast("Bank account updated");
+      toast(BANK_COPY.updateSuccess);
       await load();
     } catch (error: any) {
-      toast(error?.message ?? "Unable to update bank account");
+      toast(error?.message ?? BANK_COPY.updateError);
     } finally {
       setSaving(false);
     }
@@ -77,49 +98,49 @@ export default function BankAccountScreen({ navigation }: any) {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <PaymentHeader title="Bank Account" onBack={() => navigation.goBack()} />
-        <Text style={styles.subtitle}>Your account number is masked after saving.</Text>
+        <PaymentHeader title={BANK_COPY.title} onBack={() => navigation.goBack()} />
+        <Text style={styles.subtitle}>{BANK_COPY.subtitle}</Text>
         <View style={[styles.saved, styles.fullBleed]}>
           <MaterialCommunityIcons name="bank-outline" size={28} color={COLORS.secondary} />
           <View style={styles.savedCopy}>
-            <Text style={styles.label}>Linked Account</Text>
-            <Text style={styles.account}>{saved?.maskedAccountNumber || "No bank account linked"}</Text>
-            {saved?.ifscCode ? <Text style={styles.meta}>IFSC: {saved.ifscCode}</Text> : null}
-            <Text style={styles.meta}>Verification: {saved?.verificationStatus ?? "PENDING"}</Text>
+            <Text style={styles.label}>{BANK_COPY.linkedAccount}</Text>
+            <Text style={styles.account}>{saved?.maskedAccountNumber || BANK_COPY.noAccountLinked}</Text>
+            {saved?.ifscCode ? <Text style={styles.meta}>{`${BANK_COPY.ifsc}: ${saved.ifscCode}`}</Text> : null}
+            <Text style={styles.meta}>{`${BANK_COPY.verification}: ${saved?.verificationStatus ?? "PENDING"}`}</Text>
           </View>
         </View>
         {saved?.verificationStatus && String(saved.verificationStatus).toUpperCase() !== "APPROVED" ? (
           <View style={[styles.actionBanner, styles.fullBleed]}>
-            <Text style={styles.actionTitle}>Action Required</Text>
+            <Text style={styles.actionTitle}>{BANK_COPY.actionRequired}</Text>
             <Text style={styles.actionText}>
-              {saved.rejectionReason || "Bank account verification is pending. Please confirm your account number and IFSC are correct."}
+              {saved.rejectionReason || BANK_COPY.verificationPendingHint}
             </Text>
           </View>
         ) : null}
 
-        <Text style={styles.sectionTitle}>{saved ? "Update Bank Account" : "Add Bank Account"}</Text>
+        <Text style={styles.sectionTitle}>{saved ? BANK_COPY.updateTitle : BANK_COPY.addTitle}</Text>
         <TextInput
           testID="bank-account-number-input"
           value={accountNumber}
           onChangeText={(value) => setAccountNumber(normalizeBankAccountInput(value))}
           keyboardType="number-pad"
-          placeholder="Account number"
+          placeholder={BANK_COPY.accountPlaceholder}
           placeholderTextColor={COLORS.textMuted}
           style={[styles.input, styles.fullBleed]}
-          accessibilityLabel="Bank account number"
+          accessibilityLabel={BANK_COPY.accountAccessibility}
         />
         <TextInput
           testID="bank-ifsc-input"
           value={ifscCode}
           onChangeText={(value) => setIfscCode(normalizeIfscInput(value))}
           autoCapitalize="characters"
-          placeholder="IFSC code"
+          placeholder={BANK_COPY.ifscPlaceholder}
           placeholderTextColor={COLORS.textMuted}
           style={[styles.input, styles.fullBleed]}
-          accessibilityLabel="IFSC code"
+          accessibilityLabel={BANK_COPY.ifscAccessibility}
         />
         <TouchableOpacity testID="bank-save-button" style={[styles.button, styles.fullBleed, saving && styles.disabled]} disabled={saving} onPress={save}>
-          <Text style={styles.buttonText}>{saving ? "Saving..." : "Save Bank Account"}</Text>
+          <Text style={styles.buttonText}>{saving ? BANK_COPY.saving : BANK_COPY.saveButton}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

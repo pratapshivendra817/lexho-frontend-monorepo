@@ -228,7 +228,7 @@ describe("bookingsApi", () => {
     });
     expect(mocks.postMock).toHaveBeenCalledWith("/api/admin/dispatch/orders/order-99");
     expect(mocks.patchMock).toHaveBeenCalledWith("/api/admin/dispatch/orders/order-99/lifecycle", {
-      lifecycle: "ARRIVED",
+      status: "ARRIVED",
     });
   });
 });

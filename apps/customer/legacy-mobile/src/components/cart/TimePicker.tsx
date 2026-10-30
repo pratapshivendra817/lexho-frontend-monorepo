@@ -26,16 +26,19 @@ function toLocalDateInput(date: Date) {
   return `${y}-${m}-${d}`;
 }
 
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
 function formatDateLabel(date: Date) {
   const day = date.getDate();
-  const month = date.toLocaleString(undefined, { month: "short" });
+  const month = MONTH_LABELS[date.getMonth()];
   return `${day} ${month}`;
 }
 
-function getDayHint(offset: number) {
+function getDayHint(date: Date, offset: number) {
   if (offset === 0) return "Today";
   if (offset === 1) return "Tomorrow";
-  return new Date(Date.now() + offset * 86400000).toLocaleDateString(undefined, { weekday: "long" });
+  return WEEKDAY_LABELS[date.getDay()];
 }
 
 function toStartTime(slotValue: string) {
@@ -84,7 +87,7 @@ function format12Hour(time24: string) {
 function toPreviewDateLabel(dateKey: string) {
   const dt = new Date(`${dateKey}T00:00:00`);
   if (Number.isNaN(dt.getTime())) return dateKey;
-  return dt.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+  return `${formatDateLabel(dt)} ${dt.getFullYear()}`;
 }
 
 function parseScheduledValue(input?: string | null) {
@@ -151,7 +154,7 @@ export function TimePicker({
         return {
           key: toLocalDateInput(date),
           label: formatDateLabel(date),
-          hint: getDayHint(offset),
+          hint: getDayHint(date, offset),
         };
       }),
     [dateWindowDays],
@@ -274,7 +277,7 @@ export function TimePicker({
               </Pressable>
             </View>
 
-            <View style={styles.dateTabs}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dateTabs} contentContainerStyle={styles.dateTabsContent}>
               {dateTabs.map((tab) => {
                 const active = selectedDate === tab.key;
                 return (
@@ -291,7 +294,7 @@ export function TimePicker({
                   </Pressable>
                 );
               })}
-            </View>
+            </ScrollView>
 
             <View style={styles.livePreviewBar}>
               <Text style={styles.livePreviewText}>
@@ -416,13 +419,17 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(224,169,75,0.14)",
   },
   dateTabs: {
-    flexDirection: "row",
+    flexGrow: 0,
+    flexShrink: 0,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(224,169,75,0.35)",
     backgroundColor: COLORS.navyDark,
   },
+  dateTabsContent: { flexGrow: 1 },
   dateTab: {
-    flex: 1,
+    flexGrow: 1,
+    minWidth: 88,
+    paddingHorizontal: 12,
     alignItems: "center",
     paddingVertical: 13,
     borderBottomWidth: 3,

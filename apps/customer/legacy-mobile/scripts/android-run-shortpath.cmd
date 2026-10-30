@@ -24,6 +24,7 @@ if /I "%RN_USE_SHORTPATH%"=="1" (
 )
 
 cd /d "%TARGET_DIR%"
+adb reverse tcp:5173 tcp:5173
 call npm run android -- --no-packager %*
 set "EXIT_CODE=%ERRORLEVEL%"
 

@@ -7,6 +7,49 @@ import { useAppSelector } from "../../hooks/useRedux";
 import { COLORS } from "../../constants/colors";
 import { useShiftController } from "../../features/shift/useShiftController";
 
+const SHIFT_COPY = {
+  running: "Shift Running",
+  notStarted: "Shift Not Started",
+  title: "Shift Management",
+  quickFlow: "Quick Flow",
+  stepGoOnline: "1. Go Online",
+  stepSelectSchedule: "2. Select Schedule",
+  stepStartShift: "3. Start Shift",
+  status: "Shift Status",
+  date: "Date",
+  startedAt: "Started At",
+  endedAt: "Ended At",
+  liveLocationHint: "Live Location will enable after Shift is started and Online is ON from Home.",
+  lastLocationUpdated: "Last Location Updated",
+  trackingInterval: "Tracking interval",
+  foreground: "foreground",
+  background: "background",
+  invalidSchedule: "Invalid schedule: End Time must be greater than Start Time.",
+  invalidTimingTitle: "Invalid shift timing",
+  invalidTimingMessage: "End time should be greater than start time.",
+  startShift: "Start Shift",
+  endShift: "End Shift",
+  openSettings: "Open Settings",
+  retry: "Retry",
+  history: "Shift History",
+  noHistoryYet: "No shift history yet.",
+  online: "ONLINE",
+  shiftStart: "Shift Start",
+  shiftEnd: "Shift End",
+  updatedAt: "Updated At",
+  maxActiveJobs: "Max Active Jobs",
+  start: "Start",
+  end: "End",
+  duration: "Duration",
+  locationAccuracyTitle: "For a better experience, your device will need to use Location Accuracy",
+  locationAccuracySubtitle: "The following settings should be on:",
+  deviceLocation: "Device location",
+  locationAccuracyBullet: "Location Accuracy, which provides more accurate location for apps and services.",
+  locationAccuracyDescription: "You can change this at any time in Settings.",
+  noThanks: "No, thanks",
+  turnOn: "Turn on",
+} as const;
+
 export default function ShiftScreen() {
   const isOnline = useAppSelector((s) => s.partner.online);
   const [refreshing, setRefreshing] = useState(false);
@@ -38,7 +81,6 @@ export default function ShiftScreen() {
     endShift,
     refetchHistory,
   } = useShiftController();
-
   useEffect(() => {
     const id = setInterval(() => setTick((value) => value + 1), 1000);
     return () => clearInterval(id);
@@ -50,7 +92,7 @@ export default function ShiftScreen() {
     return Math.max(0, Math.floor((now - state.startedAt) / 1000));
   }, [state.shiftStarted, state.startedAt, tick]);
 
-  const shiftLabel = state.shiftStarted ? "Shift Running" : "Shift Not Started";
+  const shiftLabel = state.shiftStarted ? SHIFT_COPY.running : SHIFT_COPY.notStarted;
   const timerText = formatDuration(shiftSeconds);
   const pickerValue = pickerTarget === "shiftDate" ? shiftDate : pickerTarget === "startTime" ? startTime : endTime;
   const isScheduleValid = useMemo(() => {
@@ -106,7 +148,7 @@ export default function ShiftScreen() {
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      refreshControl={
+      refreshControl={(
         <RefreshControl
           refreshing={refreshing}
           onRefresh={async () => {
@@ -118,25 +160,25 @@ export default function ShiftScreen() {
             }
           }}
         />
-      }
+      )}
     >
-      <Text style={styles.title}>Shift Management</Text>
+      <Text style={styles.title}>{SHIFT_COPY.title}</Text>
       <Text style={styles.subtitle}>{shiftLabel}</Text>
       <View style={styles.stepperCard}>
-        <Text style={styles.stepperTitle}>Quick Flow</Text>
+        <Text style={styles.stepperTitle}>{SHIFT_COPY.quickFlow}</Text>
         <View style={styles.stepperRow}>
-          <StepChip label="1. Go Online" done={isOnline} />
-          <Text style={styles.stepArrow}>→</Text>
-          <StepChip label="2. Select Schedule" done={scheduleChanged && isScheduleValid} />
-          <Text style={styles.stepArrow}>→</Text>
-          <StepChip label="3. Start Shift" done={state.shiftStarted} />
+          <StepChip label={SHIFT_COPY.stepGoOnline} done={isOnline} />
+          <Text style={styles.stepArrow}>{"->"}</Text>
+          <StepChip label={SHIFT_COPY.stepSelectSchedule} done={scheduleChanged && isScheduleValid} />
+          <Text style={styles.stepArrow}>{"->"}</Text>
+          <StepChip label={SHIFT_COPY.stepStartShift} done={state.shiftStarted} />
         </View>
       </View>
 
       <View style={styles.statusCard}>
-        <Text style={styles.statusLabel}>Shift Schedule</Text>
+        <Text style={styles.statusLabel}>{SHIFT_COPY.status}</Text>
         <View style={styles.scheduleRow}>
-          <Text style={styles.scheduleLabel}>Date</Text>
+          <Text style={styles.scheduleLabel}>{SHIFT_COPY.date}</Text>
           <TouchableOpacity
             testID="shift-date-button"
             style={styles.scheduleBtn}
@@ -149,7 +191,7 @@ export default function ShiftScreen() {
           </TouchableOpacity>
         </View>
         <View style={styles.scheduleRow}>
-          <Text style={styles.scheduleLabel}>Start Time</Text>
+          <Text style={styles.scheduleLabel}>{SHIFT_COPY.startedAt}</Text>
           <TouchableOpacity
             testID="shift-start-time-button"
             style={styles.scheduleBtn}
@@ -162,7 +204,7 @@ export default function ShiftScreen() {
           </TouchableOpacity>
         </View>
         <View style={styles.scheduleRow}>
-          <Text style={styles.scheduleLabel}>End Time</Text>
+          <Text style={styles.scheduleLabel}>{SHIFT_COPY.endedAt}</Text>
           <TouchableOpacity
             testID="shift-end-time-button"
             style={styles.scheduleBtn}
@@ -188,18 +230,18 @@ export default function ShiftScreen() {
       ) : null}
 
       {!state.shiftStarted ? (
-        <Text style={styles.hintText}>Live Location will enable after Shift is started and Online is ON from Home.</Text>
+        <Text style={styles.hintText}>{SHIFT_COPY.liveLocationHint}</Text>
       ) : null}
       {lastLocationSentAt ? (
-        <Text style={styles.hintText}>Last location updated: {new Date(lastLocationSentAt).toLocaleTimeString()}</Text>
+        <Text style={styles.hintText}>{`${SHIFT_COPY.lastLocationUpdated}: ${new Date(lastLocationSentAt).toLocaleTimeString()}`}</Text>
       ) : null}
       {dispatchConfig ? (
         <Text style={styles.hintText}>
-          Tracking interval: {dispatchConfig.foregroundTrackingIntervalSeconds}s foreground, {dispatchConfig.backgroundTrackingIntervalSeconds}s background
+          {`${SHIFT_COPY.trackingInterval}: ${dispatchConfig.foregroundTrackingIntervalSeconds}s ${SHIFT_COPY.foreground}, ${dispatchConfig.backgroundTrackingIntervalSeconds}s ${SHIFT_COPY.background}`}
         </Text>
       ) : null}
       {!isScheduleValid ? (
-        <Text style={styles.errorText}>Invalid schedule: End Time must be greater than Start Time.</Text>
+        <Text style={styles.errorText}>{SHIFT_COPY.invalidSchedule}</Text>
       ) : null}
 
       {!state.shiftStarted ? (
@@ -209,7 +251,7 @@ export default function ShiftScreen() {
           disabled={loading}
           onPress={() => {
             if (!isScheduleValid) {
-              Alert.alert("Invalid shift timing", "End time should be greater than start time.");
+              Alert.alert(SHIFT_COPY.invalidTimingTitle, SHIFT_COPY.invalidTimingMessage);
               return;
             }
             startShift({
@@ -219,11 +261,11 @@ export default function ShiftScreen() {
             }).catch(() => null);
           }}
         >
-          <Text style={styles.btnText}>Start Shift</Text>
+          <Text style={styles.btnText}>{SHIFT_COPY.startShift}</Text>
         </TouchableOpacity>
       ) : (
         <TouchableOpacity testID="shift-primary-action" style={styles.endBtn} disabled={loading} onPress={() => endShift().catch(() => null)}>
-          <Text style={styles.btnText}>End Shift</Text>
+          <Text style={styles.btnText}>{SHIFT_COPY.endShift}</Text>
         </TouchableOpacity>
       )}
 
@@ -241,34 +283,34 @@ export default function ShiftScreen() {
               refetchHistory();
             }}
           >
-            <Text style={styles.retryText}>{error.toLowerCase().includes("gps") || error.toLowerCase().includes("location") ? "Open Settings" : "Retry"}</Text>
+            <Text style={styles.retryText}>{error.toLowerCase().includes("gps") || error.toLowerCase().includes("location") ? SHIFT_COPY.openSettings : SHIFT_COPY.retry}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
 
       <View style={styles.historySection}>
-        <Text style={styles.historyTitle}>Shift History</Text>
+        <Text style={styles.historyTitle}>{SHIFT_COPY.history}</Text>
         {historyLoading ? (
           <View style={styles.skeleton} />
         ) : historyError ? (
           <Text style={styles.metaText}>{historyError}</Text>
         ) : history.length === 0 ? (
-          <Text style={styles.metaText}>No shift history yet.</Text>
+          <Text style={styles.metaText}>{SHIFT_COPY.noHistoryYet}</Text>
         ) : (
           history.map((item) => (
             <View key={item.id} style={styles.historyCard}>
               {typeof item.online === "boolean" ? (
-                <Text style={styles.historyText}>Online: {item.online ? "true" : "false"}</Text>
+                <Text style={styles.historyText}>{`${SHIFT_COPY.online}: ${String(item.online)}`}</Text>
               ) : null}
-              {item.shiftStart ? <Text style={styles.historyText}>Shift Start: {item.shiftStart}</Text> : null}
-              {item.shiftEnd ? <Text style={styles.historyText}>Shift End: {item.shiftEnd}</Text> : null}
-              {item.updatedAt ? <Text style={styles.historyText}>Updated At: {item.updatedAt}</Text> : null}
+              {item.shiftStart ? <Text style={styles.historyText}>{`${SHIFT_COPY.shiftStart}: ${item.shiftStart}`}</Text> : null}
+              {item.shiftEnd ? <Text style={styles.historyText}>{`${SHIFT_COPY.shiftEnd}: ${item.shiftEnd}`}</Text> : null}
+              {item.updatedAt ? <Text style={styles.historyText}>{`${SHIFT_COPY.updatedAt}: ${item.updatedAt}`}</Text> : null}
               {typeof item.maxActiveJobs === "number" && item.maxActiveJobs > 0 ? (
-                <Text style={styles.historyText}>Max Active Jobs: {item.maxActiveJobs}</Text>
+                <Text style={styles.historyText}>{`${SHIFT_COPY.maxActiveJobs}: ${item.maxActiveJobs}`}</Text>
               ) : null}
-              <Text style={styles.historyText}>Start: {new Date(item.startedAt).toLocaleString()}</Text>
-              <Text style={styles.historyText}>End: {new Date(item.endedAt).toLocaleString()}</Text>
-              <Text style={styles.historyText}>Duration: {formatDuration(item.durationSeconds)}</Text>
+              <Text style={styles.historyText}>{`${SHIFT_COPY.start}: ${new Date(item.startedAt).toLocaleString()}`}</Text>
+              <Text style={styles.historyText}>{`${SHIFT_COPY.end}: ${new Date(item.endedAt).toLocaleString()}`}</Text>
+              <Text style={styles.historyText}>{`${SHIFT_COPY.duration}: ${formatDuration(item.durationSeconds)}`}</Text>
             </View>
           ))
         )}
@@ -277,17 +319,17 @@ export default function ShiftScreen() {
       <Modal visible={showLocationAssistModal} transparent animationType="fade" onRequestClose={() => setShowLocationAssistModal(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>For a better experience, your device will need to use Location Accuracy</Text>
-            <Text style={styles.modalSubTitle}>The following settings should be on:</Text>
-            <Text style={styles.modalBullet}>- Device location</Text>
+            <Text style={styles.modalTitle}>{SHIFT_COPY.locationAccuracyTitle}</Text>
+            <Text style={styles.modalSubTitle}>{SHIFT_COPY.locationAccuracySubtitle}</Text>
+            <Text style={styles.modalBullet}>{`- ${SHIFT_COPY.deviceLocation}`}</Text>
             <Text style={styles.modalBullet}>
-              - Location Accuracy, which provides more accurate location for apps and services.
+              {`- ${SHIFT_COPY.locationAccuracyBullet}`}
             </Text>
-            <Text style={styles.modalDescription}>You can change this at any time in Settings.</Text>
+            <Text style={styles.modalDescription}>{SHIFT_COPY.locationAccuracyDescription}</Text>
 
             <View style={styles.modalActions}>
               <TouchableOpacity testID="shift-modal-dismiss-button" style={styles.modalGhostBtn} onPress={() => setShowLocationAssistModal(false)}>
-                <Text style={styles.modalGhostText}>No, thanks</Text>
+                <Text style={styles.modalGhostText}>{SHIFT_COPY.noThanks}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 testID="shift-modal-open-settings-button"
@@ -297,7 +339,7 @@ export default function ShiftScreen() {
                   await openGpsSettings();
                 }}
               >
-                <Text style={styles.modalPrimaryText}>Turn on</Text>
+                <Text style={styles.modalPrimaryText}>{SHIFT_COPY.turnOn}</Text>
               </TouchableOpacity>
             </View>
           </View>

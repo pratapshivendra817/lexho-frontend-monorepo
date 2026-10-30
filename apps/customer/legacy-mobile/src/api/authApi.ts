@@ -93,7 +93,7 @@ export async function sendOtp(mobile: string): Promise<SendOtpResponse> {
   try {
     const payload: SendOtpRequest = { mobile, role: 'CUSTOMER' };
     const data = await postWithBaseAndPathFallback<SendOtpResponse>(
-      ['/otp/send', '/api/auth/otp/send', '/api/auth/customer/login'],
+      ['/customer/otp/send', '/otp/send', '/api/customer/otp/send'],
       payload,
     );
     return data;
@@ -102,7 +102,7 @@ export async function sendOtp(mobile: string): Promise<SendOtpResponse> {
       throw new Error(
         `Network Error: cannot reach ${removeTrailingSlashes(
           API_BASE_URL,
-        )}/otp/send from device. Ensure phone and PC are on same Wi-Fi and backend is running on port 8082.`,
+        )}/customer/otp/send from device. Ensure phone and PC are on same Wi-Fi and backend is running on port 8082.`,
       );
     }
     throw new Error(parseApiError(error, 'Failed to send OTP'));
@@ -114,9 +114,13 @@ export async function verifyOtp(
   otp: string,
 ): Promise<VerifyOtpResponse> {
   try {
-    const payload: VerifyOtpRequest = { mobile, otp };
+    const payload: VerifyOtpRequest = {
+      mobile,
+      otp,
+      role: 'CUSTOMER',
+    };
     return await postWithBaseAndPathFallback<VerifyOtpResponse>(
-      ['/otp/verify', '/api/auth/otp/verify', '/api/auth/customer/login'],
+      ['/customer/otp/verify', '/otp/verify', '/api/customer/otp/verify'],
       payload,
     );
   } catch (error) {

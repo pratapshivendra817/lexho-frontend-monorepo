@@ -7,9 +7,44 @@ import { clearThreadUnread, fetchMessages, readOrderMessages, sendChatMessage } 
 import { chatSocket } from "../../services/chatSocket";
 import type { ChatMessage } from "../../types/chat";
 
+type TranslationResolver = (key: string, fallback: string) => string;
+
+const CHAT_COPY = {
+  isTyping: "is typing...",
+  live: "Live",
+  reconnecting: "Reconnecting...",
+  failedTapRetry: "Failed - tap to retry",
+  order: "Order",
+  tapToRetry: "Tap to retry",
+  startConversation: "Start the conversation for this order.",
+  messageCustomer: "Message customer",
+  sendMessage: "Send message",
+} as const;
+
+export function getChatConnectionStatusLabel(
+  customerName: string,
+  customerTyping: boolean,
+  connected: boolean,
+  tr: TranslationResolver,
+): string {
+  if (customerTyping) {
+    return `${customerName} ${tr("chat.is_typing", CHAT_COPY.isTyping)}`;
+  }
+  return connected ? tr("chat.live", CHAT_COPY.live) : tr("chat.reconnecting", CHAT_COPY.reconnecting);
+}
+
+export function getChatMessageStatusLabel(
+  status: string | undefined,
+  tr: TranslationResolver,
+): string | null {
+  if (!status) return null;
+  return status === "failed" ? tr("chat.failed_tap_retry", CHAT_COPY.failedTapRetry) : status;
+}
+
 export default function ChatScreen({ route, navigation }: any) {
   const orderId = Number(route?.params?.orderId);
-  const customerName = String(route?.params?.customerName ?? `Order #${orderId}`);
+  const tr = (_key: string, fallback: string) => fallback;
+  const customerName = String(route?.params?.customerName ?? `${CHAT_COPY.order} #${orderId}`);
   const dispatch = useAppDispatch();
   const bucket = useAppSelector(state => state.chat.messagesByOrder[String(orderId)]);
   const customerTyping = useAppSelector(state => Boolean(state.chat.typingByOrder[String(orderId)]));
@@ -63,12 +98,12 @@ export default function ChatScreen({ route, navigation }: any) {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={90}>
       <View style={styles.statusBar}>
         <View style={[styles.dot, connected ? styles.online : styles.offline]} />
-        <Text style={styles.statusText}>{customerTyping ? `${customerName} is typing...` : connected ? "Live" : "Reconnecting..."}</Text>
+        <Text style={styles.statusText}>{getChatConnectionStatusLabel(customerName, customerTyping, connected, tr)}</Text>
       </View>
 
       {bucket?.error ? (
         <TouchableOpacity style={styles.errorCard} onPress={() => dispatch(fetchMessages({ orderId, page: 0 }))}>
-          <Text style={styles.errorText}>{bucket.error} Tap to retry.</Text>
+          <Text style={styles.errorText}>{`${bucket.error} ${CHAT_COPY.tapToRetry}.`}</Text>
         </TouchableOpacity>
       ) : null}
 
@@ -84,22 +119,22 @@ export default function ChatScreen({ route, navigation }: any) {
           if ((bucket?.page ?? 0) === 0) listRef.current?.scrollToOffset({ offset: 0, animated: true });
         }}
         ListFooterComponent={bucket?.loadingMore ? <ActivityIndicator color={COLORS.secondary} /> : null}
-        ListEmptyComponent={bucket?.loading ? <ActivityIndicator color={COLORS.secondary} /> : <Text style={styles.empty}>Start the conversation for this order.</Text>}
-        renderItem={({ item }) => <MessageBubble message={item} onRetry={() => dispatch(sendChatMessage({ orderId, text: item.text, clientId: item.clientId ?? item.id }))} />}
+        ListEmptyComponent={bucket?.loading ? <ActivityIndicator color={COLORS.secondary} /> : <Text style={styles.empty}>{CHAT_COPY.startConversation}</Text>}
+        renderItem={({ item }) => <MessageBubble message={item} onRetry={() => dispatch(sendChatMessage({ orderId, text: item.text, clientId: item.clientId ?? item.id }))} tr={tr} />}
       />
 
       <View style={styles.composer}>
         <TextInput
           value={text}
           onChangeText={onTextChange}
-          placeholder="Message customer"
+          placeholder={CHAT_COPY.messageCustomer}
           placeholderTextColor={COLORS.textMuted}
           style={styles.input}
           multiline
           maxLength={2000}
-          accessibilityLabel="Message customer"
+          accessibilityLabel={CHAT_COPY.messageCustomer}
         />
-        <TouchableOpacity style={[styles.sendButton, !text.trim() && styles.sendDisabled]} disabled={!text.trim()} onPress={send} accessibilityLabel="Send message">
+        <TouchableOpacity style={[styles.sendButton, !text.trim() && styles.sendDisabled]} disabled={!text.trim()} onPress={send} accessibilityLabel={CHAT_COPY.sendMessage}>
           <MaterialCommunityIcons name="send" color={COLORS.background} size={20} />
         </TouchableOpacity>
       </View>
@@ -107,7 +142,7 @@ export default function ChatScreen({ route, navigation }: any) {
   );
 }
 
-function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry: () => void }) {
+function MessageBubble({ message, onRetry, tr }: { message: ChatMessage; onRetry: () => void; tr: (key: string, fallback: string) => string }) {
   const mine = message.senderType === "PARTNER";
   const time = new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return (
@@ -116,7 +151,7 @@ function MessageBubble({ message, onRetry }: { message: ChatMessage; onRetry: ()
         <Text style={[styles.messageText, mine && styles.mineText]}>{message.text}</Text>
         <View style={styles.messageMeta}>
           <Text style={[styles.messageTime, mine && styles.mineMeta]}>{time}</Text>
-          {mine ? <Text style={[styles.messageStatus, message.status === "failed" && styles.failedText]}>{message.status === "failed" ? "Failed • tap to retry" : message.status}</Text> : null}
+          {mine ? <Text style={[styles.messageStatus, message.status === "failed" && styles.failedText]}>{getChatMessageStatusLabel(message.status, tr)}</Text> : null}
         </View>
       </TouchableOpacity>
     </View>

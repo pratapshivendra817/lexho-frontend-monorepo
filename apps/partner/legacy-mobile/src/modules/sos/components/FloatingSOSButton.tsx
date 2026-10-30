@@ -1,17 +1,69 @@
 import React, { useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { COLORS } from "../../../constants/colors";
 
-export function FloatingSOSButton({ visible = true, onConfirmed }: { visible?: boolean; onConfirmed: () => void }) {
+const SOS_HOLD_DURATION_MS = 300;
+const FLOATING_SOS_COPY = {
+  holdShort: "Hold 0.3s",
+  accessibilityLabel: "SOS emergency",
+  accessibilityHint: "Press and hold for zero point three seconds",
+  confirmTitle: "Send emergency SOS?",
+  confirmBody: "Your location will be shared with the admin team and emergency contacts. Admin action is required for any further escalation.",
+  cancel: "Cancel",
+  send: "Send SOS",
+} as const;
+
+export function FloatingSOSButton({
+  visible = true,
+  onConfirmed,
+  containerStyle,
+}: {
+  visible?: boolean;
+  onConfirmed: () => void;
+  containerStyle?: StyleProp<ViewStyle>;
+}) {
   const [confirming, setConfirming] = useState(false);
+  const holdLabel = FLOATING_SOS_COPY.holdShort;
+
   if (!visible) return null;
-  return <><Pressable accessibilityLabel="SOS emergency" accessibilityHint="Press and hold for three seconds" delayLongPress={3000} onLongPress={() => setConfirming(true)} style={({ pressed }) => [styles.floating, pressed && styles.pressed]}><Text style={styles.sos}>SOS</Text><Text style={styles.hold}>Hold 3s</Text></Pressable><Modal transparent visible={confirming} animationType="fade" onRequestClose={() => setConfirming(false)}><View style={styles.overlay}><View style={styles.modal}><Text style={styles.title}>Send emergency SOS?</Text><Text style={styles.body}>Your location will be shared with the admin team and emergency contacts. Admin action is required for any further escalation.</Text><View style={styles.row}><Pressable style={styles.cancel} onPress={() => setConfirming(false)}><Text style={styles.cancelText}>Cancel</Text></Pressable><Pressable style={styles.confirm} onPress={() => { setConfirming(false); onConfirmed(); }}><Text style={styles.confirmText}>Send SOS</Text></Pressable></View></View></View></Modal></>;
+  return (
+    <>
+      <Pressable
+        accessibilityLabel={FLOATING_SOS_COPY.accessibilityLabel}
+        accessibilityHint={FLOATING_SOS_COPY.accessibilityHint}
+        delayLongPress={SOS_HOLD_DURATION_MS}
+        onLongPress={() => setConfirming(true)}
+        style={({ pressed }) => [styles.floating, containerStyle, pressed && styles.pressed]}
+      >
+        <Text style={styles.sos}>SOS</Text>
+        <Text style={styles.hold}>{holdLabel}</Text>
+      </Pressable>
+      <Modal transparent visible={confirming} animationType="fade" onRequestClose={() => setConfirming(false)}>
+        <View style={styles.overlay}>
+          <View style={styles.modal}>
+            <Text style={styles.title}>{FLOATING_SOS_COPY.confirmTitle}</Text>
+            <Text style={styles.body}>
+              {FLOATING_SOS_COPY.confirmBody}
+            </Text>
+            <View style={styles.row}>
+              <Pressable style={styles.cancel} onPress={() => setConfirming(false)}>
+                <Text style={styles.cancelText}>{FLOATING_SOS_COPY.cancel}</Text>
+              </Pressable>
+              <Pressable style={styles.confirm} onPress={() => { setConfirming(false); onConfirmed(); }}>
+                <Text style={styles.confirmText}>{FLOATING_SOS_COPY.send}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
 }
 const styles = StyleSheet.create({
   floating: {
     position: "absolute",
     right: 18,
-    bottom: 92,
+    bottom: 132,
     zIndex: 100,
     width: 68,
     height: 68,

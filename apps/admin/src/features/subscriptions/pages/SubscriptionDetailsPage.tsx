@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import toast from "react-hot-toast";
 import { Link, useParams } from "react-router-dom";
 
@@ -11,14 +11,33 @@ import {
   assignAdminSubscriptionVisitPartner,
   getAdminSubscriptionAssignment,
   getAdminSubscriptionCalendar,
+  getAdminSubscriptionChangeRequests,
   getAdminSubscriptionDetail,
+  getAdminSubscriptionEligiblePartners,
   replaceAdminSubscriptionPartner,
+  reviewAdminSubscriptionChangeRequest,
   updateAdminSubscriptionStatus,
   updateAdminSubscriptionVisitStatus,
 } from "../api/subscriptionsApi";
-import type { AdminSubscriptionStatus, AdminSubscriptionVisit, AdminSubscriptionVisitStatus } from "../types";
+import type {
+  AdminProfessionalChangeRequest,
+  AdminSubscriptionStatus,
+  AdminSubscriptionVisit,
+  AdminSubscriptionVisitStatus,
+} from "../types";
 
-const subscriptionStatuses: AdminSubscriptionStatus[] = ["ACTIVE", "CANCELLED", "COMPLETED"];
+const subscriptionStatuses: AdminSubscriptionStatus[] = [
+  "PENDING_ADMIN_REVIEW",
+  "UNDER_REVIEW",
+  "PENDING_PARTNER_ASSIGNMENT",
+  "PENDING_PARTNER_ACCEPTANCE",
+  "CONFIRMED",
+  "ACTIVE",
+  "PAUSED",
+  "REJECTED",
+  "CANCELLED",
+  "COMPLETED",
+];
 const visitStatuses: AdminSubscriptionVisitStatus[] = ["SCHEDULED", "COMPLETED", "SKIPPED", "CANCELLED"];
 
 function DetailCard({ label, value }: { label: string; value?: string | number | boolean | null }) {
@@ -33,11 +52,15 @@ function DetailCard({ label, value }: { label: string; value?: string | number |
 function StatusBadge({ status }: { status: string }) {
   const normalized = status.toUpperCase();
   const classes =
-    normalized === "ACTIVE" || normalized === "COMPLETED" || normalized === "ASSIGNED"
+    normalized === "ACTIVE" || normalized === "CONFIRMED" || normalized === "COMPLETED" || normalized === "ASSIGNED"
       ? "bg-emerald-500/20 text-emerald-300"
-      : normalized === "CANCELLED" || normalized === "SKIPPED"
+      : normalized === "REJECTED" || normalized === "CANCELLED" || normalized === "SKIPPED"
         ? "bg-rose-500/20 text-rose-300"
-        : "bg-blue-500/20 text-blue-300";
+        : normalized === "PENDING_ADMIN_REVIEW" || normalized === "UNDER_REVIEW" || normalized === "PENDING_PARTNER_ASSIGNMENT" || normalized === "PENDING_PARTNER_ACCEPTANCE"
+          ? "bg-amber-500/20 text-amber-300"
+          : normalized === "PAUSED"
+            ? "bg-violet-500/20 text-violet-300"
+            : "bg-blue-500/20 text-blue-300";
   return <span className={`rounded-full px-2 py-1 text-xs font-medium ${classes}`}>{status}</span>;
 }
 
@@ -67,12 +90,27 @@ export default function SubscriptionDetailsPage() {
     enabled: Boolean(id),
     retry: false,
   });
+  const eligiblePartnersQuery = useQuery({
+    queryKey: ["admin-subscription-eligible-partners", id],
+    queryFn: () => getAdminSubscriptionEligiblePartners(id),
+    enabled: Boolean(id),
+    retry: false,
+  });
+  const eligiblePartners = eligiblePartnersQuery.data ?? [];
+  const changeRequestsQuery = useQuery({
+    queryKey: ["admin-subscription-change-requests", id],
+    queryFn: () => getAdminSubscriptionChangeRequests(id),
+    enabled: Boolean(id),
+    retry: false,
+  });
 
   const invalidate = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["admin-subscription-detail", id] }),
       queryClient.invalidateQueries({ queryKey: ["admin-subscription-calendar", id] }),
       queryClient.invalidateQueries({ queryKey: ["admin-subscription-assignment", id] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-subscription-eligible-partners", id] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-subscription-change-requests", id] }),
       queryClient.invalidateQueries({ queryKey: ["admin-subscriptions"] }),
     ]);
   };
@@ -127,7 +165,32 @@ export default function SubscriptionDetailsPage() {
     onError: (error) => toast.error(extractApiError(error, "Unable to assign visit partner")),
   });
 
+  const reviewMutation = useMutation({
+    mutationFn: ({ requestId, status, reason }: { requestId: number; status: "APPROVED" | "REJECTED"; reason?: string }) =>
+      reviewAdminSubscriptionChangeRequest(requestId, { status, reason }),
+    onSuccess: async () => {
+      toast.success("Professional change request reviewed");
+      await invalidate();
+    },
+    onError: (error) => toast.error(extractApiError(error, "Unable to review professional change request")),
+  });
+
   const detail = detailQuery.data;
+  const changeRequests = useMemo<AdminProfessionalChangeRequest[]>(() => {
+    const rows = changeRequestsQuery.data ?? [];
+    if (!rows.length) return [];
+    return rows.filter((request) => {
+      if (request.subscriptionId == null) return true;
+      return String(request.subscriptionId) === String(id);
+    });
+  }, [changeRequestsQuery.data, id]);
+
+  useEffect(() => {
+    if (detail?.status) {
+      setSubscriptionStatus(detail.status as AdminSubscriptionStatus);
+    }
+  }, [detail?.status]);
+
   const visits = useMemo(() => {
     const rows = calendarQuery.data?.length ? calendarQuery.data : detail?.visitsList ?? [];
     return [...rows].sort((first, second) =>
@@ -197,6 +260,10 @@ export default function SubscriptionDetailsPage() {
               <DetailCard label="Duration" value={detail.durationHours ? `${detail.durationHours} hrs` : undefined} />
               <DetailCard label="Time Slot" value={detail.timeSlot} />
               <DetailCard label="Amount" value={detail.finalAmount} />
+              <DetailCard label="Payment Status" value={detail.paymentStatus} />
+              <DetailCard label="Payment Booking ID" value={detail.paymentBookingId} />
+              <DetailCard label="Assignment Status" value={detail.assignmentStatus} />
+              <DetailCard label="Assigned Professional" value={detail.partnerName} />
             </div>
 
             <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
@@ -224,6 +291,50 @@ export default function SubscriptionDetailsPage() {
               </div>
             </section>
 
+            <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+              <h3 className="text-sm font-semibold text-[var(--color-text)]">Professional Change Requests</h3>
+              <div className="mt-3 space-y-3">
+                {changeRequests.length === 0 ? (
+                  <p className="text-sm text-[var(--color-muted)]">No professional change requests found for this subscription.</p>
+                ) : (
+                  changeRequests.map((request) => (
+                    <div key={request.id} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-[var(--color-text)]">{request.reasonCategory || "General request"}</p>
+                          <p className="mt-1 text-sm text-[var(--color-muted)]">{request.description || "No description provided."}</p>
+                        </div>
+                        <StatusBadge status={String(request.status || "PENDING_ADMIN_REVIEW")} />
+                      </div>
+                      {request.adminReason ? <p className="mt-2 text-xs text-[var(--color-muted)]">Admin note: {request.adminReason}</p> : null}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            reviewMutation.mutate({ requestId: request.id, status: "APPROVED", reason: "Approved by admin" })
+                          }
+                          className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                          disabled={reviewMutation.isPending}
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            reviewMutation.mutate({ requestId: request.id, status: "REJECTED", reason: "Rejected by admin" })
+                          }
+                          className="rounded bg-rose-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                          disabled={reviewMutation.isPending}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
             <section className="grid gap-4 xl:grid-cols-2">
               <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
                 <h3 className="text-sm font-semibold text-[var(--color-text)]">Current Assignment</h3>
@@ -245,12 +356,16 @@ export default function SubscriptionDetailsPage() {
                 <form onSubmit={(event) => submitPartner(event, "assign")} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
                   <h3 className="text-sm font-semibold text-[var(--color-text)]">Assign Subscription Partner</h3>
                   <div className="mt-3 grid gap-2 md:grid-cols-[1fr_2fr_auto]">
-                    <input
+                    <select
                       value={partnerForm.partnerId}
-                      onChange={(event) => setPartnerForm((prev) => ({ ...prev, partnerId: event.target.value.replace(/[^0-9]/g, "") }))}
-                      placeholder="Partner ID"
+                      onChange={(event) => setPartnerForm((prev) => ({ ...prev, partnerId: event.target.value }))}
                       className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-                    />
+                    >
+                      <option value="">{eligiblePartnersQuery.isError ? "Unable to load partners" : eligiblePartners.length ? "Select eligible partner" : "No eligible partners found"}</option>
+                      {eligiblePartners.map((partner) => (
+                        <option key={partner.partnerId} value={partner.partnerId}>{partner.partnerName}</option>
+                      ))}
+                    </select>
                     <input
                       value={partnerForm.reason}
                       onChange={(event) => setPartnerForm((prev) => ({ ...prev, reason: event.target.value }))}
@@ -266,12 +381,16 @@ export default function SubscriptionDetailsPage() {
                 <form onSubmit={(event) => submitPartner(event, "replace")} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
                   <h3 className="text-sm font-semibold text-[var(--color-text)]">Replace Subscription Partner</h3>
                   <div className="mt-3 grid gap-2 md:grid-cols-[1fr_2fr_auto]">
-                    <input
+                    <select
                       value={replaceForm.partnerId}
-                      onChange={(event) => setReplaceForm((prev) => ({ ...prev, partnerId: event.target.value.replace(/[^0-9]/g, "") }))}
-                      placeholder="Partner ID"
+                      onChange={(event) => setReplaceForm((prev) => ({ ...prev, partnerId: event.target.value }))}
                       className="rounded border border-[var(--color-border)] bg-transparent px-3 py-2 text-sm"
-                    />
+                    >
+                      <option value="">{eligiblePartnersQuery.isError ? "Unable to load partners" : eligiblePartners.length ? "Select eligible partner" : "No eligible partners found"}</option>
+                      {eligiblePartners.map((partner) => (
+                        <option key={partner.partnerId} value={partner.partnerId}>{partner.partnerName}</option>
+                      ))}
+                    </select>
                     <input
                       value={replaceForm.reason}
                       onChange={(event) => setReplaceForm((prev) => ({ ...prev, reason: event.target.value }))}
@@ -337,17 +456,21 @@ export default function SubscriptionDetailsPage() {
                         return (
                           <form onSubmit={(event) => submitVisitPartner(event, visit)} className="grid min-w-80 gap-2">
                             <div className="flex gap-2">
-                              <input
+                              <select
                                 value={form.partnerId}
                                 onChange={(event) =>
                                   setVisitPartnerForms((current) => ({
                                     ...current,
-                                    [visit.id]: { ...form, partnerId: event.target.value.replace(/[^0-9]/g, "") },
+                                    [visit.id]: { ...form, partnerId: event.target.value },
                                   }))
                                 }
-                                placeholder="Partner ID"
-                                className="w-24 rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs"
-                              />
+                                className="w-40 rounded border border-[var(--color-border)] bg-transparent px-2 py-1 text-xs"
+                              >
+                                <option value="">{eligiblePartnersQuery.isError ? "Unable to load partners" : eligiblePartners.length ? "Select partner" : "No eligible partners found"}</option>
+                                {eligiblePartners.map((partner) => (
+                                  <option key={partner.partnerId} value={partner.partnerId}>{partner.partnerName}</option>
+                                ))}
+                              </select>
                               <input
                                 value={form.reason}
                                 onChange={(event) =>

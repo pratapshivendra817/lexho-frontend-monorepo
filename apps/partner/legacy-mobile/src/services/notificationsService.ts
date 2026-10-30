@@ -10,6 +10,7 @@ import {
   onMessage,
   onNotificationOpenedApp,
   onTokenRefresh,
+  setBackgroundMessageHandler,
   registerDeviceForRemoteMessages,
   requestPermission,
 } from "@react-native-firebase/messaging";
@@ -29,6 +30,7 @@ type PushCallbacks = {
 };
 let tokenRefreshUnsubscribe: (() => void) | null = null;
 let listenersAttached = false;
+let backgroundHandlerAttached = false;
 let lastRegisteredDeviceTokenKey: string | null = null;
 
 export type PartnerNotificationItem = {
@@ -213,12 +215,27 @@ export async function initializePushNotifications() {
     await registerDeviceForRemoteMessages(messaging);
     const token = await getMessagingToken(messaging);
     if (token) {
-      await registerDeviceToken(token);
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await registerDeviceToken(token);
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+          if (attempt < 2) await new Promise<void>((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+        }
+      }
+      if (lastError) throw lastError;
     }
     tokenRefreshUnsubscribe?.();
     tokenRefreshUnsubscribe = onTokenRefresh(messaging, async (nextToken: string) => {
       if (!nextToken) return;
-      await registerDeviceToken(nextToken);
+      try {
+        await registerDeviceToken(nextToken);
+      } catch (error) {
+        await logNotificationFailure(error);
+      }
     });
     return true;
   } catch (error) {
@@ -234,6 +251,14 @@ export async function setupPushNotificationListeners(callbacks?: PushCallbacks) 
   }
   try {
     const messaging = getMessaging(getApp());
+    if (!backgroundHandlerAttached && typeof setBackgroundMessageHandler === "function") {
+      setBackgroundMessageHandler(messaging, async (remoteMessage: any) => {
+        await trackEvent(PARTNER_ANALYTICS_EVENTS.notificationReceived, {
+          type: remoteMessage?.data?.type ?? remoteMessage?.data?.redirectType ?? "background",
+        });
+      });
+      backgroundHandlerAttached = true;
+    }
     listenersAttached = true;
     const unsubscribeForeground = onMessage(messaging, async (remoteMessage: any) => {
       await trackEvent(PARTNER_ANALYTICS_EVENTS.notificationReceived, {

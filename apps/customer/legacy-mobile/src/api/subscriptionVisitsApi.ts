@@ -33,7 +33,7 @@ export async function getSubscriptionVisits(subscriptionId: string): Promise<Sub
       return [
         ...(root?.upcomingVisits ?? []).map((row: any) => ({ ...row, section: "Upcoming Visits" })),
         ...(root?.completedVisits ?? []).map((row: any) => ({ ...row, section: "Completed Visits" })),
-        ...(root?.cancelledVisits ?? []).map((row: any) => ({ ...row, section: "Cancelled Visits" })),
+        ...(root?.cancelledVisits ?? []).map((row: any) => ({ ...row, section: "Skipped / Cancelled Visits" })),
       ].map((row, index) => toVisit(row, index));
     }
     const rows = Array.isArray(root?.items)

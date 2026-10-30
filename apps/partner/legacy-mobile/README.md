@@ -14,7 +14,6 @@ The app already has a broad implemented surface area. Core frontend flows, navig
 - Dispatch and orders: new requests, accept/reject, order details, active job, order history, timeline-driven views
 - Shift management: shift start/end, availability updates, shift history
 - Live location: current-location detection, location sync, background tracking helpers
-- Onboarding and KYC: onboarding submit, document upload, profile image upload, KYC status
 - Profile and skills: profile fetch/update, dispatch skills fetch/update
 - Earnings and payouts: earnings summary, transactions, payouts, payout details
 - Banking and withdrawals: bank details, withdrawal balance, withdrawal requests
@@ -33,7 +32,6 @@ The app already has a broad implemented surface area. Core frontend flows, navig
 - Orders: `Orders`, `OrderDetails`, `History`, `ActiveJob`
 - Operations: `Shift`, `Performance`, `Ratings`, `LeaveManagement`, `ServiceAreas`, `WarningCenter`
 - Payments: `Earnings`, `Payouts`, `PayoutDetail`, `BankAccount`, `Withdrawals`
-- Compliance: `DocumentUpload`, `OnboardingSubmit`, `KycStatus`
 - Communication: `ChatList`, `Chat`, `IncomingCall`, `OutgoingCall`, `ActiveCall`, `MissedCall`
 - Tracking and safety: `RouteMap`, `LiveTracking`, `SOS`, `EmergencyContacts`, `SOSHistory`, `BackgroundLocationEducation`
 
@@ -59,4 +57,4 @@ The app already has a broad implemented surface area. Core frontend flows, navig
 
 ## Testing Footprint
 
-The partner app has broad automated test coverage across screens, hooks, services, shift flows, onboarding, auth, system screens, and calling flows.
+The partner app has broad automated test coverage across screens, hooks, services, shift flows, auth, system screens, and calling flows.

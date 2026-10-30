@@ -1,15 +1,28 @@
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet("customer", "partner")]
+  [ValidateSet("customer", "partner", "both")]
   [string]$App,
-  [int]$Port = 8081,
+  [int]$Port = 0,
+  [string]$DeviceId,
+  [string]$WirelessAddress,
   [int[]]$BackendPorts = @(8082, 8083),
+  [int]$WebsitePort = 5173,
+  [switch]$CleanNativeCache,
   [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
 $script:AdbCmd = "adb"
 $script:AndroidSdkRoot = $null
+. (Join-Path $PSScriptRoot "android-device-ready.ps1")
+
+if ($DeviceId -like "emulator-*") {
+  throw "Customer and partner phone commands require a physical Android phone. Connect it with USB debugging enabled and select its adb serial."
+}
+
+if ($Port -eq 0) {
+  $Port = if ($App -eq "partner") { 8084 } else { 8081 }
+}
 
 function Write-Step {
   param([string]$Message)
@@ -112,11 +125,11 @@ function Stop-PortProcess {
     $connections = Get-NetTCPConnection -LocalPort $PortNumber -State Listen -ErrorAction Stop
     if ($null -eq $connections) { return }
     $pids = @($connections | Select-Object -ExpandProperty OwningProcess -Unique)
-    foreach ($pid in $pids) {
-      if ($pid -gt 0) {
-        Write-Step "Stopping process on port $PortNumber (PID: $pid)"
+    foreach ($processId in $pids) {
+      if ($processId -gt 0) {
+        Write-Step "Stopping process on port $PortNumber (PID: $processId)"
         if (-not $DryRun) {
-          Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+          Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
         }
       }
     }
@@ -160,6 +173,31 @@ function Get-ConnectedDevices {
     }
   }
   return $devices
+}
+
+function Connect-WirelessDevice {
+  param([string]$Address)
+
+  if ([string]::IsNullOrWhiteSpace($Address)) {
+    return
+  }
+
+  $endpoint = $Address.Trim()
+  if ($endpoint -notmatch ":\d+$") {
+    $endpoint = "$endpoint`:5555"
+  }
+
+  Write-Step "Connecting to wireless Android device: $endpoint"
+  if ($DryRun) {
+    return $endpoint
+  }
+
+  $output = & $script:AdbCmd connect $endpoint 2>&1
+  if ($LASTEXITCODE -ne 0 -or ($output -join " ") -notmatch "connected|already connected") {
+    throw "Could not connect to wireless Android device $endpoint. Pair/enable Wireless debugging first and verify the phone IP address. adb output: $($output -join ' ')"
+  }
+
+  return $endpoint
 }
 
 function Get-AdbDeviceSnapshot {
@@ -445,27 +483,7 @@ function Get-PhysicalDeviceOrThrow {
   $snapshot = $secondTry.snapshot
   $devices = @($snapshot | Where-Object { $_.state -eq "device" } | ForEach-Object { $_.serial })
 
-  $allowEmulatorFallback = $false
-  if ($env:RN_ALLOW_EMULATOR_FALLBACK -eq "1") {
-    $allowEmulatorFallback = $true
-  }
-
-  $emulatorDevices = @($devices | Where-Object { $_ -like "emulator-*" })
-  if ($emulatorDevices.Count -gt 0) {
-    if ($allowEmulatorFallback) {
-      Write-Step "Physical device not found. Falling back to connected emulator: $($emulatorDevices[0])"
-      return $emulatorDevices[0]
-    }
-    Write-Step "Physical device not found. Emulator fallback is disabled by default (set RN_ALLOW_EMULATOR_FALLBACK=1 to enable)."
-    Stop-ConnectedEmulators -EmulatorSerials $emulatorDevices
-  } elseif ($allowEmulatorFallback) {
-    Write-Step "No physical device detected. Attempting to start an Android emulator fallback."
-    $startedEmulator = Try-StartEmulatorAndWait
-    if (-not [string]::IsNullOrWhiteSpace($startedEmulator)) {
-      Write-Step "Using emulator fallback device: $startedEmulator"
-      return $startedEmulator
-    }
-  }
+  Write-Step "Phone commands require a physical device; emulator fallback is disabled."
 
   $otherStates = @(
     $snapshot |
@@ -480,6 +498,29 @@ function Get-PhysicalDeviceOrThrow {
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+if ($App -eq "both") {
+  if ($PSBoundParameters.ContainsKey("Port")) {
+    throw "For both apps, ports are fixed: customer 8081 and partner 8084."
+  }
+  Resolve-AndroidTooling
+  Connect-WirelessDevice -Address $WirelessAddress | Out-Null
+  if ([string]::IsNullOrWhiteSpace($DeviceId)) {
+    $DeviceId = Get-PhysicalDeviceOrThrow
+  }
+  foreach ($mobileApp in @("customer", "partner")) {
+    # Separate processes isolate Gradle and short-path environment settings.
+    $quotedScript = $PSCommandPath.Replace("'", "''")
+    $quotedDevice = $DeviceId.Replace("'", "''")
+    $quotedWirelessAddress = $WirelessAddress.Replace("'", "''")
+    $backendArray = "@(" + ($BackendPorts -join ",") + ")"
+    $childCommand = "& '$quotedScript' -App $mobileApp -DeviceId '$quotedDevice' -WirelessAddress '$quotedWirelessAddress' -WebsitePort $WebsitePort -BackendPorts $backendArray"
+    if ($DryRun) { $childCommand += " -DryRun" }
+    & powershell -NoProfile -ExecutionPolicy Bypass -Command $childCommand
+    if ($LASTEXITCODE -ne 0) { throw "$mobileApp launch failed." }
+  }
+  Write-Step "Both apps launched on $DeviceId. Customer Metro: 8081; partner Metro: 8084."
+  exit 0
+}
 $projectDir = Join-Path $repoRoot "apps\$App\legacy-mobile"
 
 if (-not (Test-Path $projectDir)) {
@@ -488,6 +529,8 @@ if (-not (Test-Path $projectDir)) {
 
 if (-not $DryRun) {
   Resolve-AndroidTooling
+
+  Connect-WirelessDevice -Address $WirelessAddress | Out-Null
 
   if (-not (Test-LongPathsEnabled)) {
     Write-Step "Warning: Windows long paths are disabled. Enable 'LongPathsEnabled=1' to avoid 260-char path errors."
@@ -530,21 +573,49 @@ if (-not $DryRun) {
 }
 
 Write-Step "Project: $targetProjectDir"
-$targetDevice = Get-PhysicalDeviceOrThrow
+
+# Use -CleanNativeCache when switching between real and short project paths.
+# Native CMake caches are not portable across the real project path and the
+# short junction path. A partially-written fingerprint can make Gradle fail
+# with `unrecognized RECORD_NOT_SET` before compilation starts. Remove only
+# generated .cxx directories; source files and Gradle caches are untouched.
+if (-not $DryRun -and $CleanNativeCache) {
+  $nativeCxxDirs = Get-ChildItem -LiteralPath (Join-Path $targetProjectDir "node_modules") -Directory -Filter ".cxx" -Recurse -Force -ErrorAction SilentlyContinue
+  foreach ($nativeCxxDir in $nativeCxxDirs) {
+    $nativeCacheRoot = [IO.Path]::GetFullPath((Join-Path $targetProjectDir "node_modules")) + [IO.Path]::DirectorySeparatorChar
+    $nativeCachePath = [IO.Path]::GetFullPath($nativeCxxDir.FullName)
+    if (-not $nativeCachePath.StartsWith($nativeCacheRoot, [StringComparison]::OrdinalIgnoreCase) -or $nativeCxxDir.Name -ne ".cxx") {
+      throw "Refusing to remove native cache outside project node_modules: $nativeCachePath"
+    }
+    Write-Step "Removing stale native cache: $($nativeCxxDir.FullName)"
+    Remove-Item -LiteralPath $nativeCxxDir.FullName -Recurse -Force -ErrorAction Stop
+  }
+}
+
+$targetDevice = if ([string]::IsNullOrWhiteSpace($DeviceId)) { Get-PhysicalDeviceOrThrow } else { $DeviceId }
+if (-not $DryRun -and $targetDevice -notin @(Get-ConnectedDevices)) {
+  throw "Selected Android device is not ready: $targetDevice"
+}
 Write-Step "Target device: $targetDevice"
+if (-not $DryRun) {
+  Wait-AndroidDeviceReady -Adb $script:AdbCmd -Serial $targetDevice
+}
 
 if (Test-PortListening -PortNumber $Port) {
   Stop-PortProcess -PortNumber $Port
   Start-Sleep -Seconds 1
 }
 
-Write-Step "Starting Metro in a new terminal with script 'start'."
+Write-Step "Starting Metro in a visible PowerShell window on port $Port. Press r there to reload $App."
 if (-not $DryRun) {
   # Keep Metro on real path to avoid module identity issues with junction paths.
-  Start-Process -FilePath "powershell" -WorkingDirectory $projectDir -ArgumentList @(
+  # Inherit the new console's input/output so Metro enables keyboard shortcuts.
+  $metroCommand = "`$Host.UI.RawUI.WindowTitle = 'Lexho $App Metro - $Port'; npm run start -- --reset-cache --port $Port"
+  Start-Process -FilePath "powershell" -WindowStyle Normal -WorkingDirectory $projectDir -ArgumentList @(
+    "-NoProfile",
     "-NoExit",
     "-Command",
-    "npm run start -- --reset-cache"
+    $metroCommand
   ) | Out-Null
 }
 Start-Sleep -Seconds 3
@@ -563,6 +634,15 @@ foreach ($backendPort in $BackendPorts | Select-Object -Unique) {
   }
 }
 
+if ($App -eq "customer") {
+  # The in-app legal website uses localhost:5173 on the Android device.
+  # WebsitePort can point it to Vite's fallback port on the development machine.
+  $websiteReverseExit = Invoke-Step -FilePath $script:AdbCmd -Arguments @("-s", $targetDevice, "reverse", "tcp:5173", "tcp:$WebsitePort") -WorkingDirectory $targetProjectDir
+  if ($websiteReverseExit -ne 0) {
+    Write-Step "adb reverse failed for website port $WebsitePort, continuing."
+  }
+}
+
 $androidScript = "android"
 if ($env:RN_FORCE_ANDROID_SHORTPATH -eq "1") {
   $androidScript = "android:run:shortpath"
@@ -574,7 +654,7 @@ if ($env:RN_FORCE_ANDROID_SHORTPATH -eq "1") {
 }
 
 $androidWorkingDirectory = if ($androidScript -eq "android:run:shortpath") { $projectDir } else { $targetProjectDir }
-$androidExit = Invoke-Step -FilePath "npm" -Arguments @("run", $androidScript, "--", "--no-packager", "--device", $targetDevice) -WorkingDirectory $androidWorkingDirectory
+$androidExit = Invoke-Step -FilePath "npm" -Arguments @("run", $androidScript, "--", "--no-packager", "--port", "$Port", "--device", $targetDevice) -WorkingDirectory $androidWorkingDirectory
 if ($androidExit -ne 0) {
   throw "Android run failed with exit code $androidExit"
 }

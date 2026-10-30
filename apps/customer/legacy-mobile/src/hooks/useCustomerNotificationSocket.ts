@@ -115,7 +115,7 @@ export function useCustomerNotificationSocket({
         isConnectingRef.current = false;
       };
 
-      socket.onclose = (event) => {
+      socket.onclose = () => {
         isConnectingRef.current = false;
         isSubscribedRef.current = false;
         wsRef.current = null;

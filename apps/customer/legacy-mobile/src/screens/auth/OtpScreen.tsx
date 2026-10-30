@@ -6,11 +6,12 @@ import { Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView,
 import { Snackbar, Text, TextInput } from "react-native-paper";
 import { z } from "zod";
 import { sendOtp, verifyOtp } from "../../api/authApi";
+import { applyReferral } from "../../api/referralApi";
 import { PrimaryButton } from "../../components/buttons/PrimaryButton";
 import { useAppDispatch } from "../../redux/hooks";
 import { setSession } from "../../redux/authSlice";
 import { resetLocationState } from "../../redux/locationSlice";
-import { saveSession } from "../../utils/storage";
+import { clearPendingReferralCode, getPendingReferralCode, saveSession } from "../../utils/storage";
 import { setAnalyticsUser, trackAnalyticsEvent } from "../../services/firebaseAnalytics";
 import { setCrashlyticsUser } from "../../services/firebaseCrashlytics";
 import { trackUserLogin, trackUserRegistration } from "../../services/customerAnalyticsEvents";
@@ -26,8 +27,11 @@ const LOGIN_BACKGROUND = "#06132D";
 
 export function OtpScreen({ navigation, route }: any) {
   const mobile = route.params.mobile as string;
+  const routeReferralCode = String(route?.params?.referralCode ?? "").trim().toUpperCase();
   const dispatch = useAppDispatch();
   const [timer, setTimer] = useState(30);
+  const [pendingReferralCode, setPendingReferralCode] = useState(routeReferralCode || "");
+  const [referralApplyError, setReferralApplyError] = useState("");
   const { control, handleSubmit, formState: { errors } } = useForm<Form>({ defaultValues: { otp: "" }, resolver: zodResolver(schema) });
 
   useEffect(() => {
@@ -35,6 +39,17 @@ export function OtpScreen({ navigation, route }: any) {
     const id = setTimeout(() => setTimer((p) => p - 1), 1000);
     return () => clearTimeout(id);
   }, [timer]);
+
+  useEffect(() => {
+    let active = true;
+    if (routeReferralCode) return;
+    void getPendingReferralCode().then((code) => {
+      if (active && code) setPendingReferralCode(code);
+    });
+    return () => {
+      active = false;
+    };
+  }, [routeReferralCode]);
 
   const verifyMutation = useMutation({ mutationFn: ({ otp }: Form) => verifyOtp(mobile, otp), onSuccess: async (data: any) => {
     const token = extractAccessToken(data);
@@ -67,6 +82,15 @@ export function OtpScreen({ navigation, route }: any) {
         user_id_present: Boolean(user?.id),
       });
     }
+    if (pendingReferralCode) {
+      try {
+        await applyReferral({ code: pendingReferralCode });
+        await clearPendingReferralCode();
+        setPendingReferralCode("");
+      } catch (error: any) {
+        setReferralApplyError(String(error?.message ?? "Unable to apply referral code. You can retry from Refer & Earn."));
+      }
+    }
   }});
 
   const resendMutation = useMutation({ mutationFn: () => sendOtp(mobile), onSuccess: () => setTimer(30) });
@@ -88,6 +112,7 @@ export function OtpScreen({ navigation, route }: any) {
           <View style={styles.panel}>
             <Text variant="headlineMedium" style={styles.title}>Verify OTP</Text>
             <Text style={styles.sub}>Enter the secure code sent to +91 {mobile}</Text>
+            {pendingReferralCode ? <Text style={styles.referralText}>Referral code `{pendingReferralCode}` will be applied after you sign in.</Text> : null}
             <Controller control={control} name="otp" render={({ field: { value, onChange } }) => (
               <TextInput
                 mode="outlined"
@@ -139,6 +164,7 @@ export function OtpScreen({ navigation, route }: any) {
         </ScrollView>
       </Pressable>
       <Snackbar visible={verifyMutation.isError} onDismiss={() => verifyMutation.reset()}>{verifyMutation.error instanceof Error ? verifyMutation.error.message : "Failed"}</Snackbar>
+      <Snackbar visible={Boolean(referralApplyError)} onDismiss={() => setReferralApplyError("")}>{referralApplyError}</Snackbar>
       <Snackbar visible={resendMutation.isError} onDismiss={() => resendMutation.reset()}>{resendMutation.error instanceof Error ? resendMutation.error.message : "Resend failed"}</Snackbar>
       <Snackbar visible={resendMutation.isSuccess} onDismiss={() => resendMutation.reset()}>OTP resent successfully</Snackbar>
     </KeyboardAvoidingView>
@@ -168,4 +194,5 @@ const styles = StyleSheet.create({
   err: { color: COLORS.error },
   trustText: { color: COLORS.neutral100, fontSize: 12, lineHeight: 18 },
   changeNumber: { color: COLORS.goldSoft, fontWeight: "800", textAlign: "center", textDecorationLine: "underline" },
+  referralText: { color: COLORS.goldSoft, fontSize: 12, lineHeight: 18, fontWeight: "700" },
 });

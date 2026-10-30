@@ -1,16 +1,27 @@
 # Lexho Frontend Production Readiness Checklist
 
-Last updated: July 19, 2026
+Last updated: August 23, 2026
 
 This file captures the current frontend production-readiness state for:
 
 - `apps/admin`
+- `apps/website`
 - `apps/partner/legacy-mobile`
 - `apps/customer/legacy-mobile`
 
 It is based on the current repo state and local verification completed in this workspace.
 
 ## Overall Status
+
+### Website
+
+Status: production build and quality gates ready
+
+What is verified:
+
+- Vite proxy configuration is fully typed with no unsafe config assertion
+- Website uses a Vite 8-compatible Vitest version
+- Production build, typecheck, lint, and test commands complete successfully
 
 ### Admin
 
@@ -56,6 +67,7 @@ Verification completed:
 Remaining partner note:
 
 - Push contract is frontend-aligned, but a fresh Android rebuild/install and real-device token registration should still be rechecked in release-like conditions
+- Android release packaging now requires CI-provided signing credentials and a monotonically increasing version code; debug signing is blocked for release builds
 
 ### Customer
 
@@ -88,6 +100,12 @@ Do not enable:
 
 until the certificate file is added and verification passes.
 
+Additional release hardening completed:
+
+- Android release packaging now requires CI-provided signing credentials and a monotonically increasing version code; debug signing is blocked for release builds
+- R8 and resource shrinking are enabled for release builds
+- Customer and Partner release builds disable cleartext traffic
+
 ## Required Backend / DevOps Inputs
 
 ### Shared
@@ -95,6 +113,7 @@ until the certificate file is added and verification passes.
 - Confirm production backend base URLs for Admin, Partner, and Customer environments
 - Confirm production Firebase project and service account alignment for push delivery
 - Confirm `/api/notifications/devices` is the supported device registration endpoint for mobile apps
+- Configure the CI secret manager with the Android signing inputs documented in `MOBILE_RELEASE_REQUIREMENTS.md`
 
 ### Admin
 
@@ -113,6 +132,7 @@ until the certificate file is added and verification passes.
 - Production `API_BASE_URL`
 - Real-device FCM verification after release build install
 - Backend confirmation that partner target IDs map correctly to active device tokens
+- Android release signing credentials and `LEXHO_ANDROID_VERSION_CODE` in CI
 
 ### Customer
 
@@ -123,13 +143,15 @@ until the certificate file is added and verification passes.
 - Only then enable:
   - `SSL_PINNING_ENABLED=true`
   - `SSL_PINNING_CERT_NAME=lexho_api`
+- Android release signing credentials and `LEXHO_ANDROID_VERSION_CODE` in CI
 
 ## Recommended Release Order
 
-1. Finalize Admin production env
-2. Rebuild and smoke-test Partner push on a real Android device
-3. Add Customer SSL certificate and rerun SSL verification
-4. Do one final end-to-end smoke pass across all three apps
+1. Finalize production environment values for Admin, Website, Partner, and Customer
+2. Configure Android release signing secrets and version code in CI
+3. Rebuild and smoke-test Partner push on a real Android device
+4. Add Customer SSL certificate and rerun SSL verification
+5. Do one final end-to-end smoke pass across all four apps
 
 ## Quick Commands
 
@@ -137,6 +159,12 @@ until the certificate file is added and verification passes.
 
 - `npm run build --workspace=@lexho/admin`
 - `npm run test --workspace=@lexho/admin -- tests/app/config.test.ts tests/app/App.test.tsx tests/services/adminPushNotifications.test.ts tests/features/notifications-socket-hook.test.tsx tests/features/notifications-api-hooks.test.ts tests/features/serviceable-areas-api.test.ts`
+
+### Website
+
+- `npm run build --workspace=@lexho/website`
+- `npm run lint --workspace=@lexho/website`
+- `npm run test --workspace=@lexho/website`
 
 ### Partner
 
@@ -149,6 +177,6 @@ until the certificate file is added and verification passes.
 
 ## Bottom Line
 
-- Admin frontend: ready for production env handoff
-- Partner frontend: ready for final device-level push validation
-- Customer frontend: blocked only on SSL certificate asset before full release-hardening sign-off
+- Admin and Website: ready for production environment handoff
+- Partner: code-hardened and ready for CI signing plus final device-level push validation
+- Customer: code-hardened but blocked on the production SSL certificate before full release sign-off

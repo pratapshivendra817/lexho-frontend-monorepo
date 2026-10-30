@@ -10,7 +10,7 @@ type AdminNotificationSocketOptions = {
 };
 
 const DEFAULT_BROKER_PATH = "/ws/admin/notifications";
-const DEFAULT_DEV_BROKER_URL = "ws://localhost:8082/ws/admin/notifications";
+const DEFAULT_DEV_BROKER_URL = "ws://192.168.31.38:8082/ws/admin/notifications";
 const DEFAULT_TOPIC = "/topic/admin/notifications";
 const IS_DEV = import.meta.env.DEV;
 

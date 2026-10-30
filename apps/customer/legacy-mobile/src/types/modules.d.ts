@@ -27,6 +27,7 @@ declare module "react-native-geolocation-service" {
         showLocationDialog?: boolean;
       },
     ) => void;
+    requestAuthorization?: (authorizationLevel: "whenInUse" | "always") => Promise<string>;
   };
 
   export default Geolocation;

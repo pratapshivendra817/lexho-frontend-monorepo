@@ -1,12 +1,9 @@
 import { Linking, PermissionsAndroid, Platform } from "react-native";
+import Geolocation from "react-native-geolocation-service";
 
 export type PermissionState = "granted" | "denied" | "blocked";
 
 export async function requestLocationPermission(): Promise<PermissionState> {
-  if (Platform.OS !== "android") {
-    return "denied";
-  }
-
   try {
     // Prefer react-native-permissions when available.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -16,17 +13,36 @@ export async function requestLocationPermission(): Promise<PermissionState> {
     const check = permissionsLib.check;
     const request = permissionsLib.request;
 
-    const fine = PERMISSIONS?.ANDROID?.ACCESS_FINE_LOCATION;
-    if (fine) {
-      const status = await check(fine);
+    const permission =
+      Platform.OS === "android"
+        ? PERMISSIONS?.ANDROID?.ACCESS_FINE_LOCATION
+        : PERMISSIONS?.IOS?.LOCATION_WHEN_IN_USE;
+    if (permission) {
+      const status = await check(permission);
       if (status === RESULTS.GRANTED) return "granted";
-      const next = await request(fine);
+      if (status === RESULTS.LIMITED) return "granted";
+      if (status === RESULTS.BLOCKED) return "blocked";
+      const next = await request(permission);
       if (next === RESULTS.GRANTED) return "granted";
+      if (next === RESULTS.LIMITED) return "granted";
       if (next === RESULTS.BLOCKED) return "blocked";
       return "denied";
     }
   } catch {
     // Fall back to PermissionsAndroid below.
+  }
+
+  if (Platform.OS === "ios") {
+    try {
+      const status = await (Geolocation as any).requestAuthorization("whenInUse");
+      return status === "granted" ? "granted" : "denied";
+    } catch {
+      return "denied";
+    }
+  }
+
+  if (Platform.OS !== "android") {
+    return "denied";
   }
 
   const finePermission = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;

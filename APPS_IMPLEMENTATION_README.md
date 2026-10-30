@@ -333,8 +333,7 @@ Path: `apps/partner/legacy-mobile`
   - Dispatch location updates
   - Background location helpers
 
-- Onboarding, profile, and compliance
-  - Onboarding submit
+- Profile and compliance
   - Document upload
   - Profile image upload
   - Profile update
@@ -384,7 +383,7 @@ Path: `apps/partner/legacy-mobile`
 - Orders: `Orders`, `OrderDetails`, `History`, `ActiveJob`
 - Shift/ops: `Shift`, `Performance`, `Ratings`, `LeaveManagement`, `ServiceAreas`, `WarningCenter`
 - Payments: `Earnings`, `Payouts`, `PayoutDetail`, `BankAccount`, `Withdrawals`
-- Compliance: `DocumentUpload`, `OnboardingSubmit`, `KycStatus`
+- Compliance: document upload and KYC status
 - Communication: `ChatList`, `Chat`, `IncomingCall`, `OutgoingCall`, `ActiveCall`, `MissedCall`
 - Tracking/safety: `RouteMap`, `LiveTracking`, `SOS`, `EmergencyContacts`, `SOSHistory`, `BackgroundLocationEducation`
 

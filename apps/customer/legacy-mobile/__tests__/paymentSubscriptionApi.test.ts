@@ -14,7 +14,7 @@ jest.mock("../src/api/client", () => ({
 }));
 
 import { createPaymentOrder, getPaymentOptions, reportPaymentFailure, verifyPayment } from "../src/api/paymentApi";
-import { cancelSubscription, getSubscriptionDetails, getSubscriptions, pauseSubscription, resumeSubscription } from "../src/api/subscriptionApi";
+import { cancelSubscription, createSubscriptionChangeRequest, getSubscriptionDetails, getSubscriptions, pauseSubscription, resumeSubscription } from "../src/api/subscriptionApi";
 import { getCookSubscriptionPriceQuote, getSubscriptionPriceQuote, getSubscriptionPricing } from "../src/api/subscriptionPricingApi";
 import { getSubscriptionVisits } from "../src/api/subscriptionVisitsApi";
 
@@ -90,6 +90,21 @@ describe("subscription APIs", () => {
     await expect(pauseSubscription("1")).rejects.toThrow("Failed to pause subscription");
     await expect(resumeSubscription("1")).rejects.toThrow("Failed to resume subscription");
     await expect(cancelSubscription("1")).rejects.toThrow("Failed to cancel subscription");
+  });
+
+  it("sends professional change requests through the backend workflow endpoint", async () => {
+    mockApi.post.mockResolvedValueOnce({ data: { ok: true } });
+
+    await expect(createSubscriptionChangeRequest("21", {
+      reasonCategory: "PROFESSIONAL_PREFERENCE",
+      description: "Please assign another professional.",
+    })).resolves.toEqual({ ok: true });
+
+    expect(mockApi.post).toHaveBeenCalledWith(
+      "/api/subscriptions/change-requests",
+      { reasonCategory: "PROFESSIONAL_PREFERENCE", description: "Please assign another professional." },
+      { params: { subscriptionId: "21" } },
+    );
   });
 
   it("filters and sorts subscription pricing and maps quotes", async () => {

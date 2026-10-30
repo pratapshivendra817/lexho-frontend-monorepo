@@ -117,6 +117,10 @@ export default function UserDetailsPage() {
                 <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Phone</p>
                 <p className="text-base">{user.phone || "N/A"}</p>
               </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-[var(--color-muted)]">Gender</p>
+                <p className="text-base">{user.gender || "N/A"}</p>
+              </div>
             </div>
 
             <div className="space-y-3">

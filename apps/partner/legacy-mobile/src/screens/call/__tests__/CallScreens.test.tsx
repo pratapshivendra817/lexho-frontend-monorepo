@@ -14,6 +14,12 @@ jest.mock("../../../hooks/useRedux", () => ({
   useAppSelector: (selector: any) => selector({ calls: mockCallState }),
 }));
 
+jest.mock("../../../context/AppLanguageContext", () => ({
+  useAppLanguage: () => ({
+    t: (_key: string, fallback?: string) => fallback ?? "",
+  }),
+}));
+
 jest.mock("../../../redux/slices/callSlice", () => ({
   acceptIncomingCall: jest.fn(() => ({ type: "call/accept" })),
   clearCurrentCall: jest.fn(() => ({ type: "call/clear" })),

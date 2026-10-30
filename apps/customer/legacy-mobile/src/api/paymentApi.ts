@@ -1,4 +1,4 @@
-import { api, parseApiError, toApiError } from "./client";
+import { api, toApiError } from "./client";
 import type { PaymentMode } from "../types/contracts";
 
 export type CreatePaymentOrderRequest = { bookingId: string };

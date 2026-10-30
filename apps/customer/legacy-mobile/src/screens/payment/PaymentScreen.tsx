@@ -22,9 +22,13 @@ import { clearPendingPaymentBookingId, savePendingPaymentBookingId } from "../..
 type PaymentRoute = {
   params?: {
     bookingId?: string;
+    subscriptionId?: string;
     cartId?: number | null;
     amount?: number;
     currency?: string;
+    serviceName?: string;
+    address?: string;
+    scheduledAt?: string;
     bookingMode?: "INSTANT" | "SCHEDULED" | "SUBSCRIPTION";
     postPaymentRoute?: "ScheduledBookingStatus" | "InstantBookingStatus" | "PaymentStatus" | "BookingPaymentConfirm" | "SubscriptionConfirmed";
   };
@@ -43,8 +47,9 @@ function formatCurrency(value: number, currency = "INR") {
 }
 
 function buildIdempotencyKey(bookingId: string) {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return `booking-${bookingId}-${globalThis.crypto.randomUUID()}`;
+  const cryptoApi = (globalThis as typeof globalThis & { crypto?: { randomUUID?: () => string } }).crypto;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    return `booking-${bookingId}-${cryptoApi.randomUUID()}`;
   }
   return `booking-${bookingId}-${Date.now()}`;
 }
@@ -63,6 +68,7 @@ export function PaymentScreen({ route, navigation }: { route: PaymentRoute; navi
   const [actionError, setActionError] = useState<string | null>(null);
   const [lastOrder, setLastOrder] = useState<CreatePaymentOrderResponse | null>(null);
   const [tapDisabledUntil, setTapDisabledUntil] = useState(0);
+  const [isRateLimited, setIsRateLimited] = useState(false);
   const failureTrackedRef = useRef(false);
   const autoStartedRef = useRef(false);
   const routeAmount = Number(route?.params?.amount ?? 0);
@@ -75,23 +81,32 @@ export function PaymentScreen({ route, navigation }: { route: PaymentRoute; navi
   };
 
   const navigateAfterPayment = () => {
+    const bookingParams = {
+      bookingId,
+      bookingMode: route?.params?.bookingMode,
+      serviceName: route?.params?.serviceName,
+      address: route?.params?.address,
+      amount: route?.params?.amount,
+      currency: route?.params?.currency,
+      scheduledAt: route?.params?.scheduledAt,
+    };
     if (postPaymentRoute === "ScheduledBookingStatus") {
-      navigation.replace("ScheduledBookingStatus", { bookingId });
+      navigation.replace("ScheduledBookingStatus", bookingParams);
       return;
     }
     if (postPaymentRoute === "InstantBookingStatus") {
-      navigation.replace("InstantBookingStatus", { bookingId });
+      navigation.replace("InstantBookingStatus", bookingParams);
       return;
     }
     if (postPaymentRoute === "BookingPaymentConfirm") {
-      navigation.replace("BookingPaymentConfirm", { bookingId, bookingMode: route?.params?.bookingMode });
+      navigation.replace("BookingPaymentConfirm", bookingParams);
       return;
     }
     if (postPaymentRoute === "SubscriptionConfirmed") {
-      navigation.replace("SubscriptionConfirmed", { bookingId, subscriptionId: bookingId });
+      navigation.replace("SubscriptionConfirmed", { ...bookingParams, subscriptionId: route?.params?.subscriptionId });
       return;
     }
-    navigation.navigate("PaymentStatus", { bookingId });
+    navigation.navigate("PaymentStatus", bookingParams);
   };
 
   const payMutation = useMutation({
@@ -135,6 +150,7 @@ export function PaymentScreen({ route, navigation }: { route: PaymentRoute; navi
         try {
           await reportPaymentFailure(failurePayload);
         } catch {
+          // Failure reporting is best-effort and must not hide the checkout result.
         }
         const paymentError = new Error(checkoutResult.error ?? "Payment cancelled");
         trackPaymentFailureOnce({
@@ -165,6 +181,10 @@ export function PaymentScreen({ route, navigation }: { route: PaymentRoute; navi
         razorpayPaymentId: checkoutResult.paymentId,
         razorpaySignature: checkoutResult.signature,
       });
+      const payment = verification?.data ?? verification;
+      if (payment?.verified !== true || String(payment?.paymentStatus ?? "").toUpperCase() !== "SUCCESS") {
+        throw new Error("Payment has not been confirmed by the server. Please check payment status before retrying.");
+      }
       void trackPaymentSuccess({
         booking_id: bookingId,
         razorpay_order_id: checkoutResult.orderId,
@@ -183,6 +203,7 @@ export function PaymentScreen({ route, navigation }: { route: PaymentRoute; navi
       const errorCode = getApiErrorCode(error);
       if (errorCode === "RATE_LIMIT_EXCEEDED") {
         setTapDisabledUntil(Date.now() + 15000);
+        setIsRateLimited(true);
       }
       captureFrontendError(error, {
         screenName: "PaymentScreen",
@@ -202,7 +223,7 @@ export function PaymentScreen({ route, navigation }: { route: PaymentRoute; navi
     },
   });
 
-  const canProceed = bookingId.length > 0 && !payMutation.isPending && Date.now() >= tapDisabledUntil;
+  const canProceed = bookingId.length > 0 && !payMutation.isPending && !isRateLimited;
   const displayedAmount = toDisplayAmount(lastOrder) ?? (routeAmount > 0 ? formatCurrency(routeAmount, routeCurrency) : null);
   const buttonLabel = actionError ? "Retry Payment" : "Proceed to pay";
   const startPayment = () => {
@@ -216,6 +237,13 @@ export function PaymentScreen({ route, navigation }: { route: PaymentRoute; navi
     setActionError(null);
     navigateAfterPayment();
   };
+
+  useEffect(() => {
+    if (!tapDisabledUntil) return;
+    const remaining = Math.max(0, tapDisabledUntil - Date.now());
+    const timer = setTimeout(() => setIsRateLimited(false), remaining);
+    return () => clearTimeout(timer);
+  }, [tapDisabledUntil]);
 
   useEffect(() => {
     if (autoStartedRef.current) return;

@@ -2,13 +2,11 @@ import React from "react";
 import { Alert } from "react-native";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react-native";
 
-import { BookingConfirmScreen } from "../src/screens/booking-flow/BookingConfirmScreen";
 import { FavoritesScreen } from "../src/screens/home/FavoritesScreen";
 import { BookingDetailScreen } from "../src/screens/booking/BookingDetailScreen";
 
 const mockDispatch = jest.fn();
 const mockNavigate = jest.fn();
-const mockCreateBooking = jest.fn();
 const mockAddFavorite = jest.fn();
 const mockRemoveFavorite = jest.fn();
 const mockDetailsRefetch = jest.fn();
@@ -22,9 +20,6 @@ jest.mock("../src/redux/hooks", () => ({
 }));
 jest.mock("../src/redux/favoritesSlice", () => ({
   fetchFavorites: () => ({ type: "favorites/fetch" }),
-}));
-jest.mock("../src/services/bookingService", () => ({
-  createBooking: (...args: any[]) => mockCreateBooking(...args),
 }));
 jest.mock("../src/api/favoritesApi", () => ({
   addFavorite: (...args: any[]) => mockAddFavorite(...args),
@@ -72,7 +67,6 @@ describe("high-impact simple screens", () => {
         error: null,
       },
     };
-    mockCreateBooking.mockResolvedValue({});
     mockAddFavorite.mockResolvedValue({});
     mockRemoveFavorite.mockResolvedValue({});
     mockDetailsQuery = {
@@ -99,39 +93,6 @@ describe("high-impact simple screens", () => {
   afterEach(async () => {
     await cleanup();
     jest.restoreAllMocks();
-  });
-
-  it("validates and creates bookings, then retries failures", async () => {
-    let view = await render(
-      <BookingConfirmScreen
-        route={{ params: { serviceId: 11, scheduledTime: "2026-06-14T10:00:00" } }}
-        navigation={{ navigate: mockNavigate }}
-      />,
-    );
-    await fireEvent.press(view.getAllByText("Confirm Booking")[1]);
-    await waitFor(() =>
-      expect(mockCreateBooking).toHaveBeenCalledWith({
-        userId: 7,
-        serviceId: 11,
-        addressId: "A1",
-        scheduledTime: "2026-06-14T10:00:00",
-      }),
-    );
-    expect(mockNavigate).toHaveBeenCalledWith("Bookings");
-
-    await cleanup();
-    mockCreateBooking.mockRejectedValueOnce(new Error("Booking unavailable"));
-    view = await render(
-      <BookingConfirmScreen route={{ params: { serviceId: 11 } }} navigation={{ navigate: mockNavigate }} />,
-    );
-    await fireEvent.press(view.getAllByText("Confirm Booking")[1]);
-    expect(await view.findByText("Booking unavailable")).toBeTruthy();
-
-    await cleanup();
-    mockState.auth.user.id = 0;
-    view = await render(<BookingConfirmScreen route={{ params: {} }} navigation={{}} />);
-    await fireEvent.press(view.getAllByText("Confirm Booking")[1]);
-    expect(Alert.alert).toHaveBeenCalledWith("Session missing", "Please login again.");
   });
 
   it("adds and removes favorites and renders loading/error states", async () => {

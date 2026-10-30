@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import "mapbox-gl/dist/mapbox-gl.css";
 import mapboxgl from "mapbox-gl";
@@ -14,6 +14,7 @@ type MapboxPolygonEditorProps = {
   saveLabel?: string;
   height?: number;
   readOnly?: boolean;
+  cityQuery?: string;
 };
 
 type PolygonFeature = {
@@ -75,7 +76,9 @@ export function MapboxPolygonEditor({
   saveLabel = "Save Polygon",
   height = 280,
   readOnly = false,
+  cityQuery,
 }: MapboxPolygonEditorProps) {
+  const [locationError, setLocationError] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
@@ -89,16 +92,41 @@ export function MapboxPolygonEditor({
   const token = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 
   useEffect(() => {
+    latestPolygonJsonRef.current = value ?? "";
+  }, [value]);
+
+  useEffect(() => {
+    if (!cityQuery || !token) return;
+    const controller = new AbortController();
+    setLocationError("");
+    // Existing zone geometry takes priority over the city overview.
+    if (latestPolygonJsonRef.current) return;
+    const params = new URLSearchParams({ q: cityQuery, types: "place", limit: "1", access_token: token });
+    void fetch(`https://api.mapbox.com/search/geocode/v6/forward?${params}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("City lookup failed");
+        const result = await response.json();
+        const coordinates = result.features?.[0]?.geometry?.coordinates;
+        if (!Array.isArray(coordinates) || coordinates.length < 2 || !coordinates.slice(0, 2).every(Number.isFinite)) {
+          throw new Error("City not found");
+        }
+        if (!controller.signal.aborted && !latestPolygonJsonRef.current) {
+          mapRef.current?.jumpTo({ center: [coordinates[0], coordinates[1]], zoom: 11 });
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setLocationError("Could not locate the selected city. Pan and zoom the map to your area, or select the city again.");
+      });
+    return () => controller.abort();
+  }, [cityQuery, token]);
+
+  useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
 
   useEffect(() => {
     onSaveRef.current = onSave;
   }, [onSave]);
-
-  useEffect(() => {
-    latestPolygonJsonRef.current = value ?? "";
-  }, [value]);
 
   useEffect(() => () => {
     if (saveTimerRef.current) {
@@ -113,10 +141,12 @@ export function MapboxPolygonEditor({
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
-      center: [77.209, 28.6139],
-      zoom: 10,
+      center: [78.9629, 20.5937],
+      zoom: 4,
     });
     mapRef.current = map;
+    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+    map.addControl(new mapboxgl.FullscreenControl(), "top-right");
 
     const draw = new MapboxDraw({
       displayControlsDefault: false,
@@ -126,7 +156,7 @@ export function MapboxPolygonEditor({
             polygon: true,
             trash: true,
           },
-      defaultMode: readOnly ? "simple_select" : "draw_polygon",
+      defaultMode: "simple_select",
     });
     drawRef.current = draw;
 
@@ -199,6 +229,7 @@ export function MapboxPolygonEditor({
 
   return (
     <div className="space-y-2">
+      {locationError ? <p role="alert" className="text-sm text-amber-500">{locationError}</p> : null}
       {!readOnly ? (
         <p className="text-xs text-[var(--color-muted)]">
           Use polygon tool to draw. Drag points to edit. Use trash to delete selected polygon.

@@ -4,5 +4,5 @@
     "types": ["jest"]
   },
   "include": ["src"],
-  "exclude": ["node_modules", "Pods"]
+  "exclude": ["node_modules", "Pods", "**/__tests__/**", "**/*.test.ts", "**/*.test.tsx"]
 }

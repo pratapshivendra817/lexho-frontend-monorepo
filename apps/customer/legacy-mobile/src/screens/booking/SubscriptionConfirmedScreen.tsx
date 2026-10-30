@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BookingStageShell } from "../../components/booking/BookingStageShell";
 import { bookingTheme } from "../../components/booking/bookingTheme";
 import { getSubscriptionDetails } from "../../api/subscriptionApi";
+import { getSubscriptionVisits } from "../../api/subscriptionVisitsApi";
 import { COLORS } from "../../theme/colors";
 import { radii, shadows, spacing } from "../../constants/theme";
 
@@ -25,13 +26,6 @@ function formatDate(value?: string | null) {
   return parsed.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function formatServiceType(value?: string | null) {
-  const raw = String(value ?? "").trim().toUpperCase();
-  if (raw === "COOK") return "Cook";
-  if (raw === "CLEANING") return "Cleaning";
-  return raw ? raw.charAt(0) + raw.slice(1).toLowerCase() : "-";
-}
-
 function getPlanLabel(details: any) {
   const frequencyLabel = asText(details?.frequencyLabel, "");
   if (frequencyLabel) return frequencyLabel;
@@ -40,16 +34,33 @@ function getPlanLabel(details: any) {
   return asText(details?.planName ?? details?.subscriptionPlan ?? details?.frequency, "-");
 }
 
+function getServiceLabel(details: any) {
+  const serviceName = asText(details?.serviceName, "");
+  if (serviceName) return serviceName;
+  const serviceType = asText(details?.serviceType, "").toUpperCase();
+  return serviceType ? serviceType.charAt(0) + serviceType.slice(1).toLowerCase() : "-";
+}
+
 export function SubscriptionConfirmedScreen({ route, navigation }: { route: SubscriptionConfirmedRoute; navigation: any }) {
-  const subscriptionIdParam = String(route?.params?.subscriptionId ?? route?.params?.bookingId ?? "").trim();
+  const subscriptionIdParam = String(route?.params?.subscriptionId ?? "").trim();
   const detailsQuery = useQuery({
     queryKey: ["subscription-details", subscriptionIdParam],
     queryFn: () => getSubscriptionDetails(subscriptionIdParam),
     enabled: subscriptionIdParam.length > 0,
   });
+  const visitsQuery = useQuery({
+    queryKey: ["subscription-visits", subscriptionIdParam],
+    queryFn: () => getSubscriptionVisits(subscriptionIdParam),
+    enabled: subscriptionIdParam.length > 0,
+    refetchInterval: 15000,
+  });
   const details = (detailsQuery.data ?? {}) as any;
   const subscriptionId = asText(details?.id ?? subscriptionIdParam);
-  const serviceType = formatServiceType(details?.serviceType);
+  const serviceName = getServiceLabel(details);
+  const subscriptionStatus = asText(details?.status, "PENDING_ADMIN_REVIEW").toUpperCase();
+  const visits = Array.isArray(visitsQuery.data) ? visitsQuery.data : [];
+  const completedVisits = visits.filter((visit) => visit.status === "COMPLETED").length;
+  const timeline = Array.isArray(details?.timeline) ? details.timeline : [];
   const viewSubscription = () => {
     if (!subscriptionIdParam) return;
     navigation.navigate("SubscriptionPlan", { subscriptionId: subscriptionIdParam });
@@ -70,7 +81,7 @@ export function SubscriptionConfirmedScreen({ route, navigation }: { route: Subs
   };
 
   return (
-    <BookingStageShell title="Subscription Confirmed" subtitle="Payment received. Your recurring service plan is now active.">
+    <BookingStageShell title="Subscription Confirmed" subtitle="Your subscription status is updated from the latest account records.">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={[styles.card, styles.cardDark]}>
           <View style={styles.successRow}>
@@ -78,33 +89,49 @@ export function SubscriptionConfirmedScreen({ route, navigation }: { route: Subs
               <MaterialCommunityIcon name="calendar-refresh" size={26} color={COLORS.goldSoft} />
             </View>
             <View style={styles.successTextWrap}>
-              <Text style={[styles.successTitle, styles.textDarkPrimary]}>Payment Successful</Text>
+              <Text style={[styles.successTitle, styles.textDarkPrimary]}>{subscriptionStatus}</Text>
               <Text style={[styles.successSub, styles.textDarkSecondary]}>Subscription ID: {subscriptionId}</Text>
             </View>
           </View>
           <View style={[styles.line, styles.lineDark]} />
 
-          <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Service Type</Text><Text style={[styles.value, styles.textDarkPrimary]}>{serviceType}</Text></View>
+          <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Service</Text><Text style={[styles.value, styles.textDarkPrimary]}>{serviceName}</Text></View>
           <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Plan</Text><Text style={[styles.value, styles.textDarkPrimary]}>{getPlanLabel(details)}</Text></View>
           <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Start Date</Text><Text style={[styles.value, styles.textDarkPrimary]}>{formatDate(details?.startDate)}</Text></View>
           <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>End Date</Text><Text style={[styles.value, styles.textDarkPrimary]}>{formatDate(details?.endDate)}</Text></View>
           <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Visits Count</Text><Text style={[styles.value, styles.textDarkPrimary]}>{asText(details?.visits ?? details?.visitCount)}</Text></View>
+          <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Completed Visits</Text><Text style={[styles.value, styles.textDarkPrimary]}>{asText(completedVisits)}</Text></View>
+          <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Remaining Visits</Text><Text style={[styles.value, styles.textDarkPrimary]}>{asText(details?.remainingVisits ?? Number(details?.visits ?? 0) - completedVisits)}</Text></View>
+          <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Duration</Text><Text style={[styles.value, styles.textDarkPrimary]}>{asText(details?.durationHours, "Not applicable")}</Text></View>
           <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Time Slot</Text><Text style={[styles.value, styles.textDarkPrimary]}>{asText(details?.timeSlot)}</Text></View>
           <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Address</Text><Text style={[styles.value, styles.textDarkPrimary]}>{asText(details?.fullAddress ?? details?.address)}</Text></View>
           <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Amount Paid</Text><Text style={[styles.value, styles.textDarkPrimary]}>Rs {asText(details?.totalAmount ?? details?.amount)}</Text></View>
+          <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Payment Status</Text><Text style={[styles.value, styles.textDarkPrimary]}>{asText(details?.paymentStatus, "Pending")}</Text></View>
+          <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Professional</Text><Text style={[styles.value, styles.textDarkPrimary]}>{asText(details?.partnerName ?? details?.assignmentStatus, "Not assigned")}</Text></View>
           <View style={styles.row}><Text style={[styles.label, styles.textDarkLabel]}>Next Service Date</Text><Text style={[styles.value, styles.textDarkPrimary]}>{formatDate(details?.nextServiceDate ?? details?.nextVisitDate ?? details?.startDate)}</Text></View>
+
+          <View style={[styles.pinSection, styles.pinSectionDark]}>
+            <Text style={[styles.label, styles.textDarkLabel]}>Start Service PIN</Text>
+            <Text selectable style={[styles.pinValue, styles.textDarkPrimary]}>{asText(details?.serviceStartPin, "Available when partner arrives")}</Text>
+            <Text style={[styles.pinHint, styles.textDarkSecondary]}>Share this PIN with the partner to start each visit.</Text>
+          </View>
+          <View style={[styles.pinSection, styles.pinSectionDark]}>
+            <Text style={[styles.label, styles.textDarkLabel]}>Complete Service PIN</Text>
+            <Text selectable style={[styles.pinValue, styles.textDarkPrimary]}>{asText(details?.serviceCompletePin, "Available during service")}</Text>
+            <Text style={[styles.pinHint, styles.textDarkSecondary]}>Share only after the visit is fully completed.</Text>
+          </View>
         </View>
 
         <View style={[styles.timelineCard, styles.cardDark]}>
           <Text style={[styles.timelineTitle, styles.textDarkPrimary]}>Subscription Timeline</Text>
-          {["Plan active", "Upcoming visits", "Partner assignment", "Service completion"].map((label, index) => (
-            <View key={label} style={styles.timelineRow}>
-              <View style={[styles.timelineDot, styles.timelineDotDark, index === 0 && styles.timelineDotActive]}>
-                {index === 0 ? <MaterialCommunityIcon name="check" size={10} color={COLORS.white} /> : null}
+          {timeline.length > 0 ? timeline.map((item: any, index: number) => (
+            <View key={item.key ?? item.label ?? index} style={styles.timelineRow}>
+              <View style={[styles.timelineDot, styles.timelineDotDark, item.completed && styles.timelineDotActive]}>
+                {item.completed ? <MaterialCommunityIcon name="check" size={10} color={COLORS.white} /> : null}
               </View>
-              <Text style={[styles.timelineLabel, styles.textDarkSecondary, index === 0 && styles.timelineLabelActiveDark]}>{label}</Text>
+              <Text style={[styles.timelineLabel, styles.textDarkSecondary, item.active && styles.timelineLabelActiveDark]}>{item.label}</Text>
             </View>
-          ))}
+          )) : <Text style={[styles.timelineLabel, styles.textDarkSecondary]}>Lifecycle updates will appear here as the subscription progresses.</Text>}
         </View>
 
         <Pressable style={[styles.primaryBtn, styles.primaryBtnDark]} onPress={viewSubscription} disabled={!subscriptionIdParam}>
@@ -163,6 +190,10 @@ const styles = StyleSheet.create({
   textDarkPrimary: { color: COLORS.white },
   textDarkSecondary: { color: COLORS.neutral100 },
   textDarkLabel: { color: COLORS.goldSoft },
+  pinSection: { gap: 4, paddingTop: 8, marginTop: 4, borderTopWidth: 1, borderTopColor: "rgba(217,164,65,0.28)" },
+  pinSectionDark: { borderTopColor: "rgba(217,164,65,0.28)" },
+  pinValue: { fontSize: 20, fontWeight: "900", letterSpacing: 1 },
+  pinHint: { fontSize: 11, fontWeight: "700" },
   timelineCard: {
     borderWidth: 1,
     borderColor: COLORS.borderSoft,
